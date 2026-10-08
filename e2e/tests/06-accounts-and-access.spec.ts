@@ -102,7 +102,7 @@ test.describe('people and roles', () => {
 
     // The owner sees them in the team.
     await page.reload();
-    await expect(page.getByText('Vera Viewer').first()).toBeVisible();
+    await expect(page.getByRole('row', { name: /Vera Viewer/ }).first()).toBeVisible();
   });
 
   test('a designer edits only in the folder they were given', async ({ page }) => {
