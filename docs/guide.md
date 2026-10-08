@@ -110,6 +110,14 @@ form.
   live. If the draft cannot be published when the time comes, the reason is
   shown on the form and nothing changes.
 
+### Versions
+
+On the Forms list, the clock icon opens a form's versions. **What changed
+since** lists, in words, everything that differs between that version and
+the newest one. **Restore** brings an earlier version back as the draft; if a
+draft is already open you are asked before it is replaced. Nothing changes
+for the public until the restored draft is published.
+
 ## 3. Sharing forms
 
 - Public link: `https://<forms host>/f/<your org id>/<FORM_CODE>`.

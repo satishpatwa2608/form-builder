@@ -38,9 +38,9 @@ A phase is not done until its tests are written and pass. Testing is part of eac
 
 - New engine logic gets unit tests; new endpoints get e2e tests on in-memory MongoDB; new screens get component tests.
 - Anything a browser sends is tested from the API side as hostile input.
-- The full suite, typecheck and lint pass in CI before a phase is closed. Baseline on 8 October 2026: 219 tests (engine 68, connectors 15, API 60, studio 74, runtime 2). On 9 October 2026: 420 (engine 155, connectors 15, API 101, studio 147, runtime 2) plus 49 browser scenarios.
+- The full suite, typecheck and lint pass in CI before a phase is closed. Baseline on 8 October 2026: 219 tests (engine 68, connectors 15, API 60, studio 74, runtime 2). On 9 October 2026: 451 (engine 166, connectors 15, API 116, studio 152, runtime 2) plus 54 browser scenarios.
 - Each phase ends with one end-to-end scenario (its "Done when") run against the real apps.
-- `pnpm e2e` runs the whole product in a real browser: MongoDB, the API, the builder, the public form app and the gateway agent as real processes. 49 scenarios on 9 October 2026, all passing; the table in README.md lists what each file covers. New screens get a scenario there.
+- `pnpm e2e` runs the whole product in a real browser: MongoDB, the API, the builder, the public form app and the gateway agent as real processes. 54 scenarios on 9 October 2026, all passing; the table in README.md lists what each file covers. New screens get a scenario there.
 
 Not covered in the browser, and why:
 
@@ -176,7 +176,7 @@ Limits to know:
 | Opening and closing dates; a "form closed" page | Done (Form settings → Availability). Outside the window the public gets a notice with none of the questions, and the server refuses submissions, uploads and saved drafts. Staff can still raise items from inside. |
 | Scheduled publish | Done (Schedule, beside Publish in the builder). The draft is checked when scheduled and again at the time; it publishes with the rights its scheduler holds then; a refusal is recorded on the form. Up to 365 days ahead. |
 | Fragments | Not started. |
-| Version history with compare and restore | Not started. |
+| Version history with compare and restore | Done (the Versions button on the Forms list). "What changed since" lists the differences from any version to the newest in words; "Restore" brings an earlier version back as the draft, and asks before replacing a draft that is open. |
 | Review before publish | Not started. |
 | Create a form from a JSON Schema, a connector entity, a spreadsheet, or a fillable PDF | Not started. |
 

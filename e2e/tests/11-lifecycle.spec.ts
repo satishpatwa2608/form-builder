@@ -127,3 +127,42 @@ test('a scheduled draft really does go live by itself when its time comes', asyn
   await expect(page.getByLabel(label('Your view'))).toBeVisible();
   expect((await call<{ definition: { status: string }; publishAt: string | null }>(200, `/forms/${id}`, { token: org.token }))).toMatchObject({ definition: { status: 'PUBLISHED' }, publishAt: null });
 });
+
+test('the versions of a form can be compared in words, and an old one brought back', async ({ page, context }) => {
+  const problems = watchForProblems(page);
+  const make = (labelText: string, extra: object[] = []) => ({ name: 'Wording', code: 'WORDING', businessId: '', access: 'PUBLIC', submission: { method: 'POST', endpointId: 'default-submit' }, fields: [{ id: 'a', type: 'TEXT', name: 'view', label: labelText }, ...extra] });
+  const v1 = (await call<{ definition: { id: string } }>(201, '/forms', { method: 'POST', token: org.token, body: { folderId: org.folderId, definition: make('First wording') } })).definition.id;
+  await call(200, `/forms/${v1}/publish`, { method: 'POST', token: org.token });
+  const v2 = (await call<{ definition: { id: string } }>(200, `/forms/${v1}/new-version`, { method: 'POST', token: org.token })).definition.id;
+  await call(200, `/forms/${v2}`, { method: 'PUT', token: org.token, body: make('Second wording', [{ id: 'b', type: 'EMAIL', name: 'email', label: 'Email', required: true }]) });
+  await call(200, `/forms/${v2}/publish`, { method: 'POST', token: org.token });
+
+  await signIn(page, org.email);
+  await page.goto('/forms');
+  await page.getByRole('button', { name: 'Versions of Wording' }).click();
+  const panel = page.getByRole('group', { name: 'Versions of Wording' });
+  await expect(panel.getByText('v2 · Published')).toBeVisible();
+  await expect(panel.getByText('v1 · Archived')).toBeVisible();
+
+  await panel.getByRole('button', { name: 'What changed since v1' }).click();
+  const changes = panel.getByRole('region', { name: 'Changes from v1 to v2' });
+  await expect(changes).toContainText('label: was "First wording", now "Second wording"');
+  await expect(changes).toContainText('Added field Email');
+
+  // Bring v1 back: it arrives as draft v3 and the public still sees v2 until it is published.
+  await panel.getByRole('button', { name: 'Restore v1' }).click();
+  await expect(page.getByText('v1 is back as draft v3. Review and publish it when ready.')).toBeVisible();
+  const live = await context.newPage();
+  await live.goto(formUrl(org, 'WORDING'));
+  await expect(live.getByLabel(label('Second wording'))).toBeVisible();
+
+  await page.getByRole('link', { name: 'Wording', exact: true }).click();
+  await expect(page.getByLabel('Form canvas').getByText('First wording')).toBeVisible();
+  await page.getByRole('button', { name: 'Publish' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Publish' }).click();
+  await expect(page.getByText(/Published WORDING v3/)).toBeVisible();
+  await live.reload();
+  await expect(live.getByLabel(label('First wording'))).toBeVisible();
+  await expect(live.getByLabel(label('Email'))).toHaveCount(0);
+  expect(problems).toEqual([]);
+});

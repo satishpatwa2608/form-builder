@@ -162,8 +162,8 @@ export class FormsService implements OnModuleInit {
 
   async versions(auth: AuthContext, id: string) {
     const row = await this.mustGet(auth, id, 'form.view');
-    const rows = await this.forms.find({ ...this.live(auth.orgId), code: row.code }).sort({ version: -1 }).select('id version status updatedAt publishedAt').lean();
-    return rows.map((r) => ({ id: r.id, version: r.version, status: r.status, updatedAt: r.updatedAt, publishedAt: r.publishedAt }));
+    const rows = await this.forms.find({ ...this.live(auth.orgId), code: row.code }).sort({ version: -1 }).select('id version status updatedAt publishedAt publishedBy updatedBy').lean();
+    return rows.map((r) => ({ id: r.id, version: r.version, status: r.status, updatedAt: r.updatedAt, publishedAt: r.publishedAt, publishedBy: r.publishedBy, updatedBy: r.updatedBy }));
   }
 
   // ---------------------------------------------------------------- lifecycle
@@ -331,6 +331,39 @@ export class FormsService implements OnModuleInit {
     });
     await this.audit.record(actorOf(auth), { action: 'form.version_created', targetType: 'form', targetId: newIdValue, after: { code: source.code, version } });
     return this.get(auth, newIdValue);
+  }
+
+  /**
+   * Bring an earlier version back as the draft. With no draft open this is a
+   * new version copied from it. With one open, that draft's content is
+   * replaced - only when the caller says so, since its edits are lost.
+   */
+  async restore(auth: AuthContext, id: string, replaceDraft: boolean) {
+    const source = await this.mustGet(auth, id, 'form.edit');
+    if (source.status === 'DRAFT') throw new ConflictException('This version is the draft itself');
+    const open = await this.forms.findOne({ ...this.live(auth.orgId), code: source.code, status: 'DRAFT' });
+    if (!open) {
+      const made = await this.newVersion(auth, id);
+      await this.audit.record(actorOf(auth), { action: 'form.version_restored', targetType: 'form', targetId: made.definition.id, after: { code: source.code, from: source.version, to: made.definition.version } });
+      return made;
+    }
+    if (!replaceDraft) {
+      throw new ConflictException({ message: `A draft (v${open.version}) is already open. Restoring v${source.version} replaces what is in it.`, draftId: open.id, draftVersion: open.version });
+    }
+    await this.permissions.assert(auth, 'form.edit', await this.ref(auth.orgId, open.folderId, open.code));
+    // A draft set to publish itself was scheduled for different content: the schedule goes with it.
+    open.set({
+      name: source.name,
+      definition: { ...FormsService.toDefinition(source), id: open.id, version: open.version, status: 'DRAFT', styles: undefined, createdBy: open.createdBy, updatedBy: auth.userId },
+      updatedBy: auth.userId,
+      publishAt: null,
+      scheduledBy: '',
+      scheduleError: '',
+    });
+    open.markModified('definition');
+    await open.save();
+    await this.audit.record(actorOf(auth), { action: 'form.version_restored', targetType: 'form', targetId: open.id, after: { code: source.code, from: source.version, to: open.version } });
+    return this.get(auth, open.id);
   }
 
   async archive(auth: AuthContext, id: string) {

@@ -25,3 +25,4 @@ export * from './export-safety';
 export * from './workflow';
 export * from './working-time';
 export * from './definition.schema';
+export * from './diff';

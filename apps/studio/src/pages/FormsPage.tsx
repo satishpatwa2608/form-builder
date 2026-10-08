@@ -1,8 +1,9 @@
+import { FormVersions } from '../components/FormVersions';
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Archive, Download, FilePlus2, FolderInput, GitBranchPlus, History, Inbox, Rocket, Trash2, Upload, X } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
-import { useAction, useFolders, useForms, useFormVersions } from '../lib/queries';
+import { useAction, useFolders, useForms } from '../lib/queries';
 import type { Folder, FormStatus, FormSummary } from '../lib/types';
 import { codeFromName, FORM_TEMPLATES, prepareTemplate } from '../templates';
 import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
@@ -96,19 +97,6 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   );
 }
 
-function Versions({ form }: { form: FormSummary }) {
-  const { data } = useFormVersions(form.id);
-  return (
-    <div className="st-row" style={{ gap: 6 }}>
-      {(data ?? []).map((v) => (
-        <Badge key={v.id} tone={STATUS[v.status].tone}>
-          v{v.version} · {STATUS[v.status].label}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
 /** Save a form package as a .json file. */
 async function downloadPackage(f: FormSummary) {
   const pkg = await api<object>(`/forms/${f.id}/export`);
@@ -140,6 +128,7 @@ export default function FormsPage() {
   const folders = useFolders();
   const [folderFilter, setFolderFilter] = useState('');
   const [creating, setCreating] = useState(false);
+  // By form code, not version id: restoring or publishing gives the form a new latest version, and the panel should stay open.
   const [openVersions, setOpenVersions] = useState<string>();
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string }>();
   const feedback = (text: string) => ({ onSuccess: () => setMessage({ tone: 'success', text }), onError: (e: Error) => setMessage({ tone: 'error', text: errorMessage(e) }) });
@@ -240,15 +229,15 @@ export default function FormsPage() {
                     const edit = f.permissions.includes('form.edit');
                     const publish = f.permissions.includes('form.publish');
                     return (
-                      <tr key={f.id}>
+                      <tr key={f.code}>
                         <td>
                           <Link className="st-link" to={`/forms/${f.id}/edit`}>
                             {f.name}
                           </Link>
                           <div className="st-mono st-muted">{f.code}</div>
-                          {openVersions === f.id && (
+                          {openVersions === f.code && (
                             <div style={{ marginTop: 8 }}>
-                              <Versions form={f} />
+                              <FormVersions form={f} canEdit={edit} />
                             </div>
                           )}
                         </td>
@@ -276,7 +265,7 @@ export default function FormsPage() {
                             <Button variant="ghost" size="sm" aria-label={`Export ${f.name}`} title="Export (copy to another environment)" onClick={() => downloadPackage(f).catch((e: Error) => setMessage({ tone: 'error', text: errorMessage(e) }))}>
                               <Download size={14} />
                             </Button>
-                            <Button variant="ghost" size="sm" aria-label={`Versions of ${f.name}`} onClick={() => setOpenVersions(openVersions === f.id ? undefined : f.id)}>
+                            <Button variant="ghost" size="sm" aria-label={`Versions of ${f.name}`} onClick={() => setOpenVersions(openVersions === f.code ? undefined : f.code)}>
                               <History size={14} />
                             </Button>
                             {f.status === 'DRAFT' && publish && (

@@ -103,6 +103,13 @@ export class FormsController {
     return this.forms.newVersion(auth, idParam(formId));
   }
 
+  /** Bring this earlier version back as the draft (`replaceDraft` to overwrite one that is open). */
+  @Post(':id/restore')
+  @HttpCode(200)
+  restore(@Auth() auth: AuthContext, @Param('id') formId: string, @Body() body: { replaceDraft?: unknown }) {
+    return this.forms.restore(auth, idParam(formId), body?.replaceDraft === true);
+  }
+
   @Post(':id/archive')
   @HttpCode(200)
   archive(@Auth() auth: AuthContext, @Param('id') formId: string) {

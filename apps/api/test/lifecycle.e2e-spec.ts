@@ -214,3 +214,77 @@ describe('Scheduled publishing (e2e)', () => {
     expect((await state(id)).scheduleError).toBe('The person who scheduled it is no longer a member of the organisation');
   });
 });
+
+describe('Restoring an earlier version (e2e)', () => {
+  let h: Harness;
+  let owner: string;
+  let orgId: string;
+  let folder: string;
+
+  const form = (label: string, extra: object[] = []) => ({
+    name: 'Feedback',
+    code: 'FEEDBACK',
+    businessId: '',
+    access: 'PUBLIC',
+    submission: { method: 'POST', endpointId: 'default-submit' },
+    fields: [{ id: 'a', type: 'TEXT', name: 'view', label }, ...extra],
+  });
+  const liveLabel = async () => (await h.api().get(`/public/forms/FEEDBACK?org=${orgId}`).expect(200)).body.fields[0].label;
+  const versions = async (id: string) => (await h.api().get(`/forms/${id}/versions`).set(h.bearer(owner)).expect(200)).body.map((v: { version: number; status: string }) => `${v.version}:${v.status}`);
+
+  beforeAll(async () => {
+    h = await startApp();
+    await h.signUp('Asha', 'asha@acme.test', 'Acme');
+    owner = (await h.login('asha@acme.test')).token;
+    orgId = (await h.api().get('/auth/me').set(h.bearer(owner))).body.org.id;
+    folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'F' }).expect(201)).body[0].id;
+  });
+  afterAll(() => h?.close());
+
+  it('an old version comes back as a new draft, and is live again once published', async () => {
+    const v1 = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: form('First wording') }).expect(201)).body.definition.id;
+    await h.api().post(`/forms/${v1}/publish`).set(h.bearer(owner)).expect(200);
+    const v2 = (await h.api().post(`/forms/${v1}/new-version`).set(h.bearer(owner)).expect(200)).body.definition.id;
+    await h.api().put(`/forms/${v2}`).set(h.bearer(owner)).send(form('Second wording')).expect(200);
+    await h.api().post(`/forms/${v2}/publish`).set(h.bearer(owner)).expect(200);
+    expect(await liveLabel()).toBe('Second wording');
+
+    // The draft itself cannot be "restored".
+    const restored = (await h.api().post(`/forms/${v1}/restore`).set(h.bearer(owner)).send({}).expect(200)).body.definition;
+    expect(restored).toMatchObject({ version: 3, status: 'DRAFT', fields: [expect.objectContaining({ label: 'First wording' })] });
+    await h.api().post(`/forms/${restored.id}/restore`).set(h.bearer(owner)).send({}).expect(409);
+    // Nothing changes for the public until it is published.
+    expect(await liveLabel()).toBe('Second wording');
+    await h.api().post(`/forms/${restored.id}/publish`).set(h.bearer(owner)).expect(200);
+    expect(await liveLabel()).toBe('First wording');
+    expect(await versions(v1)).toEqual(['3:PUBLISHED', '2:ARCHIVED', '1:ARCHIVED']);
+  });
+
+  it('an open draft is only replaced when asked, and its schedule goes with its content', async () => {
+    const list = (await h.api().get('/forms').set(h.bearer(owner)).expect(200)).body;
+    const current = list.find((f: { code: string }) => f.code === 'FEEDBACK').id;
+    const all = (await h.api().get(`/forms/${current}/versions`).set(h.bearer(owner)).expect(200)).body as { id: string; version: number }[];
+    const v2 = all.find((v) => v.version === 2)!.id;
+    const draft = (await h.api().post(`/forms/${current}/new-version`).set(h.bearer(owner)).expect(200)).body.definition.id;
+    await h.api().put(`/forms/${draft}`).set(h.bearer(owner)).send(form('Work in progress')).expect(200);
+    await h.api().post(`/forms/${draft}/schedule`).set(h.bearer(owner)).send({ publishAt: new Date(Date.now() + HOUR).toISOString() }).expect(200);
+
+    const refused = await h.api().post(`/forms/${v2}/restore`).set(h.bearer(owner)).send({}).expect(409);
+    expect(refused.body).toMatchObject({ message: 'A draft (v4) is already open. Restoring v2 replaces what is in it.', draftId: draft });
+    expect((await h.api().get(`/forms/${draft}`).set(h.bearer(owner)).expect(200)).body.definition.fields[0].label).toBe('Work in progress');
+
+    const replaced = (await h.api().post(`/forms/${v2}/restore`).set(h.bearer(owner)).send({ replaceDraft: true }).expect(200)).body;
+    expect(replaced.definition).toMatchObject({ id: draft, version: 4, status: 'DRAFT', fields: [expect.objectContaining({ label: 'Second wording' })] });
+    expect(replaced.publishAt).toBeNull();
+    const audit = (await h.api().get('/audit').set(h.bearer(owner)).expect(200)).body.entries.map((e: { action: string }) => e.action);
+    expect(audit).toContain('form.version_restored');
+  });
+
+  it('needs the right to edit the form', async () => {
+    await h.addMember(owner, 'Vi Viewer', 'vi@acme.test', 'VIEWER');
+    const viewer = (await h.login('vi@acme.test')).token;
+    const current = (await h.api().get('/forms').set(h.bearer(owner)).expect(200)).body.find((f: { code: string }) => f.code === 'FEEDBACK').id;
+    const v1 = ((await h.api().get(`/forms/${current}/versions`).set(h.bearer(owner)).expect(200)).body as { id: string; version: number }[]).find((v) => v.version === 1)!.id;
+    await h.api().post(`/forms/${v1}/restore`).set(h.bearer(viewer)).send({ replaceDraft: true }).expect(403);
+  });
+});
