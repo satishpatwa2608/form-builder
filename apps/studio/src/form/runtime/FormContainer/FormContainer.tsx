@@ -197,7 +197,8 @@ function FormRuntime({
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as Resolver<FormValues>,
     defaultValues: defaults,
-    mode: 'onTouched',
+    // Leaving a field checks it too, but that is done by `checkOnLeave` below rather than by the form library.
+    mode: 'onSubmit',
   });
 
   // Read on every render, so the form library keeps this component up to date with errors
@@ -234,28 +235,86 @@ function FormRuntime({
   const skipDependencyReset = useRef(false);
   useDependencyReset(form, definition, values, skipDependencyReset);
 
+  const [result, setResult] = useState<SubmissionResult | null>(null);
+
   /**
-   * "Next" and the check before the review page validate without submitting,
-   * and the form library only re-checks as you type after a real submit. So
-   * once one of those checks has failed, fields with an error are re-checked on
-   * every change: the message goes as soon as the answer is right, instead of
-   * when the person clicks elsewhere - which would move the page under their
-   * cursor and swallow that click.
+   * Once a field has been checked (by leaving it, by "Next", or by the check
+   * before the review page), fields with an error are re-checked on every
+   * change: the message goes as soon as the answer is right.
    */
   const [recheck, setRecheck] = useState(false);
+
+  /**
+   * A field is checked when the person leaves it. If they left it by pressing
+   * the mouse on something else, the check waits until that click is over: an
+   * error message appearing or going in between would move the page under the
+   * cursor, and the click would land on nothing.
+   */
+  const pointerDown = useRef(false);
+  const leftWhilePressed = useRef(new Set<string>());
+  useEffect(() => {
+    const check = (names: string[]) => {
+      if (!names.length) return;
+      setRecheck(true);
+      void form.trigger(names);
+    };
+    const down = () => {
+      pointerDown.current = true;
+    };
+    const up = () => {
+      pointerDown.current = false;
+      // After the click this press produces has been handled.
+      setTimeout(() => {
+        const names = [...leftWhilePressed.current];
+        leftWhilePressed.current.clear();
+        check(names);
+      }, 0);
+    };
+    const left = (e: FocusEvent) => {
+      const el = containerRef.current;
+      const wrapper = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-field-name]');
+      const name = wrapper?.dataset.fieldName;
+      // Moving between the parts of one field (its radio buttons, a stepper's - and +) is not leaving it.
+      if (!el || !wrapper || !name || !el.contains(wrapper) || (e.relatedTarget instanceof Node && wrapper.contains(e.relatedTarget))) return;
+      if (pointerDown.current) leftWhilePressed.current.add(name);
+      else check([name]);
+    };
+    const el = containerRef.current;
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
+    el?.addEventListener('focusout', left);
+    return () => {
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
+      el?.removeEventListener('focusout', left);
+    };
+    // The form element is replaced by the success screen and comes back on reset.
+  }, [form, result]);
 
   useEffect(() => {
     onValuesChange?.(values);
   }, [values, onValuesChange]);
 
+  /** What the server found wrong, with the answer it was about: `field or row key -> { message, answer }`. */
+  const serverFindings = useRef(new Map<string, { message: string; answer: string }>());
+
   useEffect(() => {
     const failing = Object.keys(form.formState.errors);
-    if (recheck && failing.length) void form.trigger(failing);
+    if (!recheck || !failing.length) return;
+    void form.trigger(failing).then(() => {
+      // Re-checking knows nothing of what the server found, and would wipe it.
+      // A finding stays until the answer it was about changes.
+      for (const [name, finding] of serverFindings.current) {
+        if (JSON.stringify(valueAt(form.getValues(), name)) === finding.answer) form.setError(name, { type: 'server', message: finding.message });
+        else serverFindings.current.delete(name);
+      }
+    });
     // Only when an answer changes: re-checking on every error change would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values, recheck]);
+  }, [values]);
 
-  const [result, setResult] = useState<SubmissionResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   /** The "check your answers" page is showing instead of the fields. */
@@ -335,6 +394,7 @@ function FormRuntime({
   const onValid = async (submitted: FormValues) => {
     setShowSummary(false);
     setSubmitError(null);
+    serverFindings.current.clear();
     const computed = computeFormState(definition, submitted, context).values;
     try {
       const res = await submissionAdapter.submit({
@@ -348,7 +408,10 @@ function FormRuntime({
         for (const fe of res.fieldErrors ?? []) {
           // `lines.0.qty` belongs to the repeating section `lines`.
           const owner = fe.field.split('.')[0];
-          if (definition.fields.some((f) => f.name === fe.field || (f.name === owner && isRepeat(f)))) form.setError(fe.field, { type: 'server', message: fe.message });
+          if (definition.fields.some((f) => f.name === fe.field || (f.name === owner && isRepeat(f)))) {
+            form.setError(fe.field, { type: 'server', message: fe.message });
+            serverFindings.current.set(fe.field, { message: fe.message, answer: JSON.stringify(valueAt(submitted, fe.field)) });
+          }
         }
         if (res.fieldErrors?.length) {
           // Back to the form: the findings are shown next to their fields.

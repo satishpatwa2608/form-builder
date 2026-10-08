@@ -178,6 +178,12 @@ describe('repeating section in the live form', () => {
     await submit(user);
     expect((await within(row(1)).findAllByText('Out of stock')).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /Lines, row 1: Qty.*Out of stock/ })).toBeInTheDocument();
+
+    // It stays while other answers change, and goes when the answer it is about does.
+    await user.type(input(1, /^Item/), 's');
+    expect(within(row(1)).getAllByText('Out of stock').length).toBeGreaterThan(0);
+    await user.type(input(1, /^Qty/), '2');
+    await waitFor(() => expect(within(row(1)).queryByText('Out of stock')).not.toBeInTheDocument());
   });
 
   it('as a table it names the columns once and keeps each field labelled for screen readers', async () => {
