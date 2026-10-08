@@ -16,6 +16,13 @@ export const API = `http://127.0.0.1:${PORTS.api}`;
 export const STUDIO = `http://127.0.0.1:${PORTS.studio}`;
 export const RUNTIME = `http://127.0.0.1:${PORTS.runtime}`;
 
+/**
+ * The MongoDB server everything uses (without a database name, ending in `/`).
+ * Set E2E_MONGODB_URL to use one that is already running (CI does); otherwise
+ * a `mongod` is started on an empty temporary directory.
+ */
+export const MONGO = (process.env.E2E_MONGODB_URL ?? `mongodb://127.0.0.1:${PORTS.mongo}`).replace(/\/*$/, '/');
+
 /** Where the running stack records itself, so teardown (a separate process) can find it. */
 export const STATE_FILE = join(ROOT, 'e2e', '.stack.json');
 
@@ -60,14 +67,17 @@ export async function startStack(): Promise<StackState> {
   const save = () => writeFileSync(STATE_FILE, JSON.stringify(state()));
 
   try {
-    children.push(run('mongod', dir, 'mongod', ['--dbpath', join(dir, 'db'), '--port', String(PORTS.mongo), '--bind_ip', '127.0.0.1'], dir, {}));
-    save();
+    if (!process.env.E2E_MONGODB_URL) {
+      children.push(run('mongod', dir, 'mongod', ['--dbpath', join(dir, 'db'), '--port', String(PORTS.mongo), '--bind_ip', '127.0.0.1'], dir, {}));
+      save();
+    }
     children.push(
       run('api', dir, 'node', ['dist/main.js'], join(ROOT, 'apps/api'), {
         // "test" switches off rate limits, which a suite submitting from one address would trip.
         NODE_ENV: 'test',
         PORT: String(PORTS.api),
-        MONGODB_URL: `mongodb://127.0.0.1:${PORTS.mongo}/fb-e2e`,
+        // A fresh database name each run, so a shared server starts clean too.
+        MONGODB_URL: `${MONGO}fb-e2e-${Date.now()}`,
         JWT_SECRET: randomBytes(48).toString('base64'),
         SECRET_KEY: randomBytes(32).toString('base64'),
         APP_URL: STUDIO,

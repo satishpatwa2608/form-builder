@@ -38,8 +38,19 @@ A phase is not done until its tests are written and pass. Testing is part of eac
 
 - New engine logic gets unit tests; new endpoints get e2e tests on in-memory MongoDB; new screens get component tests.
 - Anything a browser sends is tested from the API side as hostile input.
-- The full suite, typecheck and lint pass in CI before a phase is closed. Baseline on 8 October 2026: 219 tests (engine 68, connectors 15, API 60, studio 74, runtime 2).
+- The full suite, typecheck and lint pass in CI before a phase is closed. Baseline on 8 October 2026: 219 tests (engine 68, connectors 15, API 60, studio 74, runtime 2). On 9 October 2026: 415 (engine 155, connectors 15, API 101, studio 142, runtime 2) plus 43 browser scenarios.
 - Each phase ends with one end-to-end scenario (its "Done when") run against the real apps.
+- `pnpm e2e` runs the whole product in a real browser: MongoDB, the API, the builder, the public form app and the gateway agent as real processes. 43 scenarios on 9 October 2026, all passing; the table in README.md lists what each file covers. New screens get a scenario there.
+
+What the first browser run found that the other tests had not (all fixed):
+
+| Found | Why the other tests missed it |
+|---|---|
+| A click was lost whenever an error message appeared or went as the person clicked away from a field: the page moved between mouse-down and mouse-up. A consent tick and a Submit were both swallowed. | The component tests run without a page layout, so nothing moves. |
+| With a review step, the list of mistakes at the top never appeared. | The component test checked the message beside the field, not the list. |
+| "Next" on a stepped form flagged a closed accordion panel or another tab but did not open it. | Not covered. |
+| A revoked gateway agent stopped reconnecting but its process stayed alive. | The agent was tested inside the test process, not as its own. |
+| A dialog component logged a React warning on every confirm. | Warnings are not failures in the component tests. |
 
 ## 4. Phases
 
@@ -73,7 +84,7 @@ A phase is not done until its tests are written and pass. Testing is part of eac
 | A form-level time zone | Done (Form settings → Time zone). Left empty, `today()` uses the browser's zone, which the server accepts from the request. |
 | Customer-written functions | Deferred (section 5). |
 | Look-ups that write, or that run on the server | Not built. A look-up only reads, and only in the browser; saving to a connector stays an automation step. |
-| Checked in a real browser | Not done. Covered by component tests and by API tests against the real app on an in-memory database; the API and worker were also run as two real processes against MongoDB. |
+| Checked in a real browser | Done on 9 October 2026: see section 3 and `e2e/`. |
 
 Tests added in this phase: engine 68 → 125, API 60 → 80, studio 74 → 111; 333 in total, all passing.
 

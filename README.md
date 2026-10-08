@@ -34,9 +34,34 @@ pnpm dev:runtime   # http://localhost:5174/f/<orgId>/<FORM_CODE>
 pnpm test          # engine, connectors, api (unit + e2e on in-memory MongoDB), studio, runtime
 pnpm typecheck
 pnpm lint
+pnpm e2e           # the whole product in a real browser (see "End-to-end tests")
 ```
 
 Emails are printed in the API log until `MAIL_PROVIDER=ses`.
+
+## End-to-end tests
+
+`pnpm e2e` starts MongoDB (an empty temporary data directory), the API, the
+builder and the public form app on their own ports (27098, 4198, 5183, 5184),
+drives them with a real browser (Playwright, Chromium), and stops everything
+afterwards. It touches no other database or port. First time only:
+`pnpm --filter @fb/e2e exec playwright install chromium`. It needs `mongod`
+on the PATH, or `E2E_MONGODB_URL` pointing at a server that is already running.
+
+| File in `e2e/tests` | What it walks through |
+|---|---|
+| `01-expense-claim` | Line items, totals, review, signature, staff view, CSV export, tampering |
+| `02-fields-rules-events` | Tabs, switch, tick boxes, stepper, consent, picture; rules; events; the form's time zone |
+| `03-builder` | Building a form in the builder by hand: drag, settings, rules, events, preview, publish |
+| `04-steps-uploads-drafts` | Steps, accordion, review; uploads and downloads; save and continue later; CAPTCHA; sign-in-only forms |
+| `05-work-items` | Inbox, record view, actions, approval and rejection, comments, emails, dashboard |
+| `06-accounts-and-access` | Sign-up, invitations, roles, folder permissions, organisation isolation, versions, export/import, audit log |
+| `07-connectors` | Options, a look-up and write-back against a real database; what the public may read |
+| `08-account-settings-embed` | Password reset, two-factor, branding, analytics, embedding, phone and wide layouts, staff-raised items |
+| `09-gateway` | The gateway agent as its own process: register, read a private database, revoke |
+
+After a failure, `e2e/test-results/` holds a screenshot, the page as text and a
+trace for each failed scenario. `E2E_KEEP=1` keeps the servers' logs.
 
 ## API
 

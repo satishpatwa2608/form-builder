@@ -158,8 +158,8 @@ test('build an order form with a repeating section, a rule and an event, publish
   await form.getByRole('button', { name: 'Submit' }).click();
   await expect(form.getByText('Ordered. It will be at your desk tomorrow.')).toBeVisible();
 
-  const forms = await (await fetch(`http://127.0.0.1:4198/forms`, { headers: { authorization: `Bearer ${org.token}` } })).json();
-  const formId = forms.find((f: { code: string }) => f.code === 'STATIONERY_ORDER').id;
+  const forms = (await (await fetch(`http://127.0.0.1:4198/forms`, { headers: { authorization: `Bearer ${org.token}` } })).json()) as { id: string; code: string }[];
+  const formId = forms.find((f) => f.code === 'STATIONERY_ORDER')!.id;
   expect((await submissions(org, formId))[0].payload).toEqual({ orderedBy: 'Meera', items: [{ item: 'Notebook', qty: 5, price: 40, lineTotal: 200 }], orderTotal: 200 });
   expect(problems).toEqual([]);
   expect(formProblems).toEqual([]);

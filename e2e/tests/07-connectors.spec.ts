@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { MongoClient } from 'mongodb';
-import { PORTS } from '../stack';
+import { MONGO, PORTS } from '../stack';
 import { addMember, call, createOrg, formUrl, label, publishForm, signIn, watchForProblems, type Org } from './helpers';
 
 /** A form reads a customer's own database (options and a look-up) and writes the answers back to it. */
 
-const CUSTOMER_DB = `mongodb://127.0.0.1:${PORTS.mongo}/`;
+const CUSTOMER_DB = MONGO;
 let org: Org;
 let ref: string;
 let connectorId: string;
@@ -144,7 +144,7 @@ test('a plant that is not in the database is refused on submit', async () => {
     body: JSON.stringify({ values: { email: 'x@customer.test', reporter: 'X', plant: 'P9', what: 'x' } }),
   });
   expect(res.status).toBe(422);
-  expect((await res.json()).errors).toEqual([{ field: 'plant', message: 'Select a valid option' }]);
+  expect(((await res.json()) as { errors: unknown }).errors).toEqual([{ field: 'plant', message: 'Select a valid option' }]);
 });
 
 test('the connectors page shows the connection, its calls and never its credentials; a designer may use it but not see inside', async ({ page }) => {

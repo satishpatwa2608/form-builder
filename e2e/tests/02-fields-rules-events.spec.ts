@@ -184,7 +184,7 @@ test('an arrival in the past is refused, by the page and by the server on its ow
     body: JSON.stringify({ values: { guest: 'Late', nights: ['FRI'], guests: 1, room: 'STD', arrive: dateIn(ZONE, -1), terms: true }, timeZone: 'Etc/GMT+12' }),
   });
   expect(res.status).toBe(422);
-  expect((await res.json()).errors).toEqual([{ field: 'arrive', message: 'Arrival cannot be in the past' }]);
+  expect(((await res.json()) as { errors: unknown }).errors).toEqual([{ field: 'arrive', message: 'Arrival cannot be in the past' }]);
 });
 
 test('when the submit fails the form shows its own message and keeps the answers', async ({ page }) => {

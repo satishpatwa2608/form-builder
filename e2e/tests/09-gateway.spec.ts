@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { MongoClient } from 'mongodb';
-import { API, PORTS, ROOT } from '../stack';
+import { API, MONGO, ROOT } from '../stack';
 import { call, createOrg, formUrl, label, publishForm, type Org } from './helpers';
 
 /**
@@ -13,7 +13,7 @@ import { call, createOrg, formUrl, label, publishForm, type Org } from './helper
  * database credentials on its own disk.
  */
 
-const PRIVATE_DB = `mongodb://127.0.0.1:${PORTS.mongo}/`;
+const PRIVATE_DB = MONGO;
 let org: Org;
 let dir: string;
 let agent: ChildProcess;
@@ -42,8 +42,13 @@ test.beforeAll(async () => {
   agent.stdout!.on('data', (d) => (agentLog += d));
   agent.stderr!.on('data', (d) => (agentLog += d));
   await expect
-    .poll(async () => (await call<{ id: string; connected: boolean }[]>(200, '/gateways', { token: org.token })).find((g) => g.id === gatewayId)?.connected, { timeout: 20_000, message: () => `agent log:\n${agentLog}` })
+    .poll(async () => (await call<{ id: string; connected: boolean }[]>(200, '/gateways', { token: org.token })).find((g) => g.id === gatewayId)?.connected, { timeout: 20_000, message: 'the gateway agent should connect' })
     .toBe(true);
+});
+
+// What the agent itself said, when something about it fails.
+test.afterEach(({}, info) => {
+  if (info.status !== info.expectedStatus) console.log(`gateway agent log:\n${agentLog}`);
 });
 
 test.afterAll(async () => {
@@ -103,7 +108,7 @@ test('a form reads a private database through the gateway; the credentials never
 
 test('revoking the gateway cuts it off at once', async ({ page }) => {
   await call(200, `/gateways/${gatewayId}`, { method: 'DELETE', token: org.token });
-  await expect.poll(() => agent.exitCode, { timeout: 15_000, message: () => `agent log:\n${agentLog}` }).toBe(0);
+  await expect.poll(() => agent.exitCode, { timeout: 15_000, message: 'a revoked agent should exit cleanly' }).toBe(0);
   expect(agentLog).toContain('this gateway was revoked - stopping');
   // The form's options can no longer be read.
   await page.goto(formUrl(org, 'DEPOT_VISIT'));

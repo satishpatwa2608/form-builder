@@ -58,7 +58,7 @@ test('two-factor sign-in is set up with an authenticator code and then asked for
 
   // Password alone no longer signs in.
   const passwordOnly = await fetch('http://127.0.0.1:4198/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: org.email, password: PASSWORD }) });
-  expect((await passwordOnly.json()).accessToken).toBeUndefined();
+  expect(((await passwordOnly.json()) as { accessToken?: string }).accessToken).toBeUndefined();
 
   await page.getByRole('button', { name: /sign out/i }).click();
   await page.goto('/login');
