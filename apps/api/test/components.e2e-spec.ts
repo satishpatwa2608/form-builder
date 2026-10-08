@@ -204,3 +204,80 @@ describe('Repeating sections are checked by the server (e2e)', () => {
     expect(refused.body.errors.map((e: { message: string }) => e.message)).toContain('A FILE field cannot go inside the repeating section "lines"');
   });
 });
+
+describe('hCaptcha is verified by the server (e2e)', () => {
+  let h: Harness;
+  let owner: string;
+  let orgId: string;
+  let folder: string;
+  const calls: { url: string; body: Record<string, string> }[] = [];
+  let verdict: Record<string, unknown> = { success: true };
+  const realFetch = globalThis.fetch;
+
+  const guarded = (code: string, captcha: Record<string, unknown>) => ({
+    name: 'Contact',
+    code,
+    businessId: '',
+    access: 'PUBLIC',
+    submission: { method: 'POST', endpointId: 'default-submit' },
+    captcha: { enabled: true, provider: 'HCAPTCHA', siteKey: 'site-key-1', mode: 'CHECKBOX', ...captcha },
+    fields: [
+      { id: 'a', type: 'TEXT', name: 'who', label: 'Who', required: true },
+      { id: 'c', type: 'CAPTCHA', name: 'captchaToken' },
+    ],
+  });
+
+  beforeAll(async () => {
+    h = await startApp();
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.includes('siteverify')) return realFetch(input, init);
+      calls.push({ url, body: Object.fromEntries(new URLSearchParams(String(init?.body))) });
+      return new Response(JSON.stringify(verdict), { status: 200 });
+    }) as typeof fetch;
+    await h.signUp('Asha', 'asha@acme.test', 'Acme');
+    owner = (await h.login('asha@acme.test')).token;
+    orgId = (await h.api().get('/auth/me').set(h.bearer(owner))).body.org.id;
+    folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Web' }).expect(201)).body[0].id;
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: guarded('CONTACT', {}) }).expect(201)).body.definition.id;
+    await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+  });
+  afterAll(async () => {
+    globalThis.fetch = realFetch;
+    delete process.env.FORM_HCAPTCHA_SECRET;
+    await h?.close();
+  });
+
+  const submit = (captchaToken?: string) => h.api().post(`/public/forms/CONTACT/submissions?org=${orgId}`).send({ values: { who: 'Asha', captchaToken } });
+
+  it('refuses rather than waves through when its secret is not set', async () => {
+    delete process.env.FORM_HCAPTCHA_SECRET;
+    await submit('token-1').expect(503);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('asks hCaptcha, naming the form\'s own site key, and stores the answer without the token', async () => {
+    process.env.FORM_HCAPTCHA_SECRET = 'shh';
+    verdict = { success: true };
+    const res = await submit('token-2').expect(201);
+    expect(calls.at(-1)).toMatchObject({ url: 'https://api.hcaptcha.com/siteverify', body: { secret: 'shh', response: 'token-2', sitekey: 'site-key-1' } });
+    expect(res.body.payload).toEqual({ who: 'Asha' });
+  });
+
+  it('rejects a token hCaptcha does not accept, a missing one, and a mock one', async () => {
+    process.env.FORM_HCAPTCHA_SECRET = 'shh';
+    verdict = { success: false, 'error-codes': ['invalid-input-response'] };
+    const bad = await submit('forged').expect(422);
+    expect(bad.body.errors).toEqual([{ field: 'captchaToken', message: 'Verification failed - please try again' }]);
+    const before = calls.length;
+    await submit().expect(422);
+    await submit('mock-captcha-123').expect(400);
+    expect(calls).toHaveLength(before);
+  });
+
+  it('score-based checking is offered with reCAPTCHA only', async () => {
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: guarded('CONTACT_V3', { mode: 'V3' }) }).expect(201)).body.definition.id;
+    const refused = await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(400);
+    expect(refused.body.errors.map((e: { message: string }) => e.message)).toContain('Score-based checking is only offered by reCAPTCHA');
+  });
+});

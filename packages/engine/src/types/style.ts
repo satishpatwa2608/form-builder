@@ -55,6 +55,8 @@ export interface FormTheme {
  */
 export interface FormLayout {
   mode: 'single' | 'steps';
+  /** Show every answer for a last look, with a way back to change each one, before the form is sent. */
+  review?: boolean;
 }
 
 /** Width of a field inside the 6-track grid every field list uses. */

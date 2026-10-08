@@ -375,3 +375,57 @@
     white-space: nowrap;
   }
 }
+
+/* "Check your answers" before sending. */
+.fp-review__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.fp-review__list {
+  margin: 14px 0 0;
+  border-top: 1px solid var(--border);
+}
+.fp-review__item {
+  display: grid;
+  grid-template-columns: minmax(120px, 30%) minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  align-items: start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.fp-review__item dt {
+  font-weight: 600;
+  color: var(--foreground);
+}
+.fp-review__item dd {
+  margin: 0;
+  min-width: 0;
+  white-space: pre-line;
+  word-break: break-word;
+}
+.fp-review__rows {
+  margin: 0;
+  padding-left: 20px;
+}
+.fp-review__cell + .fp-review__cell::before {
+  content: '; ';
+}
+.fp-review__cell-label {
+  color: var(--muted-foreground);
+}
+.fp-review__signature {
+  max-width: 240px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+}
+@media (max-width: 640px) {
+  .fp-review__item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .fp-review__item dt {
+    grid-column: 1 / -1;
+  }
+}

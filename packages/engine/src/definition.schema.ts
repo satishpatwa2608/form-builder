@@ -897,7 +897,7 @@ const formDefinitionShapeObject = z.object({
   captcha: z
     .object({
       enabled: z.boolean(),
-      provider: z.enum(['RECAPTCHA', 'TURNSTILE']),
+      provider: z.enum(['RECAPTCHA', 'TURNSTILE', 'HCAPTCHA']),
       siteKey: z.string(),
       mode: z.enum(['CHECKBOX', 'INVISIBLE', 'V3']),
     })
@@ -911,7 +911,7 @@ const formDefinitionShapeObject = z.object({
       styleId: z.string().optional(),
     })
     .optional(),
-  layout: z.object({ mode: z.enum(['single', 'steps']) }).optional(),
+  layout: z.object({ mode: z.enum(['single', 'steps']), review: z.boolean().optional() }).optional(),
   styles: z.array(formStyleSchema).optional(),
   workflow: workflowSchema.optional(),
   recordAccess: z
@@ -953,6 +953,9 @@ export const formDefinitionSchema: z.ZodType<FormDefinition> = formDefinitionSha
   const captchaFields = def.fields.filter((f) => f.type === 'CAPTCHA');
   if (captchaFields.length > 1) {
     ctx.addIssue({ code: 'custom', path: ['fields'], message: 'A form can have only one CAPTCHA field' });
+  }
+  if (def.captcha?.mode === 'V3' && def.captcha.provider !== 'RECAPTCHA') {
+    ctx.addIssue({ code: 'custom', path: ['captcha', 'mode'], message: 'Score-based checking is only offered by reCAPTCHA' });
   }
   if (captchaFields.length && !def.captcha?.enabled) {
     ctx.addIssue({ code: 'custom', path: ['captcha'], message: 'CAPTCHA field present but captcha is not configured' });

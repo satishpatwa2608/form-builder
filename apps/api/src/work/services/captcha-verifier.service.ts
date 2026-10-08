@@ -6,16 +6,17 @@ import { MOCK_CAPTCHA_PREFIX } from '../constants';
 const VERIFY_URL = {
   RECAPTCHA: 'https://www.google.com/recaptcha/api/siteverify',
   TURNSTILE: 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+  HCAPTCHA: 'https://api.hcaptcha.com/siteverify',
 } as const;
 
-const SECRET_ENV = { RECAPTCHA: 'FORM_RECAPTCHA_SECRET', TURNSTILE: 'FORM_TURNSTILE_SECRET' } as const;
+const SECRET_ENV = { RECAPTCHA: 'FORM_RECAPTCHA_SECRET', TURNSTILE: 'FORM_TURNSTILE_SECRET', HCAPTCHA: 'FORM_HCAPTCHA_SECRET' } as const;
 
 /**
  * Server-side CAPTCHA verification with the provider's secret key (which
  * never reaches the browser). Fails closed: a form that asks for CAPTCHA and
  * can't be verified is rejected, never waved through.
  *
- * Env: FORM_RECAPTCHA_SECRET, FORM_TURNSTILE_SECRET, FORM_RECAPTCHA_MIN_SCORE
+ * Env: FORM_RECAPTCHA_SECRET, FORM_TURNSTILE_SECRET, FORM_HCAPTCHA_SECRET, FORM_RECAPTCHA_MIN_SCORE
  * (v3, default 0.5), FORM_ALLOW_MOCK_CAPTCHA=true (development only: accepts
  * the builder's `mock-captcha-*` test tokens on forms without a site key).
  */
@@ -44,7 +45,13 @@ export class CaptchaVerifierService {
       throw new ServiceUnavailableException('Verification is temporarily unavailable');
     }
 
-    const body = new URLSearchParams({ secret, response: token, ...(remoteIp ? { remoteip: remoteIp } : {}) });
+    // hCaptcha also checks the token was issued for this form's own site key.
+    const body = new URLSearchParams({
+      secret,
+      response: token,
+      ...(remoteIp ? { remoteip: remoteIp } : {}),
+      ...(config.provider === 'HCAPTCHA' ? { sitekey: config.siteKey } : {}),
+    });
     let result: { success?: boolean; score?: number; action?: string; 'error-codes'?: string[] };
     try {
       const res = await fetch(VERIFY_URL[config.provider], { method: 'POST', body, signal: AbortSignal.timeout(5000) });

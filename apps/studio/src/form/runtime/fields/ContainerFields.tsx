@@ -7,6 +7,9 @@ import { childrenOf } from '../../engine';
 import type { FormField } from '../../types';
 import type { FieldComponentProps } from './types';
 
+/** Asks every block around a field to show it (open its tab or panel) before it is focused. */
+export const REVEAL_EVENT = 'fp:reveal';
+
 /** Side-by-side columns; each column is its own field list. Stacks on phones. */
 export function ColumnsField({ field }: FieldComponentProps) {
   const weights = columnWeights(field);
@@ -38,8 +41,19 @@ export function SectionField({ field }: FieldComponentProps) {
   const collapsed = collapsedByUser && !hasError;
   const description = typeof field.props?.description === 'string' ? field.props.description : '';
 
+  // About to focus a field inside: open up.
+  const root = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const open = () => setCollapsed(false);
+    el.addEventListener(REVEAL_EVENT, open);
+    return () => el.removeEventListener(REVEAL_EVENT, open);
+  }, []);
+
   return (
     <section
+      ref={root}
       className={`fp-section${asStep ? ' fp-section--bare' : ''}${collapsed ? ' fp-section--collapsed' : ''}`}
       aria-label={field.label || undefined}
     >
@@ -63,9 +77,6 @@ export function SectionField({ field }: FieldComponentProps) {
     </section>
   );
 }
-
-/** Asks every block around a field to show it (open its tab or panel) before it is focused. */
-export const REVEAL_EVENT = 'fp:reveal';
 
 /**
  * Shared by Tabs and Accordion: the SECTIONs directly inside, which of them is

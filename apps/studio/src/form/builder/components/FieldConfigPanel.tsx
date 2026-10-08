@@ -151,8 +151,10 @@ function CaptchaSettings({ form, onFormChange }: Pick<PanelProps, 'form' | 'onFo
         options={[
           { label: 'Google reCAPTCHA', value: 'RECAPTCHA' },
           { label: 'Cloudflare Turnstile', value: 'TURNSTILE' },
+          { label: 'hCaptcha', value: 'HCAPTCHA' },
         ]}
-        onChange={(provider) => set({ provider })}
+        // Only reCAPTCHA has the score-based style: another provider falls back to the tick box.
+        onChange={(provider) => set({ provider, ...(provider !== 'RECAPTCHA' && config.mode === 'V3' ? { mode: 'CHECKBOX' } : {}) })}
       />
       <SelectSetting
         label="Style"

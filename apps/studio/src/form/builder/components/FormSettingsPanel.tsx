@@ -77,12 +77,22 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
             { label: 'All on one page', value: 'single' },
             { label: 'As steps (one per top-level section)', value: 'steps' },
           ]}
-          onChange={(mode) => onChange({ layout: mode === 'single' ? undefined : { mode } })}
+          onChange={(mode) => onChange({ layout: mode === 'single' && !form.layout?.review ? undefined : { ...form.layout, mode } })}
           hint={
             form.layout?.mode === 'steps'
               ? 'Each Section at the top level becomes a step with Next / Back. Fields between sections form their own step.'
               : undefined
           }
+        />
+
+        <SwitchSetting
+          label="Review before sending"
+          hint="People see all their answers, and can go back to change any, before the form is submitted."
+          checked={!!form.layout?.review}
+          onChange={(review) => {
+            const mode = form.layout?.mode ?? 'single';
+            onChange({ layout: !review && mode === 'single' ? undefined : { mode, ...(review ? { review } : {}) } });
+          }}
         />
 
         <div className="fb-panel__title">Look and feel</div>

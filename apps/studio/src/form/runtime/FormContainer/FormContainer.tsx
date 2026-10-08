@@ -38,6 +38,7 @@ import { FieldList } from '../FieldRenderer/FieldRenderer';
 import { REVEAL_EVENT } from '../fields/ContainerFields';
 import '../../styles/form-runtime.css';
 import { FormActions, FormErrorSummary, FormHeader, FormSuccess } from './FormParts';
+import { FormReview } from './FormReview';
 import { errorText } from '../styles';
 
 export interface FormRuntimeProps {
@@ -237,6 +238,8 @@ function FormRuntime({
   const [result, setResult] = useState<SubmissionResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
+  /** The "check your answers" page is showing instead of the fields. */
+  const [reviewing, setReviewing] = useState(false);
   /** Set by a "submit succeeded" event: shown instead of the form's standard thank-you text. */
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   /** What a look-up has to say when it finds nothing or fails. */
@@ -303,6 +306,7 @@ function FormRuntime({
     setShowSummary(false);
     setSuccessMessage(null);
     setNotice(null);
+    setReviewing(false);
     setResetKey((k) => k + 1);
     setStepIndex(0);
   };
@@ -325,7 +329,11 @@ function FormRuntime({
           const owner = fe.field.split('.')[0];
           if (definition.fields.some((f) => f.name === fe.field || (f.name === owner && isRepeat(f)))) form.setError(fe.field, { type: 'server', message: fe.message });
         }
-        if (res.fieldErrors?.length) setShowSummary(true);
+        if (res.fieldErrors?.length) {
+          // Back to the form: the findings are shown next to their fields.
+          setReviewing(false);
+          setShowSummary(true);
+        }
         const told = eventActions(definition, { type: 'SUBMIT_ERROR' }, computed, context).find((a) => a.type === 'SHOW_MESSAGE');
         setSubmitError(told?.type === 'SHOW_MESSAGE' ? told.message : res.error ?? 'Submission failed. Please try again.');
         captcha.current?.reset();
@@ -372,6 +380,19 @@ function FormRuntime({
     e.preventDefault();
     // Enter in a text box submits the HTML form; before the last step that means "Next".
     if (!isLastStep) return goNext();
+    // A last look first, when the form asks for one. Only complete, valid answers get that far.
+    if (definition.layout?.review && !reviewing) {
+      // An invisible CAPTCHA has no token until the real submit, so it is not checked here.
+      const invisible = captchaField && definition.captcha?.mode !== 'CHECKBOX';
+      const names = answerFields(definition.fields).filter((f) => !(invisible && f.id === captchaField.id)).map((f) => f.name);
+      if (await form.trigger(names)) {
+        setShowSummary(false);
+        setSubmitError(null);
+        setReviewing(true);
+        containerRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      } else setShowSummary(true);
+      return;
+    }
     const mode = definition.captcha?.mode;
     if (captchaField && mode && mode !== 'CHECKBOX' && !form.getValues(captchaField.name) && captcha.current) {
       try {
@@ -381,7 +402,10 @@ function FormRuntime({
         return;
       }
     }
-    await form.handleSubmit(onValid, () => setShowSummary(true))();
+    await form.handleSubmit(onValid, () => {
+      setReviewing(false);
+      setShowSummary(true);
+    })();
   };
 
   const onCancel = () => {
@@ -391,6 +415,12 @@ function FormRuntime({
   };
 
   const focusField = (name: string) => {
+    if (reviewing) {
+      // Leave the review page first; the field is focused once the form is showing again.
+      pendingFocus.current = name;
+      setReviewing(false);
+      return;
+    }
     // In steps mode the field may be on another step: go there first, focus after it renders.
     const target = steps?.findIndex((st) => namesWithin(definition.fields, st.items).has(name.split('.')[0])) ?? -1;
     if (steps && target >= 0 && target !== stepIndex) {
@@ -462,7 +492,7 @@ function FormRuntime({
         <style>{css}</style>
         <form ref={containerRef} noValidate aria-label={definition.name} className={`space-y-6 ${scope}`} onSubmit={onSubmit}>
           {showHeader && <FormHeader definition={definition} />}
-          {steps && step && steps.length > 1 && (
+          {!reviewing && steps && step && steps.length > 1 && (
             <div className="fp-steps" aria-live="polite">
               <div className="fp-steps__label">
                 <span className="fp-steps__title">{step.title}</span>
@@ -478,7 +508,11 @@ function FormRuntime({
           {showSummary && (
             <FormErrorSummary definition={definition} errors={form.formState.errors} onSelect={focusField} />
           )}
-          <FieldList items={step ? step.items : childrenOf(layout)} />
+          {reviewing && <FormReview definition={definition} state={formState} values={values} onEdit={focusField} />}
+          {/* Kept mounted while reviewing, so a CAPTCHA that was solved stays solved. */}
+          <div hidden={reviewing}>
+            <FieldList items={step ? step.items : childrenOf(layout)} />
+          </div>
           {notice && (
             <p role="status" className="text-sm text-muted-foreground">
               {notice}
@@ -494,9 +528,11 @@ function FormRuntime({
             isSubmitting={form.formState.isSubmitting}
             onCancel={onCancel}
             steps={
-              steps && steps.length > 1
-                ? { canGoBack: stepIndex > 0, isLast: isLastStep, onBack: () => setStepIndex((i) => Math.max(0, i - 1)) }
-                : undefined
+              reviewing
+                ? { canGoBack: true, isLast: true, onBack: () => setReviewing(false) }
+                : steps && steps.length > 1
+                  ? { canGoBack: stepIndex > 0, isLast: isLastStep, onBack: () => setStepIndex((i) => Math.max(0, i - 1)) }
+                  : undefined
             }
           />
         </form>

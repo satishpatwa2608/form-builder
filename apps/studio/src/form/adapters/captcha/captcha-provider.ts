@@ -69,10 +69,17 @@ interface Turnstile {
   reset(id?: string): void;
 }
 
+interface Hcaptcha {
+  render(el: HTMLElement, opts: Record<string, unknown>): string;
+  execute(id?: string): void;
+  reset(id?: string): void;
+}
+
 declare global {
   interface Window {
     grecaptcha?: Grecaptcha;
     turnstile?: Turnstile;
+    hcaptcha?: Hcaptcha;
   }
 }
 
@@ -143,9 +150,35 @@ export const turnstileProvider: CaptchaProvider = {
   },
 };
 
+export const hcaptchaProvider: CaptchaProvider = {
+  async render(container, { siteKey, mode, onToken, onExpire }) {
+    await loadScript('https://js.hcaptcha.com/1/api.js?render=explicit');
+    const h = window.hcaptcha!;
+    const waiter = tokenWaiter();
+    const id = h.render(container, {
+      sitekey: siteKey,
+      size: mode === 'CHECKBOX' ? 'normal' : 'invisible',
+      callback: (token: string) => {
+        onToken(token);
+        waiter.deliver(token);
+      },
+      'expired-callback': onExpire,
+    });
+    return {
+      execute: () => {
+        const next = waiter.wait();
+        h.execute(id);
+        return next;
+      },
+      reset: () => h.reset(id),
+    };
+  },
+};
+
 export const captchaProviders: Record<CaptchaConfig['provider'], CaptchaProvider> = {
   RECAPTCHA: recaptchaProvider,
   TURNSTILE: turnstileProvider,
+  HCAPTCHA: hcaptchaProvider,
 };
 
 /** Token the mock check produces - the backend must reject it outside development. */
