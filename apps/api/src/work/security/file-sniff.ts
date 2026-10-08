@@ -1,5 +1,5 @@
 // file-type@16.5.4 is the last CommonJS release (this API compiles to CommonJS).
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const FileType: { fromBuffer(buf: Buffer): Promise<{ ext: string; mime: string } | undefined> } = require('file-type');
 
 /**

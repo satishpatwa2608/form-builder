@@ -53,27 +53,29 @@ A phase is not done until its tests are written and pass. Testing is part of eac
   - Expression language with a function library: maths, text, date, list (sum/count/min/max over rows).
   - Events: field change, form load, step change, before submit, submit success, submit error.
 - The server re-runs every calculation and validation on submit. A calculated value sent by the browser is never trusted.
-- Builder: a visual rule editor replacing `ConditionEditor`, with a list of all rules on the form.
+- Builder: a visual rule editor with a list of all rules and events on the form.
 
 **Testing:** Engine unit tests for every action, operator and function, including cycles, division by zero and wrong types. API e2e: tampered calculated value rejected, rule validation enforced without a browser. Worker: a job is retried after a failure and is not run twice. Studio: rule editor creates, edits and deletes each action type. The old `visibility` / `requiredWhen` / `dependency` forms still pass their existing tests unchanged.
 
 **Done when:** a form computes a total from other fields, the API stores its own total whatever the browser sent, and automations survive an API restart mid-run.
 
-**Status, 8 October 2026:**
+**Status, 8 October 2026: complete, apart from the two items marked below.**
 
 | Item | State |
 |---|---|
-| First commit, CI workflow (typecheck, tests, build, dependency audit, secret scan) | Done. The workflow has not run yet: the repository has no remote. No lint step, because the project has no linter configured. |
+| First commit, CI workflow (lint, typecheck, tests, build, dependency audit, secret scan) | Done. The workflow has not run yet: the repository has no remote. Lint passes with no errors; 42 warnings remain in code that predates this phase (mostly `any`). |
 | Worker and queue | Done. Jobs are kept in MongoDB in every environment (SQS was not needed to get retries and a separate worker; revisit if volume calls for it). The worker is a second entry point of the API app (`node dist/worker`), so the empty `apps/worker` skeleton was removed. |
-| Rule engine: show/hide, enable/disable, require, set value, error, narrow options; when / then / otherwise; expression language and function library | Done, in the engine, the API, the live form and the builder. |
+| Rules: show/hide, enable/disable, require, set value, error, narrow options; when / then / otherwise; expression language and function library | Done, in the engine, the API, the live form and the builder. |
 | Server recomputes calculations and re-checks rules | Done. A sent value for a calculated field is replaced, not rejected. |
-| Rule editor in the builder | Done as a Rules dialog. The per-field visibility and required-when editors are unchanged and still work. |
-| Actions that react to an event: go to a step, call a connector operation, run on submit success or error | Not started. |
-| Renaming a field updates the rules that mention it; deleting one warns which rules use it | Done. |
-| A form-level time zone | Not started. `today()` uses the browser's zone, which the server accepts from the request. |
+| Events: when the form opens, a button is clicked, a submit succeeds or fails → set a value, go to a step, look a row up from a data source, show a message, redirect | Done. Events run in the browser only; the server trusts nothing they do. A public form can read a data source through a look-up only if a published event binds it, with only the parameters that event declares. |
+| Rule and event editor in the builder | Done as a Rules dialog with Rules and Events tabs. The per-field visibility and required-when editors are unchanged and still work. |
+| Renaming a field updates the rules and events that mention it; deleting one warns which rules use it | Done. References hold steady while a key is empty, half-typed or the same as another field's. |
+| A form-level time zone | Done (Form settings → Time zone). Left empty, `today()` uses the browser's zone, which the server accepts from the request. |
 | Customer-written functions | Deferred (section 5). |
+| Look-ups that write, or that run on the server | Not built. A look-up only reads, and only in the browser; saving to a connector stays an automation step. |
+| Checked in a real browser | Not done. Covered by component tests and by API tests against the real app on an in-memory database; the API and worker were also run as two real processes against MongoDB. |
 
-Tests added in this phase: engine 68 → 116, API 60 → 78, studio 74 → 90; 301 in total, all passing.
+Tests added in this phase: engine 68 → 125, API 60 → 80, studio 74 → 111; 333 in total, all passing.
 
 ### Phase 5 – Components (4 weeks)
 

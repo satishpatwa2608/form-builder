@@ -33,6 +33,7 @@ pnpm dev:studio    # http://localhost:5173
 pnpm dev:runtime   # http://localhost:5174/f/<orgId>/<FORM_CODE>
 pnpm test          # engine, connectors, api (unit + e2e on in-memory MongoDB), studio, runtime
 pnpm typecheck
+pnpm lint
 ```
 
 Emails are printed in the API log until `MAIL_PROVIDER=ses`.

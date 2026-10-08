@@ -55,6 +55,30 @@ under "Writing formulas" in the dialog. A blank field counts as 0 in sums.
 Every rule is applied again on the server when the form is submitted: a
 calculated value is always the server's own result, whatever was sent.
 
+### Events
+
+The **Events** tab of the same dialog is for things that happen once, at a
+moment:
+
+| When | What it can do |
+|---|---|
+| The form opens | Fill a field from a formula (e.g. a visit date of `dateAdd(today(), 7)`); look a row up and fill fields from it. |
+| A button is clicked (add a Button field first) | The same, and open another step of a stepped form. |
+| After a successful submit | Show a different message, or go to an address, for some answers (e.g. "A manager will call you" above 5,000). |
+| When a submit fails | Show your own text instead of the standard error. |
+
+A look-up reads the first row of a data source, sending the parameters you
+list (`{{fieldName}}` for an answer), and copies the properties you choose
+into fields. People can change what an event filled in. Events only help
+the person filling in the form: anything that must hold belongs in a rule,
+which the server checks.
+
+### Time zone
+
+**Form settings → Time zone** fixes what "today" means in rules, e.g.
+`Asia/Kolkata`. Leave it empty to use the zone of whoever is filling in the
+form.
+
 ## 3. Sharing forms
 
 - Public link: `https://<forms host>/f/<your org id>/<FORM_CODE>`.
