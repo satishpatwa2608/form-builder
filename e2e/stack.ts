@@ -90,6 +90,8 @@ export async function startStack(): Promise<StackState> {
         LOCAL_STORAGE_DIR: join(dir, 'uploads'),
         DEFAULT_PLAN: 'ENTERPRISE',
         JOBS_ROLE: 'all',
+        // Rate limits are off under "test", but jobs due later (a scheduled publish, a retry) must still run by themselves.
+        JOBS_POLL: 'true',
         FILE_SCANNER: 'none',
         FORM_ALLOW_MOCK_CAPTCHA: 'true',
         // The "customer database" the connector scenario reads is on this machine.

@@ -97,6 +97,19 @@ which the server checks.
 `Asia/Kolkata`. Leave it empty to use the zone of whoever is filling in the
 form.
 
+### When a form is open, and publishing later
+
+- **Form settings → Availability**: set when the form opens and closes, and
+  the message people see once it has closed. Outside those times the public
+  sees a notice instead of the questions. Staff can still raise items from
+  inside.
+- The same section has **Let people save and continue later**; switch it off
+  for forms that should be finished in one go.
+- **Schedule** (beside Publish) sets a draft to go live by itself at a time
+  you choose, up to a year ahead. Until then the version that is live stays
+  live. If the draft cannot be published when the time comes, the reason is
+  shown on the form and nothing changes.
+
 ## 3. Sharing forms
 
 - Public link: `https://<forms host>/f/<your org id>/<FORM_CODE>`.

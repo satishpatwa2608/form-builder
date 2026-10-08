@@ -16,6 +16,7 @@ import {
   buildPayload,
   buildZodSchema,
   computeFormState,
+  formAvailability,
   isEmptyValue,
   prefillValue,
   resolveParams,
@@ -79,13 +80,23 @@ export class FormSubmissionService {
   ) {}
 
   /** The published form a public caller may open (sign-in-only forms need a user of the same org). */
-  async publishedFor(orgId: string, code: string, user: OptionalUser | undefined): Promise<FormDefinition> {
+  /**
+   * `use` is what the caller is about to do: `fill` (the public submitting,
+   * uploading, saving) is refused outside the form's opening times; `show`
+   * (displaying it, or staff raising an item from inside) is not.
+   */
+  async publishedFor(orgId: string, code: string, user: OptionalUser | undefined, use: 'fill' | 'show' = 'fill'): Promise<FormDefinition> {
     if (!/^[A-Z0-9_]{1,100}$/.test(code)) throw new NotFoundException('Form not found');
     const def = await this.definitions.findPublished(orgId, code);
     if (!def) throw new NotFoundException('Form not found');
     if (def.access === 'AUTHENTICATED') {
       if (!user) throw new UnauthorizedException('Please sign in to open this form');
       if (user.orgId !== orgId) throw new ForbiddenException('This form belongs to another organisation');
+    }
+    if (use === 'fill') {
+      const state = formAvailability(def);
+      if (state === 'NOT_YET') throw new ForbiddenException('This form is not open yet');
+      if (state === 'CLOSED') throw new ForbiddenException(def.closedMessage?.trim() || 'This form is closed');
     }
     return def;
   }
@@ -126,7 +137,7 @@ export class FormSubmissionService {
     opts: { source?: WorkItemSource; trusted?: boolean } = {},
   ) {
     // Other modules act for the org itself; everyone else goes through the form's access rule.
-    const def = opts.source === 'MODULE' ? await this.definitions.findPublished(orgId, code) : await this.publishedFor(orgId, code, user);
+    const def = opts.source === 'MODULE' ? await this.definitions.findPublished(orgId, code) : await this.publishedFor(orgId, code, user, opts.source ? 'show' : 'fill');
     if (!def) throw new NotFoundException('Form not found');
     const source: WorkItemSource = opts.source ?? 'PUBLIC_FORM';
 

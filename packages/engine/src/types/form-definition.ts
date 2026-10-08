@@ -23,6 +23,20 @@ export interface FormDefinition {
   version: number;
   status: FormStatus;
   access: FormAccess;
+  /**
+   * Whether people may save their answers and come back to them by a private
+   * link. On unless set to false.
+   */
+  saveForLater?: boolean;
+  /**
+   * When the form starts and stops taking answers (ISO date-times). Outside
+   * that window the public sees a notice instead of the form, and the server
+   * refuses submissions. Staff can still raise items from inside.
+   */
+  opensAt?: string;
+  closesAt?: string;
+  /** What the public reads once the form has closed. */
+  closedMessage?: string;
 
   fields: FormField[];
   /** Calculations, conditional states and cross-field validation. */

@@ -1,4 +1,4 @@
-import { ArrowLeft, Eye, GitBranch, Link2, Redo2, Save, Send, Sigma, Undo2, Workflow } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Eye, GitBranch, Link2, Redo2, Save, Send, Sigma, Undo2, Workflow } from 'lucide-react';
 import { Button } from '@ui/button';
 import type { FormDefinition } from '../../types';
 import { FormStatusBadge } from './FormStatusBadge';
@@ -20,8 +20,20 @@ interface BuilderHeaderProps {
   onWorkflow: () => void;
   onSave: () => void;
   onPublish: () => void;
+  /** Opens the schedule dialog. Left out when the caller cannot publish or this is not a draft. */
+  onSchedule?: () => void;
+  /** When this draft is set to publish itself. */
+  publishAt?: string | null;
   onNewVersion: () => void;
   onCopyLink: () => void;
+}
+
+function ScheduleButton({ onClick, busy, publishAt }: { onClick: () => void; busy: boolean; publishAt?: string | null }) {
+  return (
+    <Button type="button" variant="outline" onClick={onClick} disabled={busy} title="Publish at a time you choose">
+      <CalendarClock /> {publishAt ? 'Scheduled' : 'Schedule'}
+    </Button>
+  );
 }
 
 export function BuilderHeader(props: BuilderHeaderProps) {
@@ -73,9 +85,12 @@ export function BuilderHeader(props: BuilderHeaderProps) {
           form.status === 'DRAFT' ? (
             // A publisher who can't design still reviews and publishes drafts.
             canPublish && (
-              <Button type="button" onClick={props.onPublish} disabled={busy}>
-                <Send /> Publish
-              </Button>
+              <>
+                {props.onSchedule && <ScheduleButton onClick={props.onSchedule} busy={busy} publishAt={props.publishAt} />}
+                <Button type="button" onClick={props.onPublish} disabled={busy}>
+                  <Send /> Publish
+                </Button>
+              </>
             )
           ) : (
             canDesign && (
@@ -89,6 +104,7 @@ export function BuilderHeader(props: BuilderHeaderProps) {
             <Button type="button" variant="outline" onClick={props.onSave} disabled={busy || !isDirty} title="Save draft (Ctrl+S)">
               <Save /> Save draft
             </Button>
+            {canPublish && props.onSchedule && <ScheduleButton onClick={props.onSchedule} busy={busy} publishAt={props.publishAt} />}
             {canPublish && (
               <Button type="button" onClick={props.onPublish} disabled={busy}>
                 <Send /> Publish

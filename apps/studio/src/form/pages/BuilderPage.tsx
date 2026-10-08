@@ -15,7 +15,8 @@ import { toast } from 'sonner';
 import type { FieldType, FormDefinition, FormField } from '../types';
 import { descendantFields, FormDefinitionError, isContainerField } from '../engine';
 import { useFormBuilderStore } from '../builder/store/useFormBuilderStore';
-import { useCreateNewVersion, useFormDoc, useFormFamily, usePublishForm, useSaveFormDraft } from '../adapters/registry/useFormRegistry';
+import { useCreateNewVersion, useFormDoc, useFormFamily, usePublishForm, useSaveFormDraft, useSchedulePublish, useUnschedulePublish } from '../adapters/registry/useFormRegistry';
+import { ScheduleDialog } from '../builder/components/ScheduleDialog';
 import { paletteItem } from '../builder/field-catalog';
 import { fieldsReferencing, rulesReferencing } from '../builder/definition-edits';
 import { publishIssues } from '../builder/publish-issues';
@@ -83,7 +84,10 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
   const save = useSaveFormDraft();
   const publish = usePublishForm();
   const newVersion = useCreateNewVersion();
-  const busy = save.isPending || publish.isPending || newVersion.isPending;
+  const schedule = useSchedulePublish();
+  const unschedule = useUnschedulePublish();
+  const busy = save.isPending || publish.isPending || newVersion.isPending || schedule.isPending || unschedule.isPending;
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [workflowOpen, setWorkflowOpen] = useState(false);
@@ -152,6 +156,15 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
         }
       },
     });
+  };
+
+  const onScheduleClick = () => {
+    if (issues.length) {
+      setShowIssues(true);
+      toast.error(`Fix ${issues.length === 1 ? 'the issue' : `${issues.length} issues`} before scheduling`);
+      return;
+    }
+    setScheduleOpen(true);
   };
 
   const onNewVersion = async () => {
@@ -275,10 +288,22 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
         onWorkflow={() => setWorkflowOpen(true)}
         onSave={onSave}
         onPublish={onPublish}
+        onSchedule={form.status === 'DRAFT' && permissions.canPublish ? onScheduleClick : undefined}
+        publishAt={doc?.publishAt}
         onNewVersion={onNewVersion}
         onCopyLink={() => copyPublicFormLink(me?.org.id ?? '', form.code)}
       />
 
+      {form.status === 'DRAFT' && doc?.publishAt && (
+        <div className="fb-banner" role="status">
+          Set to publish by itself on <strong>{new Date(doc.publishAt).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}</strong>.
+        </div>
+      )}
+      {form.status === 'DRAFT' && doc?.scheduleError && (
+        <div className="fb-banner" role="alert">
+          The scheduled publish did not happen: {doc.scheduleError}
+        </div>
+      )}
       {readOnly && form.status === 'DRAFT' && (
         <div className="fb-banner">You can view this draft but not change it - editing needs a designer role on this form's folder.</div>
       )}
@@ -335,6 +360,32 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
         open={workflowOpen}
         onOpenChange={setWorkflowOpen}
         onChange={store.updateForm}
+      />
+      <ScheduleDialog
+        formName={form.name}
+        version={form.version}
+        publishAt={doc?.publishAt}
+        open={scheduleOpen}
+        busy={busy}
+        onOpenChange={setScheduleOpen}
+        onSchedule={async (publishAt) => {
+          // What is scheduled is what is saved: unsaved changes go in first.
+          const saved = isDirty && !readOnly ? await doSave() : form;
+          if (!saved) return 'The draft could not be saved.';
+          try {
+            await schedule.mutateAsync({ id: saved.id, publishAt });
+            toast.success(`Scheduled ${form.code} v${form.version}`);
+            return undefined;
+          } catch (e) {
+            return errorMessage(e);
+          }
+        }}
+        onCancelSchedule={async () => {
+          await unschedule.mutateAsync(form.id).then(
+            () => toast.success('Schedule cancelled'),
+            (e) => toast.error(errorMessage(e)),
+          );
+        }}
       />
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </div>

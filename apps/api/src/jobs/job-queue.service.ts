@@ -68,8 +68,9 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     // The dedupe key relies on its unique index, so nothing may be queued before the indexes exist.
     await this.jobs.init();
-    // Tests run jobs as they are queued (see enqueue) and call drain() for retries.
-    if (!this.runsJobs || this.config.NODE_ENV === 'test') return;
+    // Tests run jobs as they are queued (see enqueue) and call drain() for retries, unless told to poll.
+    const poll = this.config.JOBS_POLL ? this.config.JOBS_POLL === 'true' : this.config.NODE_ENV !== 'test';
+    if (!this.runsJobs || !poll) return;
     this.timer = setInterval(() => void this.drain().catch((e) => this.logger.error(`job poll failed: ${(e as Error).message}`)), POLL_MS);
     this.timer.unref?.();
   }

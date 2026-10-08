@@ -116,3 +116,30 @@ describe('form time zone', () => {
     expect(systemContextFor({ ...form, timeZone: 'Asia/Kolkata' }, { timeZone: 'America/New_York' }).timeZone).toBe('Asia/Kolkata');
   });
 });
+
+describe('opening and closing times', () => {
+  const at = (iso: string) => new Date(iso);
+  it('a form with no times is always open', async () => {
+    const { formAvailability } = await import('../src');
+    expect(formAvailability({}, at('2026-10-09T00:00:00Z'))).toBe('OPEN');
+  });
+
+  it('is not open before it opens, open in between, and closed from its closing time on', async () => {
+    const { formAvailability } = await import('../src');
+    const window = { opensAt: '2026-10-10T09:00:00.000Z', closesAt: '2026-10-20T17:00:00.000Z' };
+    expect(formAvailability(window, at('2026-10-10T08:59:59Z'))).toBe('NOT_YET');
+    expect(formAvailability(window, at('2026-10-10T09:00:00Z'))).toBe('OPEN');
+    expect(formAvailability(window, at('2026-10-20T16:59:59Z'))).toBe('OPEN');
+    expect(formAvailability(window, at('2026-10-20T17:00:00Z'))).toBe('CLOSED');
+    expect(formAvailability({ closesAt: window.closesAt }, at('2020-01-01T00:00:00Z'))).toBe('OPEN');
+    expect(formAvailability({ opensAt: window.opensAt }, at('2030-01-01T00:00:00Z'))).toBe('OPEN');
+    // A time that cannot be read is ignored rather than locking everyone out.
+    expect(formAvailability({ opensAt: 'soon', closesAt: 'later' }, at('2026-10-09T00:00:00Z'))).toBe('OPEN');
+  });
+
+  it('is checked when a form is published', () => {
+    expect(messages([], { opensAt: '2026-10-10T09:00:00.000Z', closesAt: '2026-10-20T17:00:00.000Z', closedMessage: 'Closed.', saveForLater: false })).toEqual([]);
+    expect(messages([], { opensAt: 'soon' })).toEqual(['opensAt: Not a date and time']);
+    expect(messages([], { opensAt: '2026-10-20T00:00:00Z', closesAt: '2026-10-10T00:00:00Z' })).toEqual(['closesAt: The form must close after it opens']);
+  });
+});

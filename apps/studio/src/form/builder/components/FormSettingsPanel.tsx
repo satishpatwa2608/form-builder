@@ -3,6 +3,18 @@ import type { FontFamily, FormActionConfig, FormDefinition, FormTheme, Submissio
 import { useStyles } from '../../adapters/styles/style-master';
 import { ColorSetting, SelectSetting, SwitchSetting, TextSetting } from './settings';
 
+/** A stored ISO time as the value of a date-and-time box (the person's own time zone), and back. */
+function toLocalInput(iso: string | undefined): string {
+  const d = iso ? new Date(iso) : undefined;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fromLocalInput(value: string): string | undefined {
+  const d = value ? new Date(value) : undefined;
+  return d && !Number.isNaN(d.getTime()) ? d.toISOString() : undefined;
+}
+
 interface FormSettingsPanelProps {
   form: FormDefinition;
   readOnly: boolean;
@@ -67,6 +79,32 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
               : 'What "today" means in rules. Leave empty to use the zone of whoever is filling in the form.'
           }
           onChange={(timeZone) => onChange({ timeZone: timeZone.trim() || undefined })}
+        />
+
+        <div className="fb-panel__title">Availability</div>
+        <div className="fb-row">
+          <TextSetting label="Opens" type="datetime-local" value={toLocalInput(form.opensAt)} onChange={(v) => onChange({ opensAt: fromLocalInput(v) })} />
+          <TextSetting label="Closes" type="datetime-local" value={toLocalInput(form.closesAt)} onChange={(v) => onChange({ closesAt: fromLocalInput(v) })} />
+        </div>
+        <span className="fb-setting__hint">
+          {form.opensAt || form.closesAt
+            ? 'Outside these times the public sees a notice instead of the form. Staff can still raise items from inside.'
+            : 'Leave both empty for a form that is always open once published.'}
+        </span>
+        {form.closesAt && (
+          <TextSetting
+            label="Message once closed"
+            multiline
+            value={form.closedMessage}
+            placeholder="This form is closed and no longer takes answers."
+            onChange={(closedMessage) => onChange({ closedMessage: closedMessage || undefined })}
+          />
+        )}
+        <SwitchSetting
+          label="Let people save and continue later"
+          hint="They get a private link to come back to their answers within 30 days."
+          checked={form.saveForLater !== false}
+          onChange={(on) => onChange({ saveForLater: on ? undefined : false })}
         />
 
         <div className="fb-panel__title">Layout</div>

@@ -16,6 +16,17 @@ export function isTimeZone(zone: unknown): zone is string {
   }
 }
 
+export type FormAvailability = 'OPEN' | 'NOT_YET' | 'CLOSED';
+
+/** Whether a form is taking answers at `now`, going by its opening and closing times. */
+export function formAvailability(def: Pick<FormDefinition, 'opensAt' | 'closesAt'>, now: Date = new Date()): FormAvailability {
+  const opens = def.opensAt ? Date.parse(def.opensAt) : NaN;
+  const closes = def.closesAt ? Date.parse(def.closesAt) : NaN;
+  if (!Number.isNaN(closes) && now.getTime() >= closes) return 'CLOSED';
+  if (!Number.isNaN(opens) && now.getTime() < opens) return 'NOT_YET';
+  return 'OPEN';
+}
+
 /**
  * The actions to run now that `trigger` has happened, in order: those of every
  * enabled event for that trigger whose condition holds for `values`.

@@ -29,6 +29,8 @@ function useRegistryMutation<TArg, TResult>(fn: (arg: TArg) => Promise<TResult>)
 const definitionOf = (p: Promise<FormDoc>) => p.then((d) => d.definition);
 export const useSaveFormDraft = () => useRegistryMutation((def: FormDefinition) => definitionOf(formRegistry.save(def)));
 export const usePublishForm = () => useRegistryMutation((id: string) => definitionOf(formRegistry.publish(id)));
+export const useSchedulePublish = () => useRegistryMutation((a: { id: string; publishAt: string }) => formRegistry.schedule(a.id, a.publishAt));
+export const useUnschedulePublish = () => useRegistryMutation((id: string) => formRegistry.unschedule(id));
 export const useCreateNewVersion = () => useRegistryMutation((id: string) => definitionOf(formRegistry.createNewVersion(id)));
 export const useArchiveForm = () => useRegistryMutation((id: string) => definitionOf(formRegistry.archive(id)));
 

@@ -22,6 +22,12 @@ export class Form {
   @Prop({ required: true }) updatedBy: string;
   @Prop({ type: Date, default: null }) publishedAt: Date | null;
   @Prop({ type: String, default: '' }) publishedBy: string;
+  /** A draft set to publish itself at this time. */
+  @Prop({ type: Date, default: null }) publishAt: Date | null;
+  /** Who scheduled it: the publish runs with that person's rights at the time. */
+  @Prop({ type: String, default: '' }) scheduledBy: string;
+  /** Why the last scheduled publish did not happen. */
+  @Prop({ type: String, default: '' }) scheduleError: string;
   @Prop({ type: Boolean, default: false }) isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;

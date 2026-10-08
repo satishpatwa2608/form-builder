@@ -13,6 +13,10 @@ export interface FormDoc {
   folderId: string;
   /** What the caller may do with this form (from its folder). */
   permissions: Permission[];
+  /** Set on a draft that will publish itself at this time. */
+  publishAt?: string | null;
+  /** Why its last scheduled publish did not happen. */
+  scheduleError?: string;
 }
 
 const path = (id: string) => `/forms/${encodeURIComponent(id)}`;
@@ -30,6 +34,8 @@ export const formRegistry = {
   get: (id: string) => api<FormDoc>(path(id)),
   save: (def: FormDefinition) => call(() => api<FormDoc>(path(def.id), { method: 'PUT', body: def })),
   publish: (id: string) => call(() => api<FormDoc>(`${path(id)}/publish`, { method: 'POST' })),
+  schedule: (id: string, publishAt: string) => call(() => api<FormDoc>(`${path(id)}/schedule`, { method: 'POST', body: { publishAt } })),
+  unschedule: (id: string) => call(() => api<FormDoc>(`${path(id)}/schedule`, { method: 'DELETE' })),
   createNewVersion: (id: string) => call(() => api<FormDoc>(`${path(id)}/new-version`, { method: 'POST' })),
   archive: (id: string) => call(() => api<FormDoc>(`${path(id)}/archive`, { method: 'POST' })),
   remove: (id: string) => call(() => api(path(id), { method: 'DELETE' })),

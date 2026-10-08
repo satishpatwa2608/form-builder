@@ -869,6 +869,10 @@ const formDefinitionShapeObject = z.object({
   rules: z.array(ruleSchema).max(MAX_RULES).optional(),
   events: z.array(eventSchema).max(MAX_EVENTS).optional(),
   timeZone: z.string().max(64).optional(),
+  saveForLater: z.boolean().optional(),
+  opensAt: z.string().max(40).optional(),
+  closesAt: z.string().max(40).optional(),
+  closedMessage: z.string().max(500).optional(),
   actions: z
     .object({
       submit: z.object({ enabled: z.boolean(), label: z.string() }).optional(),
@@ -935,6 +939,12 @@ export const formDefinitionSchema: z.ZodType<FormDefinition> = formDefinitionSha
   checkFields(def.fields, ctx);
   checkRules(def, ctx);
   checkEvents(def, ctx);
+  for (const key of ['opensAt', 'closesAt'] as const) {
+    if (def[key] !== undefined && Number.isNaN(Date.parse(def[key]!))) ctx.addIssue({ code: 'custom', path: [key], message: 'Not a date and time' });
+  }
+  if (def.opensAt && def.closesAt && Date.parse(def.opensAt) >= Date.parse(def.closesAt)) {
+    ctx.addIssue({ code: 'custom', path: ['closesAt'], message: 'The form must close after it opens' });
+  }
   if (def.timeZone !== undefined && !isTimeZone(def.timeZone)) {
     ctx.addIssue({ code: 'custom', path: ['timeZone'], message: `"${def.timeZone}" is not a time zone. Use a name such as Asia/Kolkata` });
   }

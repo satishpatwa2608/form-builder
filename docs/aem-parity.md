@@ -168,6 +168,18 @@ Limits to know:
 
 **Testing:** Fragment update reaches every form that uses it, and never changes an already-published version. Version restore round-trip. Scheduled publish and expiry with a fake clock, including time zones. Import tests with malformed schemas, spreadsheets and PDFs.
 
+**Status, 9 October 2026: started.**
+
+| Item | State |
+|---|---|
+| Per-form switch for save-and-resume | Done (Form settings → Let people save and continue later). On unless switched off. |
+| Opening and closing dates; a "form closed" page | Done (Form settings → Availability). Outside the window the public gets a notice with none of the questions, and the server refuses submissions, uploads and saved drafts. Staff can still raise items from inside. |
+| Scheduled publish | Done (Schedule, beside Publish in the builder). The draft is checked when scheduled and again at the time; it publishes with the rights its scheduler holds then; a refusal is recorded on the form. Up to 365 days ahead. |
+| Fragments | Not started. |
+| Version history with compare and restore | Not started. |
+| Review before publish | Not started. |
+| Create a form from a JSON Schema, a connector entity, a spreadsheet, or a fillable PDF | Not started. |
+
 **Done when:** an address fragment is changed once and three forms show the change after republishing; a form goes live and closes on set dates.
 
 ### Phase 9 – Languages and accessibility (3 weeks)

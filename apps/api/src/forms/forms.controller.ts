@@ -85,6 +85,18 @@ export class FormsController {
     return this.forms.publish(auth, idParam(formId));
   }
 
+  /** Publish this draft by itself at `publishAt`. */
+  @Post(':id/schedule')
+  @HttpCode(200)
+  schedule(@Auth() auth: AuthContext, @Param('id') formId: string, @Body() body: { publishAt?: unknown }) {
+    return this.forms.schedule(auth, idParam(formId), body?.publishAt);
+  }
+
+  @Delete(':id/schedule')
+  unschedule(@Auth() auth: AuthContext, @Param('id') formId: string) {
+    return this.forms.unschedule(auth, idParam(formId));
+  }
+
   @Post(':id/new-version')
   @HttpCode(200)
   newVersion(@Auth() auth: AuthContext, @Param('id') formId: string) {

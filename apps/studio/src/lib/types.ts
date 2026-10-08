@@ -105,6 +105,8 @@ export interface FormSummary {
   publishedVersion: number | null;
   updatedAt: string;
   permissions: Permission[];
+  publishAt?: string | null;
+  scheduleError?: string;
 }
 
 export interface FormVersionRow {

@@ -51,6 +51,15 @@ function track(org: string, code: string, type: 'view' | 'start') {
   void publicApi(`/forms/${code}/events?org=${encodeURIComponent(org)}`, { method: 'POST', body: { type } }).catch(() => undefined);
 }
 
+/** What the server sends in place of a form that is not taking answers. */
+interface Unavailable {
+  unavailable: 'NOT_YET' | 'CLOSED';
+  name: string;
+  opensAt?: string;
+  closesAt?: string;
+  message?: string;
+}
+
 /** Files can't be kept in a saved draft; everything else goes as-is. */
 function draftValues(def: FormDefinition, values: FormValues): FormValues {
   const files = new Set(def.fields.filter((f) => f.type === 'FILE').map((f) => f.name));
@@ -72,7 +81,7 @@ export default function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const embed = params.get('embed') === '1';
   const [target, setTarget] = useState<{ org: string; code: string } | null>();
-  const [state, setState] = useState<{ loading: boolean; definition?: FormDefinition; error?: string; session?: Session; initialValues?: FormValues; resumed?: boolean }>({ loading: true });
+  const [state, setState] = useState<{ loading: boolean; definition?: FormDefinition; unavailable?: Unavailable; error?: string; session?: Session; initialValues?: FormValues; resumed?: boolean }>({ loading: true });
   const [branding, setBranding] = useState<Branding>();
   const pageRef = useRef<HTMLDivElement>(null);
   const values = useRef<FormValues>({});
@@ -94,8 +103,10 @@ export default function App() {
       // Silent: a signed-in studio user gets their details filled in; everyone else stays anonymous.
       const session = await trySession();
       try {
-        const definition = await publicApi<FormDefinition>(`/forms/${target.code}?org=${encodeURIComponent(target.org)}`);
-        document.title = definition.name;
+        const loaded = await publicApi<FormDefinition | Unavailable>(`/forms/${target.code}?org=${encodeURIComponent(target.org)}`);
+        document.title = loaded.name;
+        if ('unavailable' in loaded) return setState({ loading: false, unavailable: loaded });
+        const definition = loaded;
         let initialValues: FormValues | undefined;
         if (resumeToken) {
           try {
@@ -179,7 +190,17 @@ export default function App() {
   if (target === undefined) body = <Notice title="Loading form…" />;
   else if (!target) body = <Notice title="Form not found">Check the link you were given.</Notice>;
   else if (state.loading) body = <Notice title="Loading form…" />;
-  else if (!state.definition) body = <Notice title="This form isn't available">{state.error ?? 'It may have been closed, or the link may be wrong.'}</Notice>;
+  else if (state.unavailable) {
+    const { unavailable, name, opensAt, message } = state.unavailable;
+    const when = opensAt ? new Date(opensAt) : undefined;
+    body = (
+      <Notice title={name}>
+        {unavailable === 'NOT_YET'
+          ? `This form is not open yet.${when && !Number.isNaN(when.getTime()) ? ` It opens on ${when.toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}.` : ''}`
+          : message?.trim() || 'This form is closed and no longer takes answers.'}
+      </Notice>
+    );
+  } else if (!state.definition) body = <Notice title="This form isn't available">{state.error ?? 'It may have been closed, or the link may be wrong.'}</Notice>;
   else if (state.definition.access === 'AUTHENTICATED' && !state.session) {
     body = (
       <Notice title={state.definition.name}>
@@ -200,7 +221,7 @@ export default function App() {
           onValuesChange={onValuesChange}
           initialValues={state.initialValues}
         />
-        {!embed && (
+        {!embed && state.definition.saveForLater !== false && (
           <div className="rt-save">
             {draft.link ? (
               <div className="rt-save__link">

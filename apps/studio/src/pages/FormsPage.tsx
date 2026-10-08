@@ -259,6 +259,8 @@ export default function FormsPage() {
                               {STATUS[f.status].label} v{f.version}
                             </Badge>
                             {f.status === 'DRAFT' && f.publishedVersion && <Badge tone="success">Live v{f.publishedVersion}</Badge>}
+                            {f.status === 'DRAFT' && f.publishAt && <Badge tone="accent">Publishes {new Date(f.publishAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</Badge>}
+                            {f.status === 'DRAFT' && f.scheduleError && <Badge tone="danger">Scheduled publish failed</Badge>}
                           </div>
                         </td>
                         <td className="st-muted" style={{ whiteSpace: 'nowrap' }}>

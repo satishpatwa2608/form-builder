@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { usedStyleIds, validateFormDefinition, type FormDefinition, type FormStyle } from '@fb/engine';
 import type { Model } from 'mongoose';
@@ -14,6 +14,8 @@ import { FormHandlerRegistry } from '../work/services/form-workflow.registry';
 import { PlansService } from '../plans/plans.service';
 import { Form, type FormDocument } from './form.schema';
 import { checkDefinitionSecurity } from './payload-guard';
+import { JobQueue } from '../jobs/job-queue.service';
+import { Membership, type MembershipDocument } from '../orgs/org.schemas';
 
 export interface FormSummary {
   id: string;
@@ -26,6 +28,20 @@ export interface FormSummary {
   publishedVersion: number | null;
   updatedAt: Date;
   permissions: Permission[];
+  /** Set on a draft that will publish itself. */
+  publishAt: Date | null;
+  /** Why its last scheduled publish did not happen. */
+  scheduleError: string;
+}
+
+/** How far ahead a publish can be scheduled. */
+const MAX_SCHEDULE_DAYS = 365;
+
+interface ScheduledPublish {
+  orgId: string;
+  formId: string;
+  /** The time the draft was scheduled for when this job was queued. */
+  publishAt: string;
 }
 
 export const PACKAGE_FORMAT = 'form-builder/form';
@@ -53,7 +69,9 @@ class FormProblems extends BadRequestException {
  * Every action checks the caller's permission on the form's folder.
  */
 @Injectable()
-export class FormsService {
+export class FormsService implements OnModuleInit {
+  private readonly logger = new Logger(FormsService.name);
+
   constructor(
     private readonly permissions: PermissionService,
     private readonly audit: AuditService,
@@ -63,6 +81,8 @@ export class FormsService {
     private readonly plans: PlansService,
     @InjectModel(Form.name) private readonly forms: Model<FormDocument>,
     @InjectModel(Grant.name) private readonly grants: Model<GrantDocument>,
+    @InjectModel(Membership.name) private readonly memberships: Model<MembershipDocument>,
+    private readonly jobs: JobQueue,
   ) {}
 
   private live(orgId: string) {
@@ -107,7 +127,7 @@ export class FormsService {
     const rows = await this.forms
       .find({ ...this.live(auth.orgId), ...(folderId ? { folderId } : {}) })
       .sort({ code: 1, version: -1 })
-      .select('id code name folderId version status updatedAt')
+      .select('id code name folderId version status updatedAt publishAt scheduleError')
       .lean();
     const latest = new Map<string, (typeof rows)[number]>();
     const published = new Map<string, number>();
@@ -123,7 +143,7 @@ export class FormsService {
       const ref: ResourceRef = { type: 'form', id: r.code, folderPath: paths.get(r.folderId) };
       const perms = (['form.view', 'form.edit', 'form.publish'] as Permission[]).filter((p) => isAllowed(auth.role, grants, p, ref));
       if (!perms.includes('form.view')) continue;
-      out.push({ id: r.id, code: r.code, name: r.name, folderId: r.folderId, version: r.version, status: r.status, publishedVersion: published.get(r.code) ?? null, updatedAt: r.updatedAt, permissions: perms });
+      out.push({ id: r.id, code: r.code, name: r.name, folderId: r.folderId, version: r.version, status: r.status, publishedVersion: published.get(r.code) ?? null, updatedAt: r.updatedAt, publishAt: r.publishAt ?? null, scheduleError: r.scheduleError ?? '', permissions: perms });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -131,7 +151,13 @@ export class FormsService {
   async get(auth: AuthContext, id: string) {
     const row = await this.mustGet(auth, id, 'form.view');
     const perms = await this.permissions.effective(auth, await this.ref(auth.orgId, row.folderId, row.code));
-    return { definition: FormsService.toDefinition(row), folderId: row.folderId, permissions: perms.filter((p) => p.startsWith('form.')) };
+    return {
+      definition: FormsService.toDefinition(row),
+      folderId: row.folderId,
+      permissions: perms.filter((p) => p.startsWith('form.')),
+      publishAt: row.publishAt ?? null,
+      scheduleError: row.scheduleError ?? '',
+    };
   }
 
   async versions(auth: AuthContext, id: string) {
@@ -208,12 +234,78 @@ export class FormsService {
       { ...this.live(auth.orgId), code: row.code, status: 'PUBLISHED', id: { $ne: row.id } },
       { $set: { status: 'ARCHIVED', 'definition.status': 'ARCHIVED', updatedBy: auth.userId } },
     );
-    row.set({ status: 'PUBLISHED', definition: def, publishedAt: now, publishedBy: auth.userId, updatedBy: auth.userId });
+    row.set({ status: 'PUBLISHED', definition: def, publishedAt: now, publishedBy: auth.userId, updatedBy: auth.userId, publishAt: null, scheduledBy: '', scheduleError: '' });
     row.markModified('definition');
     await row.save();
     this.definitions.forget(auth.orgId);
     await this.audit.record(actorOf(auth), { action: 'form.published', targetType: 'form', targetId: id, after: { code: row.code, version: row.version } });
     return this.get(auth, id);
+  }
+
+  // ------------------------------------------------------- scheduled publishing
+
+  onModuleInit() {
+    this.jobs.register('form.publish', (p: ScheduledPublish) => this.runScheduled(p), { maxAttempts: 3 });
+  }
+
+  /**
+   * Sets a draft to publish itself at `when`. The same checks as publishing
+   * run now, so problems show while someone is looking; they run again at the
+   * time, with the rights the scheduler has then.
+   */
+  async schedule(auth: AuthContext, id: string, when: unknown) {
+    const row = await this.mustGet(auth, id, 'form.publish');
+    if (row.status !== 'DRAFT') throw new ConflictException(`Only drafts can be scheduled (this is ${row.status.toLowerCase()})`);
+    const at = typeof when === 'string' ? new Date(when) : new Date(NaN);
+    if (Number.isNaN(at.getTime())) throw new BadRequestException('Choose a date and time');
+    if (at.getTime() <= Date.now()) throw new BadRequestException('Choose a time in the future, or publish now');
+    if (at.getTime() > Date.now() + MAX_SCHEDULE_DAYS * 86_400_000) throw new BadRequestException(`Choose a time within ${MAX_SCHEDULE_DAYS} days`);
+    this.validate({ ...FormsService.toDefinition(row), status: 'PUBLISHED' }, 'publish');
+
+    row.set({ publishAt: at, scheduledBy: auth.userId, scheduleError: '' });
+    await row.save();
+    await this.jobs.enqueue('form.publish', { orgId: auth.orgId, formId: id, publishAt: at.toISOString() }, { orgId: auth.orgId, runAt: at });
+    await this.audit.record(actorOf(auth), { action: 'form.publish_scheduled', targetType: 'form', targetId: id, after: { code: row.code, version: row.version, publishAt: at.toISOString() } });
+    return this.get(auth, id);
+  }
+
+  async unschedule(auth: AuthContext, id: string) {
+    const row = await this.mustGet(auth, id, 'form.publish');
+    if (row.publishAt) {
+      row.set({ publishAt: null, scheduledBy: '' });
+      await row.save();
+      await this.audit.record(actorOf(auth), { action: 'form.publish_unscheduled', targetType: 'form', targetId: id, after: { code: row.code, version: row.version } });
+    }
+    return this.get(auth, id);
+  }
+
+  /**
+   * The job behind a schedule. It publishes only if the draft is still set
+   * for exactly this time (rescheduling or cancelling leaves the old job with
+   * nothing to do), and as the person who scheduled it, with the role they
+   * hold now. A publish that is refused is recorded on the form, not retried.
+   */
+  private async runScheduled({ orgId, formId, publishAt }: ScheduledPublish) {
+    const row = await this.forms.findOne({ id: formId, ...this.live(orgId) }).lean();
+    if (!row || row.status !== 'DRAFT' || !row.publishAt || row.publishAt.toISOString() !== publishAt) return;
+    const member = await this.memberships.findOne({ orgId, userId: row.scheduledBy, status: 'ACTIVE' }).lean();
+    const fail = async (reason: string) => {
+      await this.forms.updateOne({ id: formId }, { $set: { publishAt: null, scheduleError: reason.slice(0, 500) } });
+      this.logger.warn(`scheduled publish of ${row.code} v${row.version} did not happen: ${reason}`);
+    };
+    if (!member) return fail('The person who scheduled it is no longer a member of the organisation');
+    const auth: AuthContext = { userId: row.scheduledBy, orgId, sessionId: 'scheduled-publish', role: member.role, mfa: true, ip: '', userAgent: 'scheduled publish' };
+    try {
+      await this.publish(auth, formId);
+    } catch (e) {
+      // Refused for a reason a person has to fix (a problem in the form, rights withdrawn): say so on the form.
+      if (e instanceof HttpException && e.getStatus() < 500) {
+        const body = e.getResponse() as { message?: string; errors?: { message: string }[] } | string;
+        const detail = typeof body === 'string' ? body : [body.message, ...(body.errors ?? []).map((x) => x.message)].filter(Boolean).join(': ');
+        return fail(detail || e.message);
+      }
+      throw e;
+    }
   }
 
   /** Copy a published or archived version into the next draft, or return the draft already open. */

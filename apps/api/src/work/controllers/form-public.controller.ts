@@ -1,4 +1,4 @@
-import { eventSources } from '@fb/engine';
+import { eventSources, formAvailability } from '@fb/engine';
 import { Body, Controller, UseFilters, Get, Headers, HttpCode, Ip, NotFoundException, Param, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { FormDefinitionService } from '../services/form-definition.service';
 import { Public } from '../../auth/auth.guard';
@@ -77,7 +77,20 @@ export class FormPublicController {
   async getForm(@Query('org') org: string, @Param('code') code: string, @Headers('authorization') auth?: string) {
     const orgId = await this.context.resolveOrgId(org);
     const user = await this.context.optionalUser(auth);
-    return apiResponse(true, 200, 'Form fetched', await this.submissions.publishedFor(orgId, code, user));
+    const def = await this.submissions.publishedFor(orgId, code, user, 'show');
+    const state = formAvailability(def);
+    if (state === 'OPEN') return apiResponse(true, 200, 'Form fetched', def);
+    // Not taking answers: enough to explain that, and none of the questions.
+    return apiResponse(true, 200, 'Form is not open', {
+      unavailable: state,
+      name: def.name,
+      code: def.code,
+      orgId: def.orgId,
+      theme: def.theme,
+      opensAt: def.opensAt,
+      closesAt: def.closesAt,
+      message: state === 'CLOSED' ? def.closedMessage : undefined,
+    });
   }
 
   @Post('forms/:code/submissions')
@@ -122,6 +135,7 @@ export class FormPublicController {
     const user = await this.context.optionalUser(auth);
     const def = await this.submissions.publishedFor(orgId, code, user);
     const token = typeof body?.token === 'string' ? body.token : undefined;
+    if (def.saveForLater === false) throw new NotFoundException('This form cannot be saved for later');
     return this.drafts.save(orgId, def, body?.values, token, user);
   }
 
@@ -132,7 +146,9 @@ export class FormPublicController {
   async loadDraft(@Query('org') org: string, @Param('code') code: string, @Body() body: Record<string, unknown>, @Headers('authorization') auth?: string) {
     const orgId = await this.context.resolveOrgId(org);
     const user = await this.context.optionalUser(auth);
-    return this.drafts.load(orgId, await this.submissions.publishedFor(orgId, code, user), typeof body?.token === 'string' ? body.token : '', user);
+    const def = await this.submissions.publishedFor(orgId, code, user);
+    if (def.saveForLater === false) throw new NotFoundException('This form cannot be saved for later');
+    return this.drafts.load(orgId, def, typeof body?.token === 'string' ? body.token : '', user);
   }
 
   @Post('forms/:code/drafts/discard')

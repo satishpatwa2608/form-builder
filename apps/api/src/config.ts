@@ -40,6 +40,12 @@ const schema = z.object({
    * (the API beside a worker); `run` is the worker.
    */
   JOBS_ROLE: z.enum(['all', 'enqueue', 'run']).default('all'),
+  /**
+   * Whether a process that runs jobs also looks for due ones every second
+   * (retries, scheduled publishing). On, except under NODE_ENV=test where
+   * tests drive the queue themselves; set it to force either way.
+   */
+  JOBS_POLL: z.enum(['true', 'false']).optional(),
   /** Plan for organisations billing hasn't set one on (see src/plans/plans.ts). */
   DEFAULT_PLAN: z.enum(['FREE', 'TEAM', 'BUSINESS', 'ENTERPRISE']).default('FREE'),
   /** Secure cookies (https only). Must be true outside local development. */
