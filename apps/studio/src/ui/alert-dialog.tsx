@@ -28,13 +28,14 @@ function AlertDialogPortal({
   );
 }
 
-function AlertDialogOverlay({
-  className,
-  style,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
+// Takes a ref: the dialog library passes one to the overlay to track its open and close animation.
+const AlertDialogOverlay = React.forwardRef<
+  React.ElementRef<typeof AlertDialogPrimitive.Overlay>,
+  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Overlay>
+>(function AlertDialogOverlay({ className, style, ...props }, ref) {
   return (
     <AlertDialogPrimitive.Overlay
+      ref={ref}
       data-slot="alert-dialog-overlay"
       className={cn(
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
@@ -44,7 +45,7 @@ function AlertDialogOverlay({
       {...props}
     />
   );
-}
+});
 
 function AlertDialogContent({
   className,
