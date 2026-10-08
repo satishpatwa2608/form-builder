@@ -37,7 +37,7 @@ import { FormRuntimeProvider, type CaptchaMode } from '../FormRuntimeContext';
 import { FieldList } from '../FieldRenderer/FieldRenderer';
 import { REVEAL_EVENT } from '../fields/ContainerFields';
 import '../../styles/form-runtime.css';
-import { FormActions, FormErrorSummary, FormHeader, FormSuccess } from './FormParts';
+import { FormActions, FormErrorSummary, FormHeader, FormSuccess, problemsOf } from './FormParts';
 import { FormReview } from './FormReview';
 import { errorText } from '../styles';
 
@@ -454,10 +454,15 @@ function FormRuntime({
     const names = answerFields(definition.fields)
       .filter((f) => onStep.has(f.name) && states.get(f.name)?.visible !== false)
       .map((f) => f.name);
-    if (await form.trigger(names, { shouldFocus: true })) {
+    if (await form.trigger(names)) {
       setStepIndex((i) => Math.min(i + 1, steps.length - 1));
       containerRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    } else setRecheck(true);
+    } else {
+      setRecheck(true);
+      // Go to the first mistake on this step, opening the tab or panel it is in if that is closed.
+      const first = problemsOf(definition, form.formState.errors).find((p) => onStep.has(p.key.split('.')[0]));
+      if (first) focusField(first.key);
+    }
   };
 
   const onSubmit = async (e: FormEvent) => {

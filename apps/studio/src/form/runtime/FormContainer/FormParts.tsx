@@ -74,7 +74,7 @@ const messageOf = (error: unknown): string | undefined => {
 };
 
 /** Every error in field order. A repeating section lists its own problem, then each row's. */
-function problemsOf(definition: FormDefinition, errors: FieldErrors): Problem[] {
+export function problemsOf(definition: FormDefinition, errors: FieldErrors): Problem[] {
   const shape = formShape(definition.fields);
   const problems: Problem[] = [];
   for (const f of shape.top) {
