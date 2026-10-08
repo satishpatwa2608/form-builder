@@ -15,7 +15,7 @@ import type { FormDefinition, FormValues, WorkItemSource } from '@fb/engine';
 import {
   buildPayload,
   buildZodSchema,
-  computeFieldStates,
+  computeFormState,
   isEmptyValue,
   prefillValue,
   resolveParams,
@@ -155,13 +155,17 @@ export class FormSubmissionService {
 
     // 5. The same validation the browser ran: required, lengths, patterns, options, conditional rules.
     const checked = opts.trusted ? { ...def, fields: def.fields.filter((f) => f.type !== 'CAPTCHA') } : def;
-    const result = buildZodSchema(checked).safeParse(values);
+    const result = buildZodSchema(checked, ctx).safeParse(values);
     if (!result.success) {
       throw reject(result.error.issues.map((i) => ({ field: String(i.path[0] ?? ''), message: i.message })));
     }
 
     // 6. Options that come from data sources must be real options for the chosen parents.
-    const states = computeFieldStates(def, values);
+    // Calculated fields are the server's as well: whatever was sent for them is replaced here,
+    // so the option checks, the stored record, assignment and automations all see the real value.
+    const computed = computeFormState(def, values, ctx);
+    Object.assign(values, computed.values);
+    const states = computed.states;
     const optionIssues: { field: string; message: string }[] = [];
     for (const f of def.fields) {
       const api = f.dataSource?.type === 'API' ? f.dataSource.api : undefined;
@@ -183,7 +187,7 @@ export class FormSubmissionService {
     }
 
     // 8. Store as a record: reference number, first status, assignee, SLA. Captcha tokens are never kept.
-    const payload = buildPayload(def, values);
+    const payload = buildPayload(def, values, ctx);
     if (captchaField) delete payload[captchaField.name];
     const uuid = uuidv4();
     const state = await this.records.initialState(def, orgId, values);
