@@ -24,6 +24,11 @@ skip to the sections they need.
 
 - **Forms → New form**: start blank or from a template (including process
   templates such as a complaint register).
+- Or start from a file: **A JSON Schema** gives one field for each property
+  (nested objects become sections, lists of objects become repeating
+  sections); **A spreadsheet** saved as CSV gives one field per column, with
+  types guessed from the example rows under the header. Anything that could
+  not be carried over is listed before the form is created.
 - The builder saves drafts. **Publish** makes a version live; a published
   version never changes — edit by starting a new version.
 - Styles (Organisation admins) are frozen into a version when it's published.

@@ -1,3 +1,4 @@
+import { fieldsFromCsv, fieldsFromJsonSchema, type ImportedFields } from '@fb/engine';
 import { FormVersions } from '../components/FormVersions';
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -20,6 +21,12 @@ function folderLabel(folders: Folder[], id: string) {
   return f ? f.path.map((p) => folders.find((x) => x.id === p)?.name ?? '…').join(' / ') : 'Unknown folder';
 }
 
+/** Ways to start a form from a file instead of a template. */
+const IMPORT_SOURCES = [
+  { key: 'schema', label: 'A JSON Schema', description: 'One field for each property of a schema file.', fileLabel: 'Schema file (.json)', accept: 'application/json,.json' },
+  { key: 'csv', label: 'A spreadsheet', description: 'One field for each column of a CSV file; example rows set the types.', fileLabel: 'Spreadsheet file (.csv)', accept: 'text/csv,.csv' },
+] as const;
+
 function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone: (msg: string) => void; onCancel: () => void }) {
   const [template, setTemplate] = useState('blank');
   const [name, setName] = useState('');
@@ -27,7 +34,28 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   const [codeTouched, setCodeTouched] = useState(false);
   const [folderId, setFolderId] = useState(folders[0]?.id ?? '');
   const shownCode = codeTouched ? code : codeFromName(name);
+  /** Fields read from a schema or a spreadsheet, when the form starts from one. */
+  const [imported, setImported] = useState<{ file: string; result: ImportedFields; error?: string }>();
+  const source = IMPORT_SOURCES.find((x) => x.key === template);
+  const readFile = async (file: File | undefined) => {
+    if (!file || !source) return;
+    if (file.size > 1024 * 1024) return setImported({ file: file.name, result: { fields: [], notes: [] }, error: 'The file is larger than 1 MB.' });
+    const text = await file.text();
+    try {
+      const result = source.key === 'schema' ? fieldsFromJsonSchema(JSON.parse(text)) : fieldsFromCsv(text);
+      setImported({ file: file.name, result });
+      // The file's name is a fair first guess at the form's.
+      if (!name) setName(file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim());
+    } catch {
+      setImported({ file: file.name, result: { fields: [], notes: [] }, error: 'This file could not be read as JSON.' });
+    }
+  };
   const create = useSubmit(async () => {
+    if (source) {
+      const fields = imported?.result.fields ?? [];
+      await api('/forms', { method: 'POST', body: { folderId, definition: { ...FORM_TEMPLATES[0].definition, fields, name: name.trim(), code: shownCode } } });
+      return onDone(`"${name.trim()}" was created as a draft with ${fields.length} field${fields.length === 1 ? '' : 's'} from ${imported?.file}. Check them in the builder before publishing.`);
+    }
     const tpl = FORM_TEMPLATES.find((t) => t.key === template)!;
     // A template's own styles go into the library first, so the form can be published as it comes.
     const { definition, leftOut } = await prepareTemplate(tpl.definition, {
@@ -66,7 +94,50 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
               </div>
             </label>
           ))}
+          {IMPORT_SOURCES.map((x) => (
+            <label key={x.key} className="st-card" style={{ flex: '1 1 200px', padding: 14, cursor: 'pointer', borderColor: template === x.key ? 'var(--fb-accent)' : undefined, boxShadow: template === x.key ? 'var(--fb-ring)' : undefined, position: 'relative' }}>
+              <input
+                type="radio"
+                name="template"
+                value={x.key}
+                checked={template === x.key}
+                onChange={() => {
+                  setTemplate(x.key);
+                  setImported(undefined);
+                }}
+                style={{ position: 'absolute', opacity: 0 }}
+              />
+              <strong>{x.label}</strong>
+              <div className="st-muted" style={{ fontSize: 12 }}>
+                {x.description}
+              </div>
+            </label>
+          ))}
         </div>
+        {source && (
+          <div className="st-stack" style={{ gap: 8 }}>
+            <label className="st-stack" style={{ gap: 4 }}>
+              <strong>{source.fileLabel}</strong>
+              <input key={source.key} type="file" accept={source.accept} aria-label={source.fileLabel} onChange={(e) => void readFile(e.target.files?.[0])} />
+            </label>
+            {imported?.error && <Alert tone="error">{imported.error}</Alert>}
+            {imported && !imported.error && (
+              <div role="status" className="st-stack" style={{ gap: 4 }}>
+                <span>
+                  <strong>{imported.result.fields.length}</strong> field{imported.result.fields.length === 1 ? '' : 's'} found in {imported.file}
+                  {imported.result.fields.length > 0 && <span className="st-muted">: {imported.result.fields.slice(0, 8).map((f) => f.label || f.name).join(', ')}{imported.result.fields.length > 8 ? '…' : ''}</span>}
+                </span>
+                {imported.result.notes.length > 0 && (
+                  <ul className="st-muted" style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                    {imported.result.notes.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div className="st-grid-2">
           <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} error={create.fields.name} placeholder="e.g. Leave request" />
           <TextField
@@ -85,7 +156,7 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
           ))}
         </SelectField>
         <div className="st-row">
-          <Button type="submit" busy={create.busy} disabled={!name.trim() || !shownCode || !folderId}>
+          <Button type="submit" busy={create.busy} disabled={!name.trim() || !shownCode || !folderId || (!!source && !imported?.result.fields.length)}>
             <FilePlus2 size={16} /> Create draft
           </Button>
           <Button variant="ghost" onClick={onCancel}>

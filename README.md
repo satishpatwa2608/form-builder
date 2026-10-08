@@ -60,7 +60,8 @@ on the PATH, or `E2E_MONGODB_URL` pointing at a server that is already running.
 | `08-account-settings-embed` | Password reset, two-factor, branding, analytics, embedding, phone and wide layouts, staff-raised items |
 | `09-gateway` | The gateway agent as its own process: register, read a private database, revoke |
 | `10-every-screen-and-templates` | Every builder screen opens cleanly; a webhook; each built-in template publishes and opens |
-| `11-lifecycle` | Opening and closing times, the save-for-later switch, scheduling a publish and seeing it happen |
+| `11-lifecycle` | Opening and closing times, the save-for-later switch, scheduled publishing, comparing and restoring versions |
+| `12-start-from-a-file` | A new form from a spreadsheet and from a JSON Schema |
 
 After a failure, `e2e/test-results/` holds a screenshot, the page as text and a
 trace for each failed scenario. `E2E_KEEP=1` keeps the servers' logs.

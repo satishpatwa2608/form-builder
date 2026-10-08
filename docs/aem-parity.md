@@ -38,9 +38,9 @@ A phase is not done until its tests are written and pass. Testing is part of eac
 
 - New engine logic gets unit tests; new endpoints get e2e tests on in-memory MongoDB; new screens get component tests.
 - Anything a browser sends is tested from the API side as hostile input.
-- The full suite, typecheck and lint pass in CI before a phase is closed. Baseline on 8 October 2026: 219 tests (engine 68, connectors 15, API 60, studio 74, runtime 2). On 9 October 2026: 451 (engine 166, connectors 15, API 116, studio 152, runtime 2) plus 54 browser scenarios.
+- The full suite, typecheck and lint pass in CI before a phase is closed. Baseline on 8 October 2026: 219 tests (engine 68, connectors 15, API 60, studio 74, runtime 2). On 9 October 2026: 461 (engine 176, connectors 15, API 116, studio 152, runtime 2) plus 57 browser scenarios.
 - Each phase ends with one end-to-end scenario (its "Done when") run against the real apps.
-- `pnpm e2e` runs the whole product in a real browser: MongoDB, the API, the builder, the public form app and the gateway agent as real processes. 54 scenarios on 9 October 2026, all passing; the table in README.md lists what each file covers. New screens get a scenario there.
+- `pnpm e2e` runs the whole product in a real browser: MongoDB, the API, the builder, the public form app and the gateway agent as real processes. 57 scenarios on 9 October 2026, all passing; the table in README.md lists what each file covers. New screens get a scenario there.
 
 Not covered in the browser, and why:
 
@@ -178,7 +178,8 @@ Limits to know:
 | Fragments | Not started. |
 | Version history with compare and restore | Done (the Versions button on the Forms list). "What changed since" lists the differences from any version to the newest in words; "Restore" brings an earlier version back as the draft, and asks before replacing a draft that is open. |
 | Review before publish | Not started. |
-| Create a form from a JSON Schema, a connector entity, a spreadsheet, or a fillable PDF | Not started. |
+| Create a form from a JSON Schema or a spreadsheet | Done (New form → Start from). A schema gives one field per property, with sections for nested objects and a repeating section for a list of objects; a CSV file gives one field per column, typed from its example rows. What cannot be carried over is listed before the form is created. |
+| Create a form from a connector entity, or a fillable PDF | Not started. A fillable PDF needs a PDF library, which is a dependency to agree first. |
 
 **Done when:** an address fragment is changed once and three forms show the change after republishing; a form goes live and closes on set dates.
 

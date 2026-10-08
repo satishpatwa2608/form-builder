@@ -1,0 +1,162 @@
+import { describe, expect, it } from 'vitest';
+import { fieldsFromCsv, fieldsFromJsonSchema, MAX_IMPORTED_FIELDS, parseCsv, validateFormDefinition } from '../src';
+import type { FormField } from '../src/types';
+import base from './fixtures/customer-complaint-basic.json';
+
+/** The imported fields make a form that can be published as it is. */
+const publishable = (fields: FormField[]) => {
+  const result = validateFormDefinition({ ...base, fields });
+  return result.success ? [] : result.issues.map((i) => `${i.path}: ${i.message}`);
+};
+const brief = (fields: FormField[]) => fields.map((f) => `${f.type} ${f.name}${f.required ? '*' : ''}${f.parentId ? ` in ${fields.find((p) => p.id === f.parentId)!.name}` : ''}`);
+
+describe('a form from a JSON Schema', () => {
+  const schema = {
+    type: 'object',
+    required: ['fullName', 'email', 'lines'],
+    properties: {
+      fullName: { type: 'string', title: 'Full name', minLength: 2, maxLength: 80 },
+      email: { type: 'string', format: 'email', description: 'We reply here.' },
+      dob: { type: 'string', format: 'date' },
+      bio: { type: 'string', maxLength: 2000 },
+      'postal-code': { type: 'string', pattern: '^[0-9]{6}$' },
+      age: { type: 'integer', minimum: 18, maximum: 120 },
+      newsletter: { type: 'boolean' },
+      plan: { enum: ['FREE', 'TEAM', 'BUSINESS'] },
+      country: { type: 'string', enum: ['IN', 'US', 'GB', 'DE', 'FR'] },
+      interests: { type: 'array', items: { enum: ['A', 'B', 'C'] }, minItems: 1, maxItems: 2 },
+      nickname: { type: ['string', 'null'] },
+      address: { type: 'object', title: 'Address', description: 'Where to deliver', required: ['city'], properties: { street: { type: 'string' }, city: { type: 'string' } } },
+      lines: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 500,
+        items: { type: 'object', required: ['item'], properties: { item: { type: 'string' }, qty: { type: 'number' }, tags: { type: 'array', items: { type: 'object', properties: { t: { type: 'string' } } } } } },
+      },
+    },
+  };
+
+  it('makes a field for each property, with its type, limits and whether it is required', () => {
+    const { fields, notes } = fieldsFromJsonSchema(schema);
+    expect(brief(fields)).toEqual([
+      'TEXT fullName*',
+      'EMAIL email*',
+      'DATE dob',
+      'TEXTAREA bio',
+      'TEXT postalCode',
+      'NUMBER age',
+      'CHECKBOX newsletter',
+      'RADIO plan',
+      'DROPDOWN country',
+      'MULTI_SELECT interests',
+      'TEXT nickname',
+      'SECTION address',
+      'TEXT street in address',
+      'TEXT city* in address',
+      'REPEAT lines',
+      'TEXT item* in lines',
+      'NUMBER qty in lines',
+    ]);
+    const by = (name: string) => fields.find((f) => f.name === name)!;
+    expect(by('fullName')).toMatchObject({ label: 'Full name', validation: { minLength: 2, maxLength: 80 } });
+    expect(by('email')).toMatchObject({ label: 'Email', helpText: 'We reply here.' });
+    expect(by('postalCode')).toMatchObject({ label: 'Postal code', validation: { pattern: '^[0-9]{6}$' } });
+    expect(by('age').validation).toEqual({ min: 18, max: 120 });
+    expect(by('plan').dataSource?.options).toEqual([{ label: 'FREE', value: 'FREE' }, { label: 'TEAM', value: 'TEAM' }, { label: 'BUSINESS', value: 'BUSINESS' }]);
+    expect(by('interests').validation).toEqual({ min: 1, max: 2 });
+    expect(by('address')).toMatchObject({ label: 'Address', props: { description: 'Where to deliver' } });
+    // A required list needs a row; no more rows than a form allows.
+    expect(by('lines').validation).toEqual({ min: 1, max: 200 });
+    expect(notes).toEqual(['"tags" is a list inside a list, which a form cannot repeat. Add it by hand.']);
+    expect(publishable(fields)).toEqual([]);
+  });
+
+  it('says what it could not carry over', () => {
+    const { fields, notes } = fieldsFromJsonSchema({
+      type: 'object',
+      properties: {
+        ref: { $ref: '#/definitions/x' },
+        either: { oneOf: [{ type: 'string' }, { type: 'number' }] },
+        list: { type: 'array', items: { type: 'string' } },
+        bag: { type: 'object' },
+        odd: { type: 'geo-point' },
+        missing: null,
+      },
+    });
+    expect(brief(fields)).toEqual(['TEXT odd']);
+    expect(notes).toEqual([
+      '"ref" uses a reference or a choice of shapes, which cannot be turned into a field. Add it by hand.',
+      '"either" uses a reference or a choice of shapes, which cannot be turned into a field. Add it by hand.',
+      '"list" is a list of free values, which has no field of its own. Add a repeating section for it by hand.',
+      '"bag" is an object with no listed properties and was skipped.',
+      '"odd" has the type "geo-point", which has no matching field. It was added as text.',
+      '"missing" has no description of what it holds and was skipped.',
+    ]);
+  });
+
+  it('gives every field a usable, unique key whatever the property is called', () => {
+    const { fields } = fieldsFromJsonSchema({ type: 'object', properties: { 'Order No.': { type: 'string' }, order_no: { type: 'string' }, '123': { type: 'string' }, '  ': { type: 'string' }, 'São Paulo': { type: 'string' }, constructor: { type: 'string' } } });
+    expect(fields.map((f) => f.name)).toEqual(['field123', 'orderNo', 'orderNo2', 'field', 'saoPaulo', 'constructor']);
+    expect(publishable(fields)).toEqual([]);
+  });
+
+  it('refuses what is not a schema of an object, and stops at a sensible size', () => {
+    for (const bad of [null, 'text', [], { type: 'string' }, { properties: 'x' }]) {
+      expect(fieldsFromJsonSchema(bad)).toEqual({ fields: [], notes: ['This is not a JSON Schema of an object with properties, so there is nothing to make fields from.'] });
+    }
+    const huge = { type: 'object', properties: Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`p${i}`, { type: 'string' }])) };
+    const { fields, notes } = fieldsFromJsonSchema(huge);
+    expect(fields).toHaveLength(MAX_IMPORTED_FIELDS);
+    expect(notes).toEqual([`Only the first ${MAX_IMPORTED_FIELDS} fields were added.`]);
+  });
+
+  it('flattens objects nested too deeply instead of failing', () => {
+    let schema: Record<string, unknown> = { type: 'object', properties: { leaf: { type: 'string' } } };
+    for (let i = 0; i < 8; i++) schema = { type: 'object', properties: { [`level${i}`]: schema } };
+    const { fields } = fieldsFromJsonSchema(schema);
+    expect(fields.some((f) => f.name === 'leaf')).toBe(true);
+    expect(fields.filter((f) => f.type === 'SECTION').length).toBe(4);
+    expect(publishable(fields)).toEqual([]);
+  });
+});
+
+describe('a form from a spreadsheet', () => {
+  it('reads CSV with quotes, commas and line breaks inside cells', () => {
+    expect(parseCsv('a,b\n1,"x, y"\n"he said ""hi""","line\nbreak"\r\n\n,\n')).toEqual([['a', 'b'], ['1', 'x, y'], ['he said "hi"', 'line\nbreak']]);
+    expect(parseCsv('﻿name\nAsha')).toEqual([['name'], ['Asha']]);
+    expect(parseCsv('')).toEqual([]);
+  });
+
+  it('guesses each column\'s field from the example rows', () => {
+    const csv = [
+      'Name,Email,Joined,Age,Member,Department,Notes,',
+      'Asha Rao,asha@acme.test,2026-01-05,34,yes,Quality,Fine,x',
+      'Ravi K,ravi@acme.test,2025-11-20,41,no,Stores,"A long note, with a comma",y',
+      'Meera,meera@acme.test,2024-03-01,29,yes,Quality,,z',
+      'Dev,dev@acme.test,2026-02-14,52,no,Stores,ok,w',
+    ].join('\n');
+    const { fields, notes } = fieldsFromCsv(csv);
+    expect(brief(fields)).toEqual(['TEXT name', 'EMAIL email', 'DATE joined', 'NUMBER age', 'CHECKBOX member', 'DROPDOWN department', 'TEXT notes']);
+    expect(fields.find((f) => f.name === 'department')!.dataSource?.options).toEqual([{ label: 'Quality', value: 'Quality' }, { label: 'Stores', value: 'Stores' }]);
+    expect(fields.find((f) => f.name === 'name')!.label).toBe('Name');
+    expect(notes).toEqual(['Column 8 has no name and was skipped.']);
+    expect(publishable(fields)).toEqual([]);
+  });
+
+  it('with only a header row, every column is text, and it says so', () => {
+    const { fields, notes } = fieldsFromCsv('Order No.,Customer,Order No.');
+    expect(brief(fields)).toEqual(['TEXT orderNo', 'TEXT customer', 'TEXT orderNo2']);
+    expect(notes).toEqual(['There were no example rows, so every column became a text field. Change their types in the builder.']);
+  });
+
+  it('handles an empty file and a very wide one', () => {
+    expect(fieldsFromCsv('')).toEqual({ fields: [], notes: ['The file is empty.'] });
+    const wide = fieldsFromCsv(Array.from({ length: 250 }, (_, i) => `c${i}`).join(','));
+    expect(wide.fields).toHaveLength(MAX_IMPORTED_FIELDS);
+    expect(wide.notes[0]).toBe(`Only the first ${MAX_IMPORTED_FIELDS} columns were added.`);
+  });
+
+  it('a long answer in the examples makes a paragraph field', () => {
+    expect(brief(fieldsFromCsv(`Story\n"${'word '.repeat(40)}"`).fields)).toEqual(['TEXTAREA story']);
+  });
+});
