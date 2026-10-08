@@ -20,6 +20,9 @@ startAgent({
   secretFile: process.env.FB_GATEWAY_SECRET_FILE ?? './gateway.secret',
   credentialsFile: process.env.FB_CREDENTIALS_FILE ?? './connectors.json',
   allowInsecure: process.env.FB_GATEWAY_ALLOW_INSECURE === 'true',
+  // Revoked: nothing left to do, and open database connections would otherwise keep the process alive.
+  // Exit cleanly so a supervisor set to restart on failure does not bring it back.
+  onRevoked: () => process.exit(0),
 }).catch((e: Error) => {
   console.error(`[gateway] ${e.message}`);
   process.exit(1);

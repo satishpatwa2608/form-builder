@@ -18,6 +18,8 @@ export interface AgentOptions {
   /** Development only: allow http:// / ws://. */
   allowInsecure?: boolean;
   log?: (msg: string) => void;
+  /** Called once the cloud has revoked this gateway and the agent has stopped for good. */
+  onRevoked?: () => void;
 }
 
 export interface Agent {
@@ -111,6 +113,7 @@ export async function startAgent(opts: AgentOptions): Promise<Agent> {
       if (code === 4001) {
         log('this gateway was revoked - stopping');
         stopped = true;
+        opts.onRevoked?.();
         return;
       }
       const wait = Math.min(30_000, 1000 * 2 ** attempt++);

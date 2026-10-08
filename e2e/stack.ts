@@ -50,7 +50,7 @@ function run(name: string, dir: string, command: string, args: string[], cwd: st
 export async function startStack(): Promise<StackState> {
   if (existsSync(STATE_FILE)) stopStack();
   // The API runs from its build, like production; the engine and connectors are its dependencies.
-  execSync('pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/api build', { cwd: ROOT, stdio: 'inherit' });
+  execSync('pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/api --filter @fb/gateway build', { cwd: ROOT, stdio: 'inherit' });
 
   const dir = mkdtempSync(join(tmpdir(), 'fb-e2e-'));
   mkdirSync(join(dir, 'db'));
