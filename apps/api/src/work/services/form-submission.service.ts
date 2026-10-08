@@ -171,7 +171,8 @@ export class FormSubmissionService {
     const checked = opts.trusted ? { ...def, fields: def.fields.filter((f) => f.type !== 'CAPTCHA') } : def;
     const result = buildZodSchema(checked, ctx).safeParse(values);
     if (!result.success) {
-      throw reject(result.error.issues.map((i) => ({ field: String(i.path[0] ?? ''), message: i.message })));
+      // A mistake in a repeating section's row is reported at `section.row.field`.
+      throw reject(result.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })));
     }
 
     // 6. Options that come from data sources must be real options for the chosen parents.

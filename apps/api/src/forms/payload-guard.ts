@@ -1,5 +1,5 @@
 /* Ported from Sangam form-platform security/payload-guard.ts (unchanged rules). */
-import { isSignature, isValueField, type FormDefinition, type FormField } from '@fb/engine';
+import { answerFields, formShape, isRepeat, isSignature, MAX_ROWS, type FormDefinition, type FormField } from '@fb/engine';
 import { LIMITS } from './limits';
 
 /**
@@ -81,7 +81,8 @@ export function checkSubmissionShape(def: FormDefinition, values: unknown): Guar
   if (!isPlainObject(values)) return [{ field: '', message: 'Values must be an object' }];
   if (JSON.stringify(values).length > LIMITS.valuesBytes) return [{ field: '', message: 'Submission is too large' }];
 
-  const fields = new Map(def.fields.filter(isValueField).map((f) => [f.name, f]));
+  // Top-level answers only: a field inside a repeating section is sent in that section's rows.
+  const fields = new Map(answerFields(def.fields).map((f) => [f.name, f]));
   const issues: GuardIssue[] = [];
   for (const [key, value] of Object.entries(values)) {
     if (FORBIDDEN_KEY.test(key)) {
@@ -93,9 +94,38 @@ export function checkSubmissionShape(def: FormDefinition, values: unknown): Guar
       issues.push({ field: key, message: 'Unknown field' });
       continue;
     }
+    if (isRepeat(field)) {
+      issues.push(...checkRows(def, field, value));
+      continue;
+    }
     const problem = checkValue(field, value);
     if (problem) issues.push({ field: key, message: problem });
   }
+  return issues;
+}
+
+/** A repeating section's value: a bounded list of plain rows, each holding only that section's own fields. */
+function checkRows(def: FormDefinition, repeat: FormField, value: unknown): GuardIssue[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return [{ field: repeat.name, message: 'Must be a list of rows' }];
+  if (value.length > MAX_ROWS) return [{ field: repeat.name, message: `No more than ${MAX_ROWS} rows` }];
+  const children = new Map((formShape(def.fields).repeats.find((r) => r.field.id === repeat.id)?.valueChildren ?? []).map((f) => [f.name, f]));
+  const issues: GuardIssue[] = [];
+  value.forEach((row, i) => {
+    if (!isPlainObject(row)) {
+      issues.push({ field: `${repeat.name}.${i}`, message: 'Must be a row of answers' });
+      return;
+    }
+    for (const [key, cell] of Object.entries(row)) {
+      const at = `${repeat.name}.${i}.${key}`;
+      const child = FORBIDDEN_KEY.test(key) ? undefined : children.get(key);
+      if (!child) issues.push({ field: FORBIDDEN_KEY.test(key) ? `${repeat.name}.${i}` : at, message: FORBIDDEN_KEY.test(key) ? 'Invalid field name' : 'Unknown field' });
+      else {
+        const problem = checkValue(child, cell);
+        if (problem) issues.push({ field: at, message: problem });
+      }
+    }
+  });
   return issues;
 }
 
