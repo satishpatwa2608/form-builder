@@ -21,11 +21,13 @@ import {
   descendantsOf,
   emptyValueFor,
   isEmptyValue,
-  isValueField,
+  answerFields,
   namesWithin,
   resetChildren,
   usedStyleIds,
   systemContextFor,
+  valueAt,
+  isRepeat,
 } from '../../engine';
 import { defaultSubmissionAdapter, type SubmissionAdapter } from '../../adapters/submission/submission-adapter';
 import { defaultDataSourceAdapter, type DataSourceAdapter } from '../../adapters/data-source/data-source-adapter';
@@ -151,13 +153,15 @@ function browserTimeZone(): string | undefined {
  */
 function useRuleValues(form: UseFormReturn<FormValues>, definition: FormDefinition, values: FormValues, state: FormState) {
   useEffect(() => {
+    // A key is a field name, or `section.row.field` for a field in a row of a repeating section.
     for (const name of state.calculated) {
-      if (JSON.stringify(values[name]) === JSON.stringify(state.values[name])) continue;
-      form.setValue(name, state.values[name], { shouldDirty: true, shouldValidate: !!form.formState.errors[name] });
+      const computed = valueAt(state.values, name);
+      if (JSON.stringify(valueAt(values, name)) === JSON.stringify(computed)) continue;
+      form.setValue(name, computed, { shouldDirty: true, shouldValidate: !!form.getFieldState(name).error });
     }
     for (const [name, allowed] of state.options) {
-      const value = values[name];
-      const field = definition.fields.find((f) => f.name === name);
+      const value = valueAt(values, name);
+      const field = definition.fields.find((f) => f.name === name.split('.').pop());
       if (!field || isEmptyValue(value)) continue;
       if (Array.isArray(value)) {
         const kept = value.filter((v) => allowed.has(String(v)));
@@ -317,7 +321,9 @@ function FormRuntime({
       if (!res.ok) {
         // The server re-validates; show its per-field findings where they belong.
         for (const fe of res.fieldErrors ?? []) {
-          if (definition.fields.some((f) => f.name === fe.field)) form.setError(fe.field, { type: 'server', message: fe.message });
+          // `lines.0.qty` belongs to the repeating section `lines`.
+          const owner = fe.field.split('.')[0];
+          if (definition.fields.some((f) => f.name === fe.field || (f.name === owner && isRepeat(f)))) form.setError(fe.field, { type: 'server', message: fe.message });
         }
         if (res.fieldErrors?.length) setShowSummary(true);
         const told = eventActions(definition, { type: 'SUBMIT_ERROR' }, computed, context).find((a) => a.type === 'SHOW_MESSAGE');
@@ -352,8 +358,9 @@ function FormRuntime({
   const goNext = async () => {
     if (!steps || !step) return;
     const onStep = namesWithin(definition.fields, step.items);
-    const names = definition.fields
-      .filter((f) => onStep.has(f.name) && isValueField(f) && states.get(f.name)?.visible !== false)
+    // Top-level answers; a repeating section is validated as a whole, rows included.
+    const names = answerFields(definition.fields)
+      .filter((f) => onStep.has(f.name) && states.get(f.name)?.visible !== false)
       .map((f) => f.name);
     if (await form.trigger(names, { shouldFocus: true })) {
       setStepIndex((i) => Math.min(i + 1, steps.length - 1));
@@ -385,7 +392,7 @@ function FormRuntime({
 
   const focusField = (name: string) => {
     // In steps mode the field may be on another step: go there first, focus after it renders.
-    const target = steps?.findIndex((st) => namesWithin(definition.fields, st.items).has(name)) ?? -1;
+    const target = steps?.findIndex((st) => namesWithin(definition.fields, st.items).has(name.split('.')[0])) ?? -1;
     if (steps && target >= 0 && target !== stepIndex) {
       pendingFocus.current = name;
       setStepIndex(target);

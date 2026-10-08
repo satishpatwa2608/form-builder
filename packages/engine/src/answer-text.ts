@@ -37,3 +37,20 @@ export function answerText(field: Pick<FormField, 'dataSource'> | undefined, val
   const label = (v: unknown) => options.find((o) => o.value === v)?.label ?? v;
   return plainAnswer(Array.isArray(value) ? value.map(label) : label(value));
 }
+
+/**
+ * A repeating section's rows as numbered lines under the labels people saw:
+ * `1. Item: Pen; Qty: 3`. Empty answers are left out; '' when there are no rows.
+ */
+export function rowsText(children: Pick<FormField, 'name' | 'label' | 'dataSource'>[], value: unknown): string {
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((row, i) => {
+      const cells = children
+        .map((c) => [c.label || c.name, answerText(c, isRow(row) ? row[c.name] : undefined)] as const)
+        .filter(([, text]) => text !== '')
+        .map(([label, text]) => `${label}: ${text}`);
+      return `${i + 1}. ${cells.join('; ')}`;
+    })
+    .join('\n');
+}

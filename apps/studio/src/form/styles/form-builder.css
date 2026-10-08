@@ -917,3 +917,21 @@
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 16px;
 }
+
+/* A repeating section's rows in the record view. */
+.fb-rows-table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.fb-rows-table th,
+.fb-rows-table td {
+  padding: 4px 10px 4px 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+.fb-rows-table th {
+  font-weight: 600;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}

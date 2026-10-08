@@ -3,7 +3,7 @@ import { Plus, X } from 'lucide-react';
 import { Button } from '@ui/button';
 import { Input } from '@ui/input';
 import type { FormDefinition, FormField } from '../../types';
-import { isBooleanField, isNumberField, isOptionField, isValueField } from '../../engine';
+import { answerFields, isBooleanField, isNumberField, isOptionField, isValueField } from '../../engine';
 import type { FieldFilter, FieldFilterOp } from '../../adapters/workflow';
 import { ChoiceSelect } from '../../builder/components/settings';
 
@@ -32,7 +32,7 @@ const staticOptions = (f: FormField | undefined) => (f?.dataSource?.type === 'ST
 /** Filters on the selected form's answers and work fields ("Business is Denim", "Work: Root cause is filled in"). */
 export function FieldFilters({ form, value, onChange }: { form: FormDefinition; value: FieldFilter[]; onChange: (ff: FieldFilter[]) => void }) {
   const fields: FormField[] = [
-    ...form.fields.filter((f) => isValueField(f) && !['HIDDEN', 'CAPTCHA', 'FILE'].includes(f.type)),
+    ...answerFields(form.fields).filter((f) => !['HIDDEN', 'CAPTCHA', 'FILE', 'REPEAT'].includes(f.type)),
     ...(form.workflow?.workFields ?? []).filter(isValueField).map((f) => ({ ...f, name: `$work.${f.name}`, label: `Work: ${f.label || f.name}` })),
   ];
   const [draft, setDraft] = useState<FieldFilter | null>(null);

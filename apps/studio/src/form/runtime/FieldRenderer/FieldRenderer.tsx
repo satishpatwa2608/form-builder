@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { FormField } from '../../types';
 import { childrenOf, isPrefillLocked, ROOT, styleClass } from '../../engine';
-import { useFormRuntime } from '../FormRuntimeContext';
+import { useFormRuntime, useRowPath } from '../FormRuntimeContext';
 import { UnsupportedField } from '../fields/SimpleFields';
 import { getFieldComponent } from './field-registry';
 
@@ -13,10 +13,14 @@ import { getFieldComponent } from './field-registry';
  */
 export function FieldRenderer({ field }: { field: FormField }) {
   const { states, systemContext, readOnly } = useFormRuntime();
-  const state = states.get(field.name);
+  // In a row of a repeating section the field is this row's copy: `lines.0.qty` in form state, rules and errors.
+  const row = useRowPath();
+  const key = row ? `${row}.${field.name}` : field.name;
+  const state = states.get(key);
   if (state && !state.visible) return null;
   // Locked to the signed-in user, switched off by a rule, or calculated: read-only (the server enforces it too).
-  const shown = isPrefillLocked(field, systemContext) || readOnly.has(field.name) ? { ...field, disabled: true } : field;
+  const locked = isPrefillLocked(field, systemContext) || readOnly.has(key);
+  const shown = row || locked ? { ...field, name: key, ...(locked ? { disabled: true } : {}) } : field;
 
   const Component = getFieldComponent(field.type) ?? UnsupportedField;
   if (field.type === 'HIDDEN') return <Component field={shown} required={false} />;
@@ -26,7 +30,7 @@ export function FieldRenderer({ field }: { field: FormField }) {
     .join(' ');
 
   return (
-    <div data-field-name={field.name} className={className}>
+    <div data-field-name={key} className={className}>
       <Component field={shown} required={state?.required ?? !!field.required} />
     </div>
   );

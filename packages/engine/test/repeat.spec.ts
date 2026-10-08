@@ -13,6 +13,7 @@ import {
   MAX_ROWS,
   plainAnswer,
   rowsOf,
+  rowsText,
   validateFormDefinition,
   valueAt,
   valuesFromPayload,
@@ -242,6 +243,11 @@ describe('repeating section — validation and payload', () => {
 
   it('reads as text', () => {
     expect(plainAnswer([{ item: 'Pen', qty: 3 }, { item: 'Ink', qty: 1 }])).toBe('item: Pen; qty: 3 | item: Ink; qty: 1');
+    const children = formShape(fields).repeats[0].valueChildren.map((c) => (c.name === 'kind' ? c : { ...c, label: c.name.toUpperCase() }));
+    expect(rowsText(children, [{ item: 'Pen', kind: 'GOODS', qty: 3, serial: '' }, { item: 'Ink', qty: 1 }, 'junk'])).toBe(
+      '1. ITEM: Pen; kind: Goods; QTY: 3\n2. ITEM: Ink; QTY: 1\n3. ',
+    );
+    expect(rowsText(children, undefined)).toBe('');
   });
 });
 
@@ -257,15 +263,15 @@ describe('repeating section — in a definition', () => {
     expect(messages([{ ...lines, validation: { min: 1, max: 20 } } as never, qty as never])).toEqual([]);
   });
 
-  it('needs a label and a field inside', () => {
-    expect(messages([{ ...lines, label: undefined, props: {} } as never])).toEqual(['"lines" needs a label', 'Add at least one field inside "lines"']);
+  it('needs a label; one with no fields yet is allowed, like a button with no link', () => {
+    expect(messages([{ ...lines, label: undefined, props: {} } as never])).toEqual(['"lines" needs a label']);
   });
 
   it('refuses what cannot repeat', () => {
     const inside = (f: Record<string, unknown>) => messages([{ ...lines, props: {} } as never, qty as never, { id: 'x', name: 'x', label: 'X', parentId: 'r', ...f } as never]);
     expect(inside({ type: 'FILE' })).toEqual(['A FILE field cannot go inside the repeating section "lines"']);
     expect(inside({ type: 'SIGNATURE' })).toEqual(['A SIGNATURE field cannot go inside the repeating section "lines"']);
-    expect(inside({ type: 'REPEAT' })).toEqual(['A REPEAT field cannot go inside the repeating section "lines"', 'Add at least one field inside "x"']);
+    expect(inside({ type: 'REPEAT' })).toEqual(['A REPEAT field cannot go inside the repeating section "lines"']);
     expect(inside({ type: 'TEXT', prefill: { source: 'USER_NAME' } })).toEqual(['"x" is filled from the system, which does not work inside the repeating section "lines"']);
     expect(inside({ type: 'DROPDOWN', dataSource: { type: 'API', api: { url: 'u', method: 'GET', valueField: 'a', labelField: 'b' } } })).toEqual([
       'Use a fixed option list inside the repeating section "lines"',

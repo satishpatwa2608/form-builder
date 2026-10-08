@@ -18,6 +18,7 @@ import {
   MousePointerClick,
   PanelsTopLeft,
   PenLine,
+  Rows3,
   ScrollText,
   SquarePlus,
   ToggleLeft,
@@ -50,6 +51,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: 'SECTION', label: 'Section', icon: PanelTop },
       { type: 'TABS', label: 'Tabs', icon: PanelsTopLeft },
       { type: 'ACCORDION', label: 'Accordion', icon: ListCollapse },
+      { type: 'REPEAT', label: 'Repeating section', icon: Rows3 },
     ],
   },
   {
@@ -119,6 +121,7 @@ const DEFAULT_LABEL: Partial<Record<FieldType, string>> = {
   SWITCH: 'Yes / no',
   SIGNATURE: 'Signature',
   CONSENT: 'I accept the terms',
+  REPEAT: 'Items',
 };
 
 /** `dropdown_1`, `dropdown_2`, ... - the first name of that pattern not already taken. */
@@ -205,6 +208,10 @@ export function createField(type: FieldType, takenNames: Iterable<string>): Form
       break;
     case 'TABS':
       field.props = { orientation: 'horizontal' };
+      break;
+    case 'REPEAT':
+      field.validation = { min: 1 };
+      field.props = { addLabel: 'Add another', layout: 'cards' };
       break;
   }
   return field;

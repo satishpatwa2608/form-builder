@@ -43,3 +43,11 @@ export function useFormRuntime(): FormRuntimeValue {
   if (!value) throw new Error('useFormRuntime must be used inside <FormContainer>');
   return value;
 }
+
+/**
+ * Set around each row of a repeating section: the path of that row in form
+ * state (`lines.0`). Fields rendered inside read and write `lines.0.<name>`.
+ */
+const RowContext = createContext<string | null>(null);
+export const RowProvider = RowContext.Provider;
+export const useRowPath = (): string | null => useContext(RowContext);

@@ -160,6 +160,36 @@ describe('useFormBuilderStore', () => {
     expect(validateFormDefinition(state().form, 'publish').success).toBe(true);
   });
 
+  it('a repeating section starts with a field and takes only what can repeat', () => {
+    const repeat = state().addField('REPEAT');
+    const inside = () => state().form!.fields.filter((f) => f.parentId === repeat);
+    expect(inside().map((f) => [f.type, f.label])).toEqual([['TEXT', 'Item']]);
+    expect(validateFormDefinition(state().form, 'publish').success).toBe(true);
+
+    expect(state().addField('NUMBER', { parentId: repeat, column: 0 })).not.toBe('');
+    for (const type of ['FILE', 'SIGNATURE', 'SECTION', 'REPEAT', 'CAPTCHA', 'HIDDEN'] as const) {
+      expect(state().addField(type, { parentId: repeat, column: 0 }), type).toBe('');
+    }
+    expect(inside()).toHaveLength(2);
+
+    // Columns may go in, and then the same limits apply inside them.
+    const columns = state().addField('COLUMNS', { parentId: repeat, column: 0 });
+    expect(columns).not.toBe('');
+    expect(state().addField('FILE', { parentId: columns, column: 1 })).toBe('');
+    expect(state().addField('DATE', { parentId: columns, column: 1 })).not.toBe('');
+
+    // Nothing that cannot repeat can be dragged in either, alone or inside a block.
+    const upload = state().addField('FILE');
+    state().moveField(upload, { parentId: repeat, column: 0 });
+    expect(state().form!.fields.find((f) => f.id === upload)!.parentId).toBeUndefined();
+    const outer = state().addField('COLUMNS');
+    const sign = state().addField('SIGNATURE', { parentId: outer, column: 0 });
+    state().moveField(outer, { parentId: repeat, column: 0 });
+    expect(state().form!.fields.find((f) => f.id === outer)!.parentId).toBeUndefined();
+    expect(state().form!.fields.find((f) => f.id === sign)!.parentId).toBe(outer);
+    expect(validateFormDefinition(state().form, 'publish').success).toBe(true);
+  });
+
   it('retyping a field key never merges its rules with another field\'s', () => {
     const a = state().addField('NUMBER');
     const ab = state().addField('NUMBER');

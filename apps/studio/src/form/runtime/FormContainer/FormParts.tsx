@@ -1,7 +1,7 @@
 import type { FieldErrors } from 'react-hook-form';
 import { Button } from '@ui/button';
 import type { FormDefinition } from '../../types';
-import { fieldLabel, safeImageUrl } from '../../engine';
+import { fieldLabel, formShape, isRepeat, safeImageUrl } from '../../engine';
 import { errorText } from '../styles';
 
 export function FormHeader({ definition }: { definition: FormDefinition }) {
@@ -61,9 +61,46 @@ interface FormErrorSummaryProps {
   onSelect: (name: string) => void;
 }
 
+interface Problem {
+  /** What to focus: a field name, or `section.row.field`. */
+  key: string;
+  label: string;
+  message: string;
+}
+
+const messageOf = (error: unknown): string | undefined => {
+  const message = (error as { message?: unknown } | undefined)?.message;
+  return typeof message === 'string' ? message : undefined;
+};
+
+/** Every error in field order. A repeating section lists its own problem, then each row's. */
+function problemsOf(definition: FormDefinition, errors: FieldErrors): Problem[] {
+  const shape = formShape(definition.fields);
+  const problems: Problem[] = [];
+  for (const f of shape.top) {
+    const error = errors[f.name] as unknown;
+    if (!error) continue;
+    if (!isRepeat(f)) {
+      problems.push({ key: f.name, label: fieldLabel(f), message: messageOf(error) ?? 'Invalid' });
+      continue;
+    }
+    const own = messageOf((error as { root?: unknown }).root) ?? (Array.isArray(error) ? undefined : messageOf(error));
+    if (own) problems.push({ key: f.name, label: fieldLabel(f), message: own });
+    const children = shape.repeats.find((r) => r.field === f)?.valueChildren ?? [];
+    const rows = Array.isArray(error) ? (error as unknown[]) : [];
+    rows.forEach((row, i) => {
+      for (const c of children) {
+        const message = messageOf((row as Record<string, unknown> | undefined)?.[c.name]);
+        if (message) problems.push({ key: `${f.name}.${i}.${c.name}`, label: `${fieldLabel(f)}, row ${i + 1}: ${fieldLabel(c)}`, message });
+      }
+    });
+  }
+  return problems;
+}
+
 /** Shown after a failed submit: every error in field order, each one jumps to its field. */
 export function FormErrorSummary({ definition, errors, onSelect }: FormErrorSummaryProps) {
-  const failed = definition.fields.filter((f) => errors[f.name]);
+  const failed = problemsOf(definition, errors);
   if (!failed.length) return null;
   return (
     <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-4 text-sm">
@@ -71,12 +108,12 @@ export function FormErrorSummary({ definition, errors, onSelect }: FormErrorSumm
         Please fix {failed.length === 1 ? 'this field' : `these ${failed.length} fields`}:
       </p>
       <ul className="mt-2 space-y-2">
-        {failed.map((f) => (
-          <li key={f.id}>
-            <button type="button" className="text-red-700 cursor-pointer" onClick={() => onSelect(f.name)}>
-              <span style={{ textDecoration: 'underline' }}>{fieldLabel(f)}</span>
+        {failed.map((p) => (
+          <li key={p.key}>
+            <button type="button" className="text-red-700 cursor-pointer" onClick={() => onSelect(p.key)}>
+              <span style={{ textDecoration: 'underline' }}>{p.label}</span>
               {': '}
-              <span style={errorText}>{String(errors[f.name]?.message ?? 'Invalid')}</span>
+              <span style={errorText}>{p.message}</span>
             </button>
           </li>
         ))}

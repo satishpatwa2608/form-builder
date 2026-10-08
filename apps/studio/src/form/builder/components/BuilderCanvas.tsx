@@ -45,6 +45,7 @@ function cardTitle(field: FormField) {
   if (field.type === 'COLUMNS') return `${columnWeights(field).length} columns`;
   if (field.label) return field.label;
   if (field.type === 'TABS' || field.type === 'ACCORDION') return field.type === 'TABS' ? 'Tabs' : 'Accordion';
+  if (field.type === 'REPEAT') return 'Repeating section';
   if (field.type === 'IMAGE') return typeof field.props?.alt === 'string' && field.props.alt ? field.props.alt : 'Picture';
   return field.type === 'SECTION' ? 'Untitled section' : <em>No label</em>;
 }
@@ -151,7 +152,7 @@ function FieldCard({
           ))}
         </div>
       )}
-      {(field.type === 'SECTION' || isSectionGroup(field)) && (
+      {(field.type === 'SECTION' || field.type === 'REPEAT' || isSectionGroup(field)) && (
         <div className="fb-section-body">
           <CanvasList parentId={field.id} column={0} sectionsOnly={isSectionGroup(field)} {...shared} />
         </div>

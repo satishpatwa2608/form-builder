@@ -1,7 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ui/tabs';
 import { MultiSelect } from '@ui/multiselect';
 import type { CaptchaConfig, FieldType, FormDefinition, FormField, SystemFieldSource, UserPrefillSource, ValidationConfig } from '../../types';
-import { columnWeights, isBooleanField, isContainerField, isListField, isNumberField, isOptionField, isSectionGroup, isValueField, paramReferences, safeImageUrl } from '../../engine';
+import { formShape, isRepeat, isRowField, MAX_ROWS, columnWeights, isBooleanField, isContainerField, isListField, isNumberField, isOptionField, isSectionGroup, isValueField, paramReferences, safeImageUrl } from '../../engine';
 import { COLUMN_PRESETS, DEFAULT_CAPTCHA_CONFIG, paletteItem } from '../field-catalog';
 import { useStyles } from '../../adapters/styles/style-master';
 import { ConditionEditor, defaultCondition } from './ConditionEditor';
@@ -213,6 +213,61 @@ function SectionSettings({ field, onChange }: Pick<PanelProps, 'field' | 'onChan
   );
 }
 
+/** A repeating section: its title, how many rows, how rows are laid out and which numbers are totalled. */
+function RepeatSettings({ field, form, onChange }: Pick<PanelProps, 'field' | 'form' | 'onChange'>) {
+  const props = field.props ?? {};
+  const v = field.validation ?? {};
+  const numbers = (formShape(form.fields).repeats.find((r) => r.field.id === field.id)?.valueChildren ?? []).filter(isNumberField);
+  const totals = new Set(Array.isArray(props.totals) ? (props.totals as string[]) : []);
+  const limits = (changes: Partial<ValidationConfig>) => {
+    const next = { ...v, ...changes };
+    onChange({ validation: next.min === undefined && next.max === undefined && !next.messages ? undefined : next });
+  };
+  return (
+    <>
+      <TextSetting label="Title" value={field.label} onChange={(label) => onChange({ label })} />
+      <TextSetting label="Help text" multiline value={field.helpText} onChange={(helpText) => onChange({ helpText: helpText || undefined })} />
+      <TextSetting label="Add button text" value={typeof props.addLabel === 'string' ? props.addLabel : ''} placeholder="Add another" onChange={(addLabel) => onChange({ props: { ...props, addLabel } })} />
+      <div className="fb-row">
+        <NumberSetting label="Rows at least" min={0} value={v.min} onChange={(min) => limits({ min })} />
+        <NumberSetting label="Rows at most" min={1} value={v.max} onChange={(max) => limits({ max: max === undefined ? undefined : Math.min(max, MAX_ROWS) })} />
+      </div>
+      <SelectSetting
+        label="Rows look like"
+        value={props.layout === 'table' ? 'table' : 'cards'}
+        options={[
+          { label: 'Cards, one under another', value: 'cards' },
+          { label: 'A table, one line per row', value: 'table' },
+        ]}
+        hint="A table suits a few short fields. Phones always show cards."
+        onChange={(layout) => onChange({ props: { ...props, layout } })}
+      />
+      {numbers.length > 0 && (
+        <Setting label="Show a total of" hint="Shown under the rows. To save a total with the answers, add a rule: sum(field).">
+          {() => (
+            <div className="fb-settings" style={{ gap: 6 }}>
+              {numbers.map((n) => (
+                <SwitchSetting
+                  key={n.id}
+                  label={n.label || n.name}
+                  checked={totals.has(n.name)}
+                  onChange={(on) => {
+                    const next = new Set(totals);
+                    if (on) next.add(n.name);
+                    else next.delete(n.name);
+                    onChange({ props: { ...props, totals: numbers.map((x) => x.name).filter((name) => next.has(name)) } });
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </Setting>
+      )}
+      <p className="fb-muted">People add a copy of the fields inside for every row. Uploads, signatures and other sections cannot go inside.</p>
+    </>
+  );
+}
+
 function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: PanelProps) {
   const hidden = field.type === 'HIDDEN';
   if (isContainerField(field)) {
@@ -220,6 +275,7 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: Panel
       <div className="fb-settings">
         {field.type === 'COLUMNS' && <ColumnsSettings field={field} form={form} onSetColumns={onSetColumns} />}
         {field.type === 'SECTION' && <SectionSettings field={field} onChange={onChange} />}
+        {field.type === 'REPEAT' && <RepeatSettings field={field} form={form} onChange={onChange} />}
         {isSectionGroup(field) && (
           <>
             <TextSetting label="Name" value={field.label} hint="Read out by screen readers; not shown." onChange={(label) => onChange({ label: label || undefined })} />
@@ -237,7 +293,12 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: Panel
             <p className="fb-muted">Each Section inside is one {field.type === 'TABS' ? 'tab' : 'panel'}: its title is the {field.type === 'TABS' ? 'tab' : 'panel'} name. Drop another Section in to add one.</p>
           </>
         )}
-        <TextSetting label="Block key" value={field.name} onChange={(name) => onChange({ name })} hint="Used by show-when rules. Not submitted." />
+        <TextSetting
+          label="Block key"
+          value={field.name}
+          onChange={(name) => onChange({ name })}
+          hint={field.type === 'REPEAT' ? 'Key in the submitted data: a list with one entry per row.' : 'Used by show-when rules. Not submitted.'}
+        />
       </div>
     );
   }
@@ -353,7 +414,7 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: Panel
         />
       )}
 
-      {PREFILL_TYPES.has(field.type) && <PrefillSettings field={field} onChange={onChange} />}
+      {PREFILL_TYPES.has(field.type) && !isRowField(form.fields, field) && <PrefillSettings field={field} onChange={onChange} />}
       {isValueField(field) && !hidden && (
         <>
           <SwitchSetting label="Required" checked={!!field.required} onChange={(required) => onChange({ required: required || undefined })} />
@@ -430,7 +491,12 @@ function ValidationTab({ field, onChange }: PanelProps) {
 }
 
 function LogicTab({ field, form, onChange }: PanelProps) {
-  const candidates = form.fields.filter((f) => f.id !== field.id && isValueField(f) && f.type !== 'HIDDEN');
+  // A rule tests one answer: not a whole repeating section, and a field in a row only from inside that same section.
+  const shape = formShape(form.fields);
+  const home = shape.repeatOf.get(field.name);
+  const candidates = form.fields.filter(
+    (f) => f.id !== field.id && isValueField(f) && f.type !== 'HIDDEN' && !isRepeat(f) && (!isRowField(form.fields, f) || shape.repeatOf.get(f.name) === home),
+  );
   return (
     <div className="fb-settings">
       <SwitchSetting
@@ -458,7 +524,7 @@ function LogicTab({ field, form, onChange }: PanelProps) {
         </div>
       )}
 
-      {isValueField(field) && field.type !== 'HIDDEN' && field.type !== 'BUTTON' && (
+      {isValueField(field) && field.type !== 'HIDDEN' && field.type !== 'BUTTON' && !isRepeat(field) && !home && (
         <DependencySettings field={field} candidates={candidates} onChange={onChange} />
       )}
     </div>

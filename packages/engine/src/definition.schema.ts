@@ -650,7 +650,6 @@ function checkFields(fields: FormField[], ctx: z.RefinementCtx) {
     }
     if (isRepeat(f)) {
       const children = shape.repeats.find((r) => r.field === f)?.valueChildren ?? [];
-      if (!children.length) issue(i, 'type', `Add at least one field inside "${f.name}"`);
       if (f.validation?.max !== undefined && f.validation.max > MAX_ROWS) issue(i, 'validation', `A repeating section can have at most ${MAX_ROWS} rows`);
       if (f.defaultValue !== undefined) issue(i, 'defaultValue', 'A repeating section has no default value');
       const totals = Array.isArray(f.props?.totals) ? (f.props.totals as unknown[]) : [];

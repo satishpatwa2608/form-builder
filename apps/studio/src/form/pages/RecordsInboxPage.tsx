@@ -3,7 +3,7 @@ import { LayoutGrid, List, Palette } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@ui/button";
 import { Input } from "@ui/input";
-import { isValueField, valuesFromPayload } from "../engine";
+import { answerFields, valuesFromPayload } from "../engine";
 import { useFormDefinitions } from "../adapters/registry/useFormRegistry";
 import {
   INBOX_PAGE_SIZE,
@@ -126,10 +126,11 @@ export default function RecordsInboxPage({
     const def = forms.find((f) => f.id === row.formId);
     if (!def) return "";
     const values = valuesFromPayload(def, row.payload);
-    return def.fields
+    return answerFields(def.fields)
       .filter(
         (f) =>
-          isValueField(f) &&
+          f.type !== "REPEAT" &&
+          f.type !== "SIGNATURE" &&
           f.type !== "HIDDEN" &&
           f.type !== "CAPTCHA" &&
           f.type !== "FILE" &&

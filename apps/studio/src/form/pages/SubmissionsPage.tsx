@@ -4,8 +4,8 @@ import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@ui/button';
 import { SmartTable, type SmartTableColumn } from '@ui/smart-table';
-import type { FormDefinition } from '../types';
-import { csvCell, isValueField, plainAnswer } from '../engine';
+import type { FormDefinition, FormField } from '../types';
+import { answerFields, csvCell, formShape, plainAnswer, rowsText } from '../engine';
 import { useFormDoc } from '../adapters/registry/useFormRegistry';
 import { fetchAllSubmissions, fileLink, submissionsAvailable, useSubmissions, type SubmissionRow } from '../adapters/submissions';
 import { printSubmission } from './print-submission';
@@ -23,6 +23,10 @@ const keyOf = (def: FormDefinition, name: string) => def.submission.mapping?.[na
 
 const display = plainAnswer;
 
+/** One answer as text; a repeating section's rows are listed under the labels of its fields. */
+const answer = (def: FormDefinition, f: FormField, value: unknown): string =>
+  f.type === 'REPEAT' ? rowsText(formShape(def.fields).repeats.find((r) => r.field.id === f.id)?.valueChildren ?? [], value) : display(value);
+
 /**
  * What came in for one form (all versions), newest first. Columns come from
  * the latest version's fields, so a new form needs no screen changes.
@@ -37,7 +41,7 @@ export default function SubmissionsPage({ formId, onBack }: SubmissionsPageProps
 
   const def = doc?.definition;
   const fields = useMemo(
-    () => (def ? def.fields.filter((f) => isValueField(f) && f.type !== 'HIDDEN' && f.type !== 'CAPTCHA') : []),
+    () => (def ? answerFields(def.fields).filter((f) => f.type !== 'HIDDEN' && f.type !== 'CAPTCHA') : []),
     [def],
   );
 
@@ -56,7 +60,7 @@ export default function SubmissionsPage({ formId, onBack }: SubmissionsPageProps
       const rows = await fetchAllSubmissions(formId!);
       const header = ['Submitted at', 'Version', 'Channel', 'Submitted by', ...fields.map((f) => f.label || f.name)];
       const lines = rows.map((r) =>
-        [r.createdAt, r.formVersion, r.channel, r.submittedBy, ...fields.map((f) => display(r.payload[keyOf(def, f.name)]))].map(csvCell).join(','),
+        [r.createdAt, r.formVersion, r.channel, r.submittedBy, ...fields.map((f) => answer(def, f, r.payload[keyOf(def, f.name)]))].map(csvCell).join(','),
       );
       const blob = new Blob([`\ufeff${[header.map(csvCell).join(','), ...lines].join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
       const a = document.createElement('a');
@@ -89,7 +93,7 @@ export default function SubmissionsPage({ formId, onBack }: SubmissionsPageProps
                 .filter((x) => x.fieldName === f.name)
                 .map((x) => x.name)
                 .join(', ')
-            : display(row.payload[keyOf(def, f.name)]),
+            : answer(def, f, row.payload[keyOf(def, f.name)]),
       })),
     });
   };
@@ -125,7 +129,7 @@ export default function SubmissionsPage({ formId, onBack }: SubmissionsPageProps
               </span>
             );
           }
-          return display(def ? row.payload[keyOf(def, f.name)] : undefined);
+          return def ? answer(def, f, row.payload[keyOf(def, f.name)]) : '';
         },
       }),
     ),

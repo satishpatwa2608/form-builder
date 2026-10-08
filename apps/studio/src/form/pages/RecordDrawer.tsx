@@ -16,8 +16,10 @@ import {
   answerText as fieldAnswerText,
   findStatus,
   isSignature,
-  isValueField,
+  answerFields as topAnswerFields,
+  formShape,
   plainAnswer,
+  rowsOf,
   valuesFromPayload,
   workflowOf,
 } from "../engine";
@@ -53,6 +55,36 @@ export const displayAnswer = (value: unknown): string => plainAnswer(value) || "
 /** Option values -> their labels, so the answers read like the form. */
 export function answerText(def: FormDefinition, name: string, value: unknown): string {
   return fieldAnswerText(def.fields.find((x) => x.name === name), value) || "—";
+}
+
+/** A repeating section's rows, one line each, under the labels people saw. */
+function RowsTable({ def, repeat, rows }: { def: FormDefinition; repeat: FormDefinition["fields"][number]; rows: Record<string, unknown>[] }) {
+  const columns = (formShape(def.fields).repeats.find((r) => r.field.id === repeat.id)?.valueChildren ?? []).filter((c) => rows.some((row) => plainAnswer(row[c.name]) !== ""));
+  if (!rows.length || !columns.length) return <>—</>;
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table className="fb-rows-table">
+        <thead>
+          <tr>
+            {columns.map((c) => (
+              <th key={c.id} scope="col">
+                {c.label || c.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i}>
+              {columns.map((c) => (
+                <td key={c.id}>{fieldAnswerText(c, row[c.name]) || "—"}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export const PRIORITY_LABEL: Record<Priority, string> = { LOW: "Low", MEDIUM: "Medium", HIGH: "High", CRITICAL: "Critical" };
@@ -342,8 +374,8 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
   const wf = def ? workflowOf(def) : undefined;
   const values = def && record ? valuesFromPayload(def, record.payload) : {};
   const fields = def
-    ? def.fields.filter(
-        (f) => isValueField(f) && f.type !== "HIDDEN" && f.type !== "CAPTCHA",
+    ? topAnswerFields(def.fields).filter(
+        (f) => f.type !== "HIDDEN" && f.type !== "CAPTCHA",
       )
     : [];
   const overdue = !!record?.dueAt && new Date(record.dueAt) < new Date();
@@ -532,6 +564,8 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
                       {f.type === "SIGNATURE" && isSignature(values[f.name]) ? (
                         // Checked to be a PNG data URL, so it is safe as an image source.
                         <img src={values[f.name] as string} alt={`${f.label || f.name}, signed`} style={{ maxWidth: 240, border: "1px solid var(--border)", borderRadius: 6, background: "#fff" }} />
+                      ) : f.type === "REPEAT" ? (
+                        <RowsTable def={def} repeat={f} rows={rowsOf(values[f.name])} />
                       ) : f.type === "FILE" ? (
                         displayAnswer(values[f.name])
                       ) : (

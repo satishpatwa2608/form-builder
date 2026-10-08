@@ -269,3 +269,109 @@
   font-size: 13px;
   color: var(--muted-foreground);
 }
+
+/* Repeating section: the same fields again for every row. */
+.fp-repeat {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px 18px;
+}
+.fp-repeat__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+}
+.fp-repeat__fields {
+  flex: 1;
+  min-width: 0;
+}
+.fp-repeat__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: #b91c1c;
+  cursor: pointer;
+}
+.fp-repeat__remove:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.fp-repeat__remove:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.fp-repeat__totals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 24px;
+  margin: 0;
+  font-size: 14px;
+}
+.fp-repeat__totals div {
+  display: flex;
+  gap: 8px;
+}
+.fp-repeat__totals dt {
+  color: var(--muted-foreground);
+}
+.fp-repeat__totals dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.fp-repeat__cols {
+  display: none;
+}
+/* As a table on wide screens: one line per row, column names once at the top. On phones it stays stacked, with labels. */
+@media (min-width: 641px) {
+  .fp-repeat--table .fp-repeat__cols {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 0 54px 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+  .fp-repeat--table .fp-repeat__cols > span:last-child {
+    display: none;
+  }
+  .fp-repeat--table .fp-repeat__row {
+    padding: 8px 12px;
+    align-items: center;
+  }
+  .fp-repeat--table .fp-repeat__fields > .fp-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-template-columns: none;
+    gap: 10px;
+  }
+  .fp-repeat--table .fp-repeat__fields .fp-cell {
+    grid-column: auto;
+    width: auto;
+  }
+  /* The column names above stand in for each field's own label, which stays for screen readers. */
+  .fp-repeat--table .fp-repeat__fields label[data-slot='form-label'] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}

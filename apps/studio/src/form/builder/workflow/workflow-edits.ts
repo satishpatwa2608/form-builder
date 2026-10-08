@@ -10,7 +10,7 @@ import type {
   WorkflowConfig,
   WorkflowStatus,
 } from '../../types';
-import { isValueField, stepKey } from '../../engine';
+import { answerFields as topAnswerFields, isValueField, stepKey } from '../../engine';
 import type { CustomWorkflow, Person } from '../../adapters/workflow';
 
 /** Pure edits behind the Workflow dialog, kept out of the components so they're easy to test. */
@@ -302,7 +302,7 @@ export function newAction(type: AutomationAction['type'], form: FormDefinition):
 
 /** Fields whose answers automations can test and put in messages. */
 export const answerFields = (form: FormDefinition): FormField[] =>
-  form.fields.filter((f) => isValueField(f) && f.type !== 'CAPTCHA' && f.type !== 'FILE');
+  topAnswerFields(form.fields).filter((f) => f.type !== 'CAPTCHA' && f.type !== 'FILE' && f.type !== 'SIGNATURE');
 
 /** The record's status as a pseudo-field, so the condition editor can test it like an answer. */
 export function statusPseudoField(wf: WorkflowConfig | undefined): FormField | undefined {
