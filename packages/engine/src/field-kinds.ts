@@ -1,13 +1,35 @@
 import type { FieldType, FormField } from './types';
 
 /** Layout containers - hold other fields. */
-const CONTAINER_TYPES: ReadonlySet<FieldType> = new Set(['COLUMNS', 'SECTION']);
+const CONTAINER_TYPES: ReadonlySet<FieldType> = new Set(['COLUMNS', 'SECTION', 'TABS', 'ACCORDION']);
+
+/** Containers whose direct children must all be SECTIONs (each one a tab or a panel). */
+const SECTION_GROUP_TYPES: ReadonlySet<FieldType> = new Set(['TABS', 'ACCORDION']);
 
 /** Types that render something but never carry a value. */
-const NON_VALUE_TYPES: ReadonlySet<FieldType> = new Set(['HTML', 'BUTTON', ...CONTAINER_TYPES]);
+const NON_VALUE_TYPES: ReadonlySet<FieldType> = new Set(['HTML', 'BUTTON', 'IMAGE', ...CONTAINER_TYPES]);
 
 /** Types whose value comes from a data source. */
-const OPTION_TYPES: ReadonlySet<FieldType> = new Set(['RADIO', 'DROPDOWN', 'MULTI_SELECT']);
+const OPTION_TYPES: ReadonlySet<FieldType> = new Set(['RADIO', 'DROPDOWN', 'MULTI_SELECT', 'CHECKBOX_GROUP']);
+
+const BOOLEAN_TYPES: ReadonlySet<FieldType> = new Set(['CHECKBOX', 'SWITCH', 'CONSENT']);
+const LIST_TYPES: ReadonlySet<FieldType> = new Set(['MULTI_SELECT', 'CHECKBOX_GROUP']);
+const NUMBER_TYPES: ReadonlySet<FieldType> = new Set(['NUMBER', 'STEPPER']);
+
+/** Stored as true/false. */
+export const isBooleanField = (field: Pick<FormField, 'type'>): boolean => BOOLEAN_TYPES.has(field.type);
+/** Stored as a list of option values. */
+export const isListField = (field: Pick<FormField, 'type'>): boolean => LIST_TYPES.has(field.type);
+/** Stored as a number. */
+export const isNumberField = (field: Pick<FormField, 'type'>): boolean => NUMBER_TYPES.has(field.type);
+export const isSectionGroup = (field: Pick<FormField, 'type'>): boolean => SECTION_GROUP_TYPES.has(field.type);
+
+/** What a SIGNATURE value must look like: a PNG the browser drew, nothing else. */
+export const SIGNATURE_PATTERN = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/;
+/** About 110 KB of image; a signature pad's strokes are a small fraction of that. */
+export const MAX_SIGNATURE_LENGTH = 150_000;
+export const isSignature = (value: unknown): value is string =>
+  typeof value === 'string' && value.length <= MAX_SIGNATURE_LENGTH && SIGNATURE_PATTERN.test(value);
 
 export const isValueField = (field: Pick<FormField, 'type'>): boolean =>
   !NON_VALUE_TYPES.has(field.type);
@@ -27,17 +49,10 @@ export function isEmptyValue(value: unknown): boolean {
 
 /** The value a field starts with when neither a default nor a system source applies. */
 export function emptyValueFor(type: FieldType): unknown {
-  switch (type) {
-    case 'CHECKBOX':
-      return false;
-    case 'MULTI_SELECT':
-    case 'FILE':
-      return [];
-    case 'NUMBER':
-      return undefined;
-    default:
-      return '';
-  }
+  if (BOOLEAN_TYPES.has(type)) return false;
+  if (LIST_TYPES.has(type) || type === 'FILE') return [];
+  if (NUMBER_TYPES.has(type)) return undefined;
+  return '';
 }
 
 export const fieldLabel = (field: Pick<FormField, 'label' | 'name'>): string =>

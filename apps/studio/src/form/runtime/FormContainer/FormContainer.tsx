@@ -33,6 +33,7 @@ import type { CaptchaWidget } from '../../adapters/captcha/captcha-provider';
 import { usePublishedForm } from '../../adapters/registry/useFormRegistry';
 import { FormRuntimeProvider, type CaptchaMode } from '../FormRuntimeContext';
 import { FieldList } from '../FieldRenderer/FieldRenderer';
+import { REVEAL_EVENT } from '../fields/ContainerFields';
 import '../../styles/form-runtime.css';
 import { FormActions, FormErrorSummary, FormHeader, FormSuccess } from './FormParts';
 import { errorText } from '../styles';
@@ -391,8 +392,16 @@ function FormRuntime({
       return;
     }
     const wrapper = containerRef.current?.querySelector<HTMLElement>(`[data-field-name="${name}"]`);
-    wrapper?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-    wrapper?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    if (!wrapper) return;
+    // It may sit on a tab or in a panel that is not showing: have those open first.
+    const wasHidden = !!wrapper.closest('[hidden]');
+    wrapper.dispatchEvent(new CustomEvent(REVEAL_EVENT, { bubbles: true }));
+    const focus = () => {
+      wrapper.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      wrapper.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    };
+    if (wasHidden) setTimeout(focus, 0);
+    else focus();
   };
 
   useEffect(() => {

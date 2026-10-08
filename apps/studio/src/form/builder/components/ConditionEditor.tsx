@@ -3,7 +3,7 @@ import { Input } from '@ui/input';
 import { Button } from '@ui/button';
 import { Plus, Trash2 } from 'lucide-react';
 import type { Condition, ConditionLeaf, ConditionOperator, FormField, SelectOption } from '../../types';
-import { isOptionField } from '../../engine';
+import { isBooleanField, isNumberField, isOptionField } from '../../engine';
 import { ChoiceSelect, type Choice } from './settings';
 import { VISIBLE_BORDER } from '../../runtime/styles';
 
@@ -26,10 +26,11 @@ const OPERATOR_LABEL: Record<ConditionOperator, string> = {
 export function operatorsFor(field: FormField | undefined): ConditionOperator[] {
   if (!field) return ['equals'];
   if (isOptionField(field)) return ['equals', 'notEquals', 'in', 'notIn', 'isEmpty', 'isNotEmpty'];
+  if (isBooleanField(field)) return ['equals'];
+  if (field.type === 'SIGNATURE') return ['isEmpty', 'isNotEmpty'];
   switch (field.type) {
-    case 'CHECKBOX':
-      return ['equals'];
     case 'NUMBER':
+    case 'STEPPER':
     case 'DATE':
     case 'DATETIME':
       return ['equals', 'notEquals', 'greaterThan', 'lessThan', 'greaterThanOrEqual', 'lessThanOrEqual', 'isEmpty', 'isNotEmpty'];
@@ -47,7 +48,8 @@ const staticOptions = (field: FormField): SelectOption[] =>
 /** A condition to start from when the user switches a rule on. */
 export function defaultCondition(target: FormField | undefined): ConditionLeaf {
   if (!target) return { field: '', operator: 'equals' };
-  if (target.type === 'CHECKBOX') return { field: target.name, operator: 'equals', value: true };
+  if (isBooleanField(target)) return { field: target.name, operator: 'equals', value: true };
+  if (target.type === 'SIGNATURE') return { field: target.name, operator: 'isNotEmpty' };
   const first = staticOptions(target)[0];
   return { field: target.name, operator: 'equals', value: first?.value ?? '' };
 }
@@ -55,7 +57,7 @@ export function defaultCondition(target: FormField | undefined): ConditionLeaf {
 function ValueInput({ target, leaf, onChange }: { target: FormField; leaf: ConditionLeaf; onChange: (value: unknown) => void }) {
   if (NO_VALUE.has(leaf.operator)) return null;
 
-  if (target.type === 'CHECKBOX') {
+  if (isBooleanField(target)) {
     return (
       <ChoiceSelect<'true' | 'false'>
         ariaLabel="Value"
@@ -103,7 +105,7 @@ function ValueInput({ target, leaf, onChange }: { target: FormField; leaf: Condi
     );
   }
 
-  const inputType = target.type === 'NUMBER' ? 'number' : target.type === 'DATE' ? 'date' : target.type === 'DATETIME' ? 'datetime-local' : 'text';
+  const inputType = isNumberField(target) ? 'number' : target.type === 'DATE' ? 'date' : target.type === 'DATETIME' ? 'datetime-local' : 'text';
   return (
     <Input
       aria-label="Value"

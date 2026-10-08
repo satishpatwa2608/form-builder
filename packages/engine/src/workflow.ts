@@ -1,3 +1,4 @@
+import { plainAnswer } from './answer-text';
 import type { FormDefinition, FormValues, Priority, WorkflowAction, WorkflowConfig, WorkflowStatus } from './types';
 import { evaluateCondition } from './evaluate-condition';
 
@@ -129,13 +130,7 @@ export function conditionValues(
   return out;
 }
 
-function display(v: unknown): string {
-  if (v === undefined || v === null) return '';
-  if (Array.isArray(v)) return v.map((x) => (x && typeof x === 'object' ? (x as { name?: string }).name ?? '' : String(x))).join(', ');
-  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
-  if (typeof v === 'object') return JSON.stringify(v).slice(0, 500);
-  return String(v);
-}
+const display = plainAnswer;
 
 /**
  * Fill {{field}}, {{$record.x}}, {{$form.x}}. `html` escapes every value, so a

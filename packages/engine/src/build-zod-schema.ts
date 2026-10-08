@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { FormDefinition, FormField, FormValues, SystemContext } from './types';
-import { fieldLabel, isEmptyValue, isValueField } from './field-kinds';
+import { fieldLabel, isBooleanField, isEmptyValue, isSignature, isValueField } from './field-kinds';
 import { computeFormState } from './form-state';
 
 /** Used when a PHONE field has no pattern of its own. */
@@ -55,21 +55,27 @@ export function buildFieldValueSchema(field: FormField): z.ZodType | null {
       }
       return s;
     }
-    case 'NUMBER': {
+    case 'NUMBER':
+    case 'STEPPER': {
       let s = z.number('Enter a number');
       if (v.min !== undefined) s = s.min(v.min, m.min ?? `Must be at least ${v.min}`);
       if (v.max !== undefined) s = s.max(v.max, m.max ?? `Must be at most ${v.max}`);
       return s;
     }
+    case 'SIGNATURE':
+      return z.string().refine(isSignature, 'Sign again');
     case 'DATE':
     case 'DATETIME':
       return z.string().refine(isValidDate, 'Enter a valid date');
     case 'CHECKBOX':
+    case 'SWITCH':
+    case 'CONSENT':
       return z.boolean();
     case 'RADIO':
     case 'DROPDOWN':
       return optionValueSchema(field);
-    case 'MULTI_SELECT': {
+    case 'MULTI_SELECT':
+    case 'CHECKBOX_GROUP': {
       let s = z.array(optionValueSchema(field));
       if (v.min !== undefined) s = s.min(v.min, m.min ?? `Select at least ${v.min}`);
       if (v.max !== undefined) s = s.max(v.max, m.max ?? `Select at most ${v.max}`);
@@ -85,19 +91,27 @@ export function buildFieldValueSchema(field: FormField): z.ZodType | null {
     case 'HIDDEN':
     case 'HTML':
     case 'BUTTON':
+    case 'IMAGE':
     case 'COLUMNS':
     case 'SECTION':
+    case 'TABS':
+    case 'ACCORDION':
       return null;
   }
 }
 
-/** A required checkbox (e.g. consent) is only satisfied when ticked. */
-const isMissing = (field: FormField, value: unknown) =>
-  isEmptyValue(value) || (field.type === 'CHECKBOX' && value !== true);
+/** A required checkbox, switch or consent is only satisfied when on. */
+const isMissing = (field: FormField, value: unknown) => isEmptyValue(value) || (isBooleanField(field) && value !== true);
 
 const requiredMessage = (field: FormField) =>
   field.validation?.messages?.required ??
-  (field.type === 'CAPTCHA' ? 'Please complete the verification' : `${fieldLabel(field)} is required`);
+  (field.type === 'CAPTCHA'
+    ? 'Please complete the verification'
+    : field.type === 'CONSENT'
+      ? 'Please accept to continue'
+      : field.type === 'SIGNATURE'
+        ? 'Please sign'
+        : `${fieldLabel(field)} is required`);
 
 /**
  * FormDefinition -> Zod schema for React Hook Form.

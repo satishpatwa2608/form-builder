@@ -8,6 +8,7 @@
  */
 export * from './types';
 export * from './field-kinds';
+export * from './answer-text';
 export * from './evaluate-condition';
 export * from './expression';
 export * from './form-state';

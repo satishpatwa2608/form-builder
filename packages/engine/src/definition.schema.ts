@@ -4,7 +4,7 @@ import { conditionFields } from './evaluate-condition';
 import { checkExpression, expressionFields, MAX_EXPRESSION_LENGTH } from './expression';
 import { isExpressionCondition } from './form-state';
 import { isTimeZone, safeLinkUrl } from './form-events';
-import { isContainerField, isOptionField, isValueField } from './field-kinds';
+import { isContainerField, isOptionField, isSectionGroup, isValueField } from './field-kinds';
 import { columnCount } from './layout';
 import { isHexColor, safeImageUrl, usedStyleIds } from './style-css';
 import { fieldParents, paramReferences } from './resolve-params';
@@ -126,8 +126,16 @@ const fieldSchema = z.object({
     'HTML',
     'BUTTON',
     'CAPTCHA',
+    'SWITCH',
+    'CHECKBOX_GROUP',
+    'STEPPER',
+    'SIGNATURE',
+    'CONSENT',
+    'IMAGE',
     'COLUMNS',
     'SECTION',
+    'TABS',
+    'ACCORDION',
   ]),
   name: z.string().regex(FIELD_NAME, 'Field name must be letters, digits or _, not starting with a digit'),
   label: z.string().optional(),
@@ -550,7 +558,7 @@ export function findCycle(edges: Map<string, string[]>): string[] | null {
 const PREFILL_TYPES: ReadonlySet<FormField['type']> = new Set(['TEXT', 'EMAIL', 'PHONE']);
 
 /** Types that show no label of their own. Every other field needs one to publish. */
-const UNLABELLED_TYPES: ReadonlySet<FormField['type']> = new Set(['HIDDEN', 'HTML', 'CAPTCHA', 'COLUMNS', 'SECTION']);
+const UNLABELLED_TYPES: ReadonlySet<FormField['type']> = new Set(['HIDDEN', 'HTML', 'CAPTCHA', 'IMAGE', 'COLUMNS', 'SECTION', 'TABS', 'ACCORDION']);
 
 function checkFields(fields: FormField[], ctx: z.RefinementCtx) {
   if (!fields.some((f) => isValueField(f) && f.type !== 'HIDDEN')) {
@@ -616,8 +624,18 @@ function checkFields(fields: FormField[], ctx: z.RefinementCtx) {
       if (f.parentId === f.id) issue(i, 'parentId', 'A field cannot be inside itself');
       else if (!parent) issue(i, 'parentId', 'Is inside a container that no longer exists');
       else if (!isContainerField(parent)) issue(i, 'parentId', `"${parent.name}" is not a Columns or Section block`);
+      else if (isSectionGroup(parent) && f.type !== 'SECTION') issue(i, 'parentId', `Only sections go directly inside "${parent.name}": put this field in one of them`);
       else if ((f.column ?? 0) >= columnCount(parent)) issue(i, 'column', `"${parent.name}" has no column ${(f.column ?? 0) + 1}`);
       if (parent && isContainerField(parent)) layoutEdges.set(f.id, [parent.id]);
+    }
+    // Like a button with no link, a picture with no address yet is allowed: it shows nothing.
+    if (f.type === 'IMAGE' && f.props?.src) {
+      if (!safeImageUrl(f.props.src)) issue(i, 'props', 'The picture needs an https:// or site-relative (/…) address');
+      else if (typeof f.props?.alt !== 'string' || !f.props.alt.trim()) issue(i, 'props', 'Describe the picture for people who cannot see it');
+    }
+    if (f.type === 'CONSENT' && (typeof f.props?.text !== 'string' || !f.props.text.trim())) issue(i, 'props', `"${f.name}" needs the terms people are accepting`);
+    if (f.type === 'STEPPER' && f.props?.step !== undefined && !(typeof f.props.step === 'number' && f.props.step > 0)) {
+      issue(i, 'props', 'The step must be a number above 0');
     }
     if (f.systemSource === 'URL_PARAMETER' && !f.systemParam) {
       issue(i, 'systemParam', 'URL_PARAMETER needs systemParam (the query-string key)');
@@ -662,6 +680,8 @@ const CALCULABLE_TYPES: ReadonlySet<FormField['type']> = new Set([
   'DATE',
   'DATETIME',
   'CHECKBOX',
+  'SWITCH',
+  'STEPPER',
   'RADIO',
   'DROPDOWN',
   'HIDDEN',

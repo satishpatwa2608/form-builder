@@ -10,7 +10,7 @@ import type {
 } from './types';
 import { evaluateCondition } from './evaluate-condition';
 import { evaluateExpression, truthy } from './expression';
-import { emptyValueFor, isEmptyValue } from './field-kinds';
+import { emptyValueFor, isBooleanField, isEmptyValue, isNumberField } from './field-kinds';
 import { ancestorIds } from './layout';
 
 export interface FieldState {
@@ -65,17 +65,13 @@ function* applied(rules: FormRule[], active: boolean[]): Generator<{ action: Rul
 
 /** A calculated or fetched value in the shape the target field's type stores. */
 export function coerceToField(value: unknown, field: FormField): unknown {
-  if (isEmptyValue(value) && field.type !== 'CHECKBOX') return emptyValueFor(field.type);
-  switch (field.type) {
-    case 'NUMBER': {
-      const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-      return Number.isFinite(n) ? n : undefined;
-    }
-    case 'CHECKBOX':
-      return truthy(value);
-    default:
-      return typeof value === 'object' ? '' : String(value);
+  if (isBooleanField(field)) return truthy(value);
+  if (isEmptyValue(value)) return emptyValueFor(field.type);
+  if (isNumberField(field)) {
+    const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+    return Number.isFinite(n) ? n : undefined;
   }
+  return typeof value === 'object' ? '' : String(value);
 }
 
 const sameSet = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((x) => b.has(x));

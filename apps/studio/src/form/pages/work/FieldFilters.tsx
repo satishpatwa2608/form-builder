@@ -3,7 +3,7 @@ import { Plus, X } from 'lucide-react';
 import { Button } from '@ui/button';
 import { Input } from '@ui/input';
 import type { FormDefinition, FormField } from '../../types';
-import { isOptionField, isValueField } from '../../engine';
+import { isBooleanField, isNumberField, isOptionField, isValueField } from '../../engine';
 import type { FieldFilter, FieldFilterOp } from '../../adapters/workflow';
 import { ChoiceSelect } from '../../builder/components/settings';
 
@@ -21,8 +21,9 @@ const OP_LABEL: Record<FieldFilterOp, string> = {
 const opsFor = (f: FormField | undefined): FieldFilterOp[] => {
   if (!f) return ['eq'];
   if (isOptionField(f)) return ['eq', 'ne', 'empty', 'notEmpty'];
-  if (f.type === 'CHECKBOX') return ['eq'];
-  if (f.type === 'NUMBER' || f.type === 'DATE' || f.type === 'DATETIME') return ['eq', 'gte', 'lte', 'empty', 'notEmpty'];
+  if (isBooleanField(f)) return ['eq'];
+  if (f.type === 'SIGNATURE') return ['empty', 'notEmpty'];
+  if (isNumberField(f) || f.type === 'DATE' || f.type === 'DATETIME') return ['eq', 'gte', 'lte', 'empty', 'notEmpty'];
   return ['contains', 'eq', 'empty', 'notEmpty'];
 };
 
@@ -45,7 +46,7 @@ export function FieldFilters({ form, value, onChange }: { form: FormDefinition; 
   const valueInput = () => {
     if (!draft || draft.op === 'empty' || draft.op === 'notEmpty') return null;
     const options = staticOptions(field);
-    if (field?.type === 'CHECKBOX') {
+    if (field && isBooleanField(field)) {
       return (
         <ChoiceSelect<'true' | 'false'>
           ariaLabel="Filter value"

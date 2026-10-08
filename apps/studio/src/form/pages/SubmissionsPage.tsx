@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@ui/button';
 import { SmartTable, type SmartTableColumn } from '@ui/smart-table';
 import type { FormDefinition } from '../types';
-import { csvCell, isValueField } from '../engine';
+import { csvCell, isValueField, plainAnswer } from '../engine';
 import { useFormDoc } from '../adapters/registry/useFormRegistry';
 import { fetchAllSubmissions, fileLink, submissionsAvailable, useSubmissions, type SubmissionRow } from '../adapters/submissions';
 import { printSubmission } from './print-submission';
@@ -21,12 +21,7 @@ const PAGE_SIZE = 20;
 /** Payload key for a field (after the form's submission mapping). */
 const keyOf = (def: FormDefinition, name: string) => def.submission.mapping?.[name] ?? name;
 
-function display(value: unknown): string {
-  if (value === undefined || value === null || value === '') return '';
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (Array.isArray(value)) return value.map((v) => (typeof v === 'object' && v ? (v as { name?: string }).name ?? JSON.stringify(v) : String(v))).join(', ');
-  return String(value);
-}
+const display = plainAnswer;
 
 /**
  * What came in for one form (all versions), newest first. Columns come from

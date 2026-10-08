@@ -139,6 +139,27 @@ describe('definition edits', () => {
 describe('useFormBuilderStore', () => {
   beforeEach(() => state().load(blank()));
 
+  it('tabs and accordions start with two sections and take sections only', () => {
+    const tabs = state().addField('TABS');
+    const inside = () => state().form!.fields.filter((f) => f.parentId === tabs);
+    expect(inside().map((f) => [f.type, f.label])).toEqual([['SECTION', 'Tab 1'], ['SECTION', 'Tab 2']]);
+    expect(new Set(state().form!.fields.map((f) => f.name)).size).toBe(3);
+
+    expect(state().addField('TEXT', { parentId: tabs, column: 0 })).toBe('');
+    expect(inside()).toHaveLength(2);
+    expect(state().addField('SECTION', { parentId: tabs, column: 0 })).not.toBe('');
+    expect(inside()).toHaveLength(3);
+
+    // A field goes inside one of the sections, and cannot be dragged out onto the tab strip.
+    const text = state().addField('TEXT', { parentId: inside()[0].id, column: 0 });
+    state().moveField(text, { parentId: tabs, column: 0 });
+    expect(state().form!.fields.find((f) => f.id === text)!.parentId).toBe(inside()[0].id);
+
+    const accordion = state().addField('ACCORDION');
+    expect(state().form!.fields.filter((f) => f.parentId === accordion).map((f) => f.label)).toEqual(['Panel 1', 'Panel 2']);
+    expect(validateFormDefinition(state().form, 'publish').success).toBe(true);
+  });
+
   it('retyping a field key never merges its rules with another field\'s', () => {
     const a = state().addField('NUMBER');
     const ab = state().addField('NUMBER');

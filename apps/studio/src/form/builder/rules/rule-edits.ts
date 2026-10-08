@@ -27,6 +27,8 @@ const CALCULABLE: ReadonlySet<FormField['type']> = new Set([
   'DATE',
   'DATETIME',
   'CHECKBOX',
+  'SWITCH',
+  'STEPPER',
   'RADIO',
   'DROPDOWN',
   'HIDDEN',

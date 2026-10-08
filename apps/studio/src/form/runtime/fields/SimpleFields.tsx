@@ -1,4 +1,5 @@
 import { Button } from '@ui/button';
+import { safeImageUrl } from '../../engine';
 import { useFormRuntime } from '../FormRuntimeContext';
 import type { FieldComponentProps } from './types';
 
@@ -54,5 +55,18 @@ export function UnsupportedField({ field }: FieldComponentProps) {
     <div className="rounded-md border border-gray-300 p-3 text-sm text-muted-foreground">
       {field.label ?? field.name}: <strong>{field.type}</strong> fields are not available yet.
     </div>
+  );
+}
+
+/** A picture. Only https or site-relative addresses are shown; anything else renders nothing. */
+export function ImageField({ field }: FieldComponentProps) {
+  const src = safeImageUrl(field.props?.src);
+  if (!src) return null;
+  const width = typeof field.props?.maxWidth === 'number' ? field.props.maxWidth : undefined;
+  return (
+    <figure className="fp-image">
+      <img src={src} alt={typeof field.props?.alt === 'string' ? field.props.alt : ''} style={{ maxWidth: width ? `${width}px` : '100%' }} loading="lazy" />
+      {field.label && <figcaption>{field.label}</figcaption>}
+    </figure>
   );
 }

@@ -1,7 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ui/tabs';
 import { MultiSelect } from '@ui/multiselect';
 import type { CaptchaConfig, FieldType, FormDefinition, FormField, SystemFieldSource, UserPrefillSource, ValidationConfig } from '../../types';
-import { columnWeights, isContainerField, isOptionField, isValueField, paramReferences } from '../../engine';
+import { columnWeights, isBooleanField, isContainerField, isListField, isNumberField, isOptionField, isSectionGroup, isValueField, paramReferences, safeImageUrl } from '../../engine';
 import { COLUMN_PRESETS, DEFAULT_CAPTCHA_CONFIG, paletteItem } from '../field-catalog';
 import { useStyles } from '../../adapters/styles/style-master';
 import { ConditionEditor, defaultCondition } from './ConditionEditor';
@@ -13,6 +13,8 @@ const TEXT_TYPES: ReadonlySet<FieldType> = new Set(['TEXT', 'TEXTAREA', 'EMAIL',
 const PLACEHOLDER_TYPES: ReadonlySet<FieldType> = new Set(['TEXT', 'TEXTAREA', 'NUMBER', 'EMAIL', 'PHONE', 'DROPDOWN', 'MULTI_SELECT', 'FILE']);
 /** Types with no label/help/required of their own. */
 const DECORATIVE: ReadonlySet<FieldType> = new Set(['HIDDEN', 'CAPTCHA']);
+/** Types with no help text of their own. */
+const NO_HELP: ReadonlySet<FieldType> = new Set(['BUTTON', 'HTML', 'IMAGE']);
 
 const SYSTEM_SOURCES: Choice<SystemFieldSource | 'FIXED'>[] = [
   { label: 'Business (from the form)', value: 'BUSINESS_ID' },
@@ -85,10 +87,11 @@ function PrefillSettings({ field, onChange }: Pick<PanelProps, 'field' | 'onChan
 
 function DefaultValueSetting({ field, onChange }: Pick<PanelProps, 'field' | 'onChange'>) {
   const value = field.defaultValue;
-  if (field.type === 'CHECKBOX') {
-    return <SwitchSetting label="Ticked by default" checked={value === true} onChange={(v) => onChange({ defaultValue: v || undefined })} />;
+  if (field.type === 'SIGNATURE' || isListField(field)) return null;
+  if (isBooleanField(field)) {
+    return <SwitchSetting label={field.type === 'SWITCH' ? 'On by default' : 'Ticked by default'} checked={value === true} onChange={(v) => onChange({ defaultValue: v || undefined })} />;
   }
-  if (field.type === 'NUMBER') {
+  if (isNumberField(field)) {
     return <NumberSetting label="Default value" value={typeof value === 'number' ? value : undefined} onChange={(v) => onChange({ defaultValue: v })} />;
   }
   if (isOptionField(field)) {
@@ -212,10 +215,28 @@ function SectionSettings({ field, onChange }: Pick<PanelProps, 'field' | 'onChan
 
 function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: PanelProps) {
   const hidden = field.type === 'HIDDEN';
-  if (field.type === 'COLUMNS' || field.type === 'SECTION') {
+  if (isContainerField(field)) {
     return (
       <div className="fb-settings">
-        {field.type === 'COLUMNS' ? <ColumnsSettings field={field} form={form} onSetColumns={onSetColumns} /> : <SectionSettings field={field} onChange={onChange} />}
+        {field.type === 'COLUMNS' && <ColumnsSettings field={field} form={form} onSetColumns={onSetColumns} />}
+        {field.type === 'SECTION' && <SectionSettings field={field} onChange={onChange} />}
+        {isSectionGroup(field) && (
+          <>
+            <TextSetting label="Name" value={field.label} hint="Read out by screen readers; not shown." onChange={(label) => onChange({ label: label || undefined })} />
+            {field.type === 'TABS' && (
+              <SelectSetting
+                label="Tabs run"
+                value={field.props?.orientation === 'vertical' ? 'vertical' : 'horizontal'}
+                options={[
+                  { label: 'Across the top', value: 'horizontal' },
+                  { label: 'Down the side', value: 'vertical' },
+                ]}
+                onChange={(orientation) => onChange({ props: { ...field.props, orientation } })}
+              />
+            )}
+            <p className="fb-muted">Each Section inside is one {field.type === 'TABS' ? 'tab' : 'panel'}: its title is the {field.type === 'TABS' ? 'tab' : 'panel'} name. Drop another Section in to add one.</p>
+          </>
+        )}
         <TextSetting label="Block key" value={field.name} onChange={(name) => onChange({ name })} hint="Used by show-when rules. Not submitted." />
       </div>
     );
@@ -235,7 +256,7 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: Panel
     <div className="fb-settings">
       {!hidden && (
         <TextSetting
-          label={field.type === 'BUTTON' ? 'Button text' : field.type === 'HTML' ? 'Heading' : 'Label'}
+          label={field.type === 'BUTTON' ? 'Button text' : field.type === 'HTML' ? 'Heading' : field.type === 'IMAGE' ? 'Caption' : field.type === 'CONSENT' ? 'Tick-box text' : 'Label'}
           value={field.label}
           onChange={(label) => onChange({ label })}
         />
@@ -248,6 +269,38 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: Panel
           hint="Plain text shown between fields. Line breaks are kept."
           onChange={(content) => onChange({ props: { ...field.props, content } })}
         />
+      )}
+      {field.type === 'CONSENT' && (
+        <TextSetting
+          label="Terms"
+          multiline
+          value={typeof field.props?.text === 'string' ? field.props.text : ''}
+          hint="What people are accepting. Plain text; line breaks are kept."
+          onChange={(text) => onChange({ props: { ...field.props, text } })}
+        />
+      )}
+      {field.type === 'IMAGE' && (
+        <>
+          <TextSetting
+            label="Picture address"
+            value={typeof field.props?.src === 'string' ? field.props.src : ''}
+            placeholder="https://… or /images/…"
+            hint={field.props?.src && !safeImageUrl(field.props.src) ? 'Must start with https:// or be a path on this site (/…).' : undefined}
+            onChange={(src) => onChange({ props: { ...field.props, src } })}
+          />
+          <TextSetting
+            label="Description"
+            value={typeof field.props?.alt === 'string' ? field.props.alt : ''}
+            hint="Read out to people who cannot see the picture."
+            onChange={(alt) => onChange({ props: { ...field.props, alt } })}
+          />
+          <NumberSetting
+            label="Widest it may be (pixels)"
+            min={16}
+            value={typeof field.props?.maxWidth === 'number' ? field.props.maxWidth : undefined}
+            onChange={(maxWidth) => onChange({ props: { ...field.props, maxWidth } })}
+          />
+        </>
       )}
       {field.type === 'FILE' && <FileSettings field={field} onChange={onChange} />}
       <TextSetting label="Field key" value={field.name} onChange={(name) => onChange({ name })} hint={nameHint(field, form)} />
@@ -288,7 +341,7 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: Panel
       {PLACEHOLDER_TYPES.has(field.type) && (
         <TextSetting label="Placeholder" value={field.placeholder} onChange={(placeholder) => onChange({ placeholder: placeholder || undefined })} />
       )}
-      {!hidden && field.type !== 'BUTTON' && field.type !== 'HTML' && (
+      {!hidden && !NO_HELP.has(field.type) && (
         <TextSetting label="Help text" multiline value={field.helpText} onChange={(helpText) => onChange({ helpText: helpText || undefined })} />
       )}
       {field.type === 'TEXTAREA' && (
@@ -346,17 +399,25 @@ function ValidationTab({ field, onChange }: PanelProps) {
           )}
         </>
       )}
-      {field.type === 'MULTI_SELECT' && (
+      {isListField(field) && (
         <div className="fb-row">
           <NumberSetting label="Choose at least" min={0} value={v.min} onChange={(min) => set({ min })} />
           <NumberSetting label="Choose at most" min={1} value={v.max} onChange={(max) => set({ max })} />
         </div>
       )}
-      {field.type === 'NUMBER' && (
+      {isNumberField(field) && (
         <div className="fb-row">
           <NumberSetting label="Minimum" value={v.min} onChange={(min) => set({ min })} />
           <NumberSetting label="Maximum" value={v.max} onChange={(max) => set({ max })} />
         </div>
+      )}
+      {field.type === 'STEPPER' && (
+        <NumberSetting
+          label="One press changes it by"
+          min={0}
+          value={typeof field.props?.step === 'number' ? field.props.step : 1}
+          onChange={(step) => onChange({ props: { ...field.props, step: step && step > 0 ? step : 1 } })}
+        />
       )}
       <TextSetting
         label="Message when left empty"
@@ -475,7 +536,7 @@ function AppearanceTab({ field, onChange }: Pick<PanelProps, 'field' | 'onChange
 /** Settings for the selected field, grouped into tabs that only appear when relevant. */
 export function FieldConfigPanel(props: PanelProps) {
   const { field, readOnly, onChange } = props;
-  const hasValidation = TEXT_TYPES.has(field.type) || field.type === 'NUMBER' || field.type === 'MULTI_SELECT';
+  const hasValidation = TEXT_TYPES.has(field.type) || isNumberField(field) || isListField(field) || isBooleanField(field) || field.type === 'SIGNATURE';
   const hasOptions = isOptionField(field);
   const hasLogic = !DECORATIVE.has(field.type);
   const hasAppearance = field.type !== 'HIDDEN';

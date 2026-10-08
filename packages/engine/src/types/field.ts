@@ -19,9 +19,25 @@ export type FieldType =
   | 'HTML'
   | 'BUTTON'
   | 'CAPTCHA'
+  /** On/off, stored as a boolean like CHECKBOX. */
+  | 'SWITCH'
+  /** Several of a list, shown as tick boxes; stored as a list like MULTI_SELECT. */
+  | 'CHECKBOX_GROUP'
+  /** A number with - and + buttons; `props.step` is the size of one press. */
+  | 'STEPPER'
+  /** A drawn signature, stored as a PNG data URL. */
+  | 'SIGNATURE'
+  /** Terms to read (`props.text`) with a box to accept them; stored as a boolean. */
+  | 'CONSENT'
+  /** A picture (`props.src`, `props.alt`). Never carries a value. */
+  | 'IMAGE'
   /** Layout containers: hold other fields, never carry a value. */
   | 'COLUMNS'
-  | 'SECTION';
+  | 'SECTION'
+  /** Hold SECTIONs only, shown as tabs (`props.orientation`: horizontal | vertical). */
+  | 'TABS'
+  /** Hold SECTIONs only, shown as panels of which one is open at a time. */
+  | 'ACCORDION';
 
 /**
  * Where a HIDDEN field takes its value from. These values are context for the

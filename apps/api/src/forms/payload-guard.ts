@@ -1,5 +1,5 @@
 /* Ported from Sangam form-platform security/payload-guard.ts (unchanged rules). */
-import { isValueField, type FormDefinition, type FormField } from '@fb/engine';
+import { isSignature, isValueField, type FormDefinition, type FormField } from '@fb/engine';
 import { LIMITS } from './limits';
 
 /**
@@ -43,10 +43,17 @@ function checkValue(field: FormField, value: unknown): string | null {
   }
   switch (field.type) {
     case 'NUMBER':
+    case 'STEPPER':
       return typeof value === 'number' && Number.isFinite(value) ? null : 'Must be a number';
     case 'CHECKBOX':
+    case 'SWITCH':
+    case 'CONSENT':
       return typeof value === 'boolean' ? null : 'Must be true or false';
+    case 'SIGNATURE':
+      // A PNG data URL and nothing else: it is later shown as an image.
+      return isSignature(value) ? null : 'Must be a signature';
     case 'MULTI_SELECT':
+    case 'CHECKBOX_GROUP':
       if (!Array.isArray(value) || value.length > LIMITS.arrayItems) return 'Must be a list of options';
       return value.every((v) => typeof v === 'string' && !tooLong(v)) ? null : 'Must be a list of options';
     case 'FILE':

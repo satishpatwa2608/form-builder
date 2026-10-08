@@ -13,8 +13,11 @@ import { SlaSummary } from "./work/SlaSummary";
 import { EmailComposer } from "./work/EmailComposer";
 import { ReopenBox } from "./work/ReopenBox";
 import {
+  answerText as fieldAnswerText,
   findStatus,
+  isSignature,
   isValueField,
+  plainAnswer,
   valuesFromPayload,
   workflowOf,
 } from "../engine";
@@ -45,27 +48,11 @@ export function StatusPill({ status }: { status: WorkflowStatus | undefined }) {
   );
 }
 
-export function displayAnswer(value: unknown): string {
-  if (value === undefined || value === null || value === "") return "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (Array.isArray(value))
-    return value
-      .map((v) =>
-        typeof v === "object" && v
-          ? ((v as { name?: string }).name ?? "")
-          : String(v),
-      )
-      .join(", ");
-  return String(value);
-}
+export const displayAnswer = (value: unknown): string => plainAnswer(value) || "—";
 
 /** Option values -> their labels, so the answers read like the form. */
 export function answerText(def: FormDefinition, name: string, value: unknown): string {
-  const f = def.fields.find((x) => x.name === name);
-  const options =
-    f?.dataSource?.type === "STATIC" ? (f.dataSource.options ?? []) : [];
-  const label = (v: unknown) => options.find((o) => o.value === v)?.label ?? v;
-  return displayAnswer(Array.isArray(value) ? value.map(label) : label(value));
+  return fieldAnswerText(def.fields.find((x) => x.name === name), value) || "—";
 }
 
 export const PRIORITY_LABEL: Record<Priority, string> = { LOW: "Low", MEDIUM: "Medium", HIGH: "High", CRITICAL: "Critical" };
@@ -542,9 +529,14 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
                   <div key={f.id} style={{ display: "contents" }}>
                     <dt>{f.label || f.name}</dt>
                     <dd>
-                      {f.type === "FILE"
-                        ? displayAnswer(values[f.name])
-                        : answerText(def, f.name, values[f.name])}
+                      {f.type === "SIGNATURE" && isSignature(values[f.name]) ? (
+                        // Checked to be a PNG data URL, so it is safe as an image source.
+                        <img src={values[f.name] as string} alt={`${f.label || f.name}, signed`} style={{ maxWidth: 240, border: "1px solid var(--border)", borderRadius: 6, background: "#fff" }} />
+                      ) : f.type === "FILE" ? (
+                        displayAnswer(values[f.name])
+                      ) : (
+                        answerText(def, f.name, values[f.name])
+                      )}
                     </dd>
                   </div>
                 ))}

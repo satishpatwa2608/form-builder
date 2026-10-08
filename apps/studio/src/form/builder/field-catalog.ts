@@ -11,8 +11,16 @@ import {
   PanelTop,
   EyeOff,
   Hash,
+  Image as ImageIcon,
   ListChecks,
+  ListCollapse,
+  ListTodo,
   MousePointerClick,
+  PanelsTopLeft,
+  PenLine,
+  ScrollText,
+  SquarePlus,
+  ToggleLeft,
   Paperclip,
   Phone,
   ShieldCheck,
@@ -40,6 +48,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     items: [
       { type: 'COLUMNS', label: 'Columns', icon: Columns2 },
       { type: 'SECTION', label: 'Section', icon: PanelTop },
+      { type: 'TABS', label: 'Tabs', icon: PanelsTopLeft },
+      { type: 'ACCORDION', label: 'Accordion', icon: ListCollapse },
     ],
   },
   {
@@ -48,6 +58,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: 'TEXT', label: 'Text', icon: Type },
       { type: 'TEXTAREA', label: 'Paragraph', icon: AlignLeft },
       { type: 'NUMBER', label: 'Number', icon: Hash },
+      { type: 'STEPPER', label: 'Stepper', icon: SquarePlus },
       { type: 'EMAIL', label: 'Email', icon: AtSign },
       { type: 'PHONE', label: 'Phone', icon: Phone },
       { type: 'DATE', label: 'Date', icon: Calendar },
@@ -61,12 +72,17 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: 'RADIO', label: 'Radio', icon: CircleDot },
       { type: 'CHECKBOX', label: 'Checkbox', icon: CheckSquare },
       { type: 'MULTI_SELECT', label: 'Multi-select', icon: ListChecks },
+      { type: 'CHECKBOX_GROUP', label: 'Tick boxes', icon: ListTodo },
+      { type: 'SWITCH', label: 'Switch', icon: ToggleLeft },
     ],
   },
   {
     title: 'Advanced',
     items: [
       { type: 'FILE', label: 'File upload', icon: Paperclip },
+      { type: 'SIGNATURE', label: 'Signature', icon: PenLine },
+      { type: 'CONSENT', label: 'Terms & consent', icon: ScrollText },
+      { type: 'IMAGE', label: 'Picture', icon: ImageIcon },
       { type: 'HTML', label: 'Content block', icon: Code },
       { type: 'BUTTON', label: 'Link button', icon: MousePointerClick },
       { type: 'CAPTCHA', label: 'CAPTCHA', icon: ShieldCheck },
@@ -98,6 +114,11 @@ const DEFAULT_LABEL: Partial<Record<FieldType, string>> = {
   HTML: 'Section heading',
   SECTION: 'Section',
   BUTTON: 'Learn more',
+  STEPPER: 'Quantity',
+  CHECKBOX_GROUP: 'Choose any',
+  SWITCH: 'Yes / no',
+  SIGNATURE: 'Signature',
+  CONSENT: 'I accept the terms',
 };
 
 /** `dropdown_1`, `dropdown_2`, ... - the first name of that pattern not already taken. */
@@ -140,6 +161,7 @@ export function createField(type: FieldType, takenNames: Iterable<string>): Form
     case 'DROPDOWN':
     case 'RADIO':
     case 'MULTI_SELECT':
+    case 'CHECKBOX_GROUP':
       field.dataSource = {
         type: 'STATIC',
         options: [
@@ -169,6 +191,20 @@ export function createField(type: FieldType, takenNames: Iterable<string>): Form
       break;
     case 'SECTION':
       field.props = { description: '', collapsible: false };
+      break;
+    case 'STEPPER':
+      field.props = { step: 1 };
+      field.validation = { min: 0 };
+      break;
+    case 'CONSENT':
+      field.required = true;
+      field.props = { text: 'I have read and agree to the terms and conditions.' };
+      break;
+    case 'IMAGE':
+      field.props = { src: '', alt: '' };
+      break;
+    case 'TABS':
+      field.props = { orientation: 'horizontal' };
       break;
   }
   return field;

@@ -18,7 +18,7 @@ export interface LayoutIndex {
   slots: Map<string, FormField[]>;
 }
 
-/** Number of columns a container has (SECTION always 1). */
+/** Number of columns a container has (only COLUMNS has more than one). */
 export function columnCount(container: FormField): number {
   if (container.type !== 'COLUMNS') return 1;
   const cols = container.props?.columns;

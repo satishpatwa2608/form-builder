@@ -6,11 +6,13 @@ import { NumberField } from '../fields/NumberField';
 import { SelectField } from '../fields/SelectField';
 import { RadioField } from '../fields/RadioField';
 import { CheckboxField } from '../fields/CheckboxField';
-import { ButtonField, ContentField, HiddenField } from '../fields/SimpleFields';
+import { ButtonField, ContentField, HiddenField, ImageField } from '../fields/SimpleFields';
+import { CheckboxGroupField, ConsentField, StepperField, SwitchField } from '../fields/ChoiceFields';
+import { SignatureField } from '../fields/SignatureField';
 import { MultiSelectField } from '../fields/MultiSelectField';
 import { FileField } from '../fields/FileField';
 import { CaptchaField } from '../fields/CaptchaField';
-import { ColumnsField, SectionField } from '../fields/ContainerFields';
+import { AccordionField, ColumnsField, SectionField, TabsField } from '../fields/ContainerFields';
 
 /**
  * FieldType -> component. A map rather than a switch so a new type is one
@@ -34,8 +36,16 @@ const registry: Partial<Record<FieldType, FieldComponent>> = {
   FILE: FileField,
   HTML: ContentField,
   CAPTCHA: CaptchaField,
+  SWITCH: SwitchField,
+  CHECKBOX_GROUP: CheckboxGroupField,
+  STEPPER: StepperField,
+  CONSENT: ConsentField,
+  SIGNATURE: SignatureField,
+  IMAGE: ImageField,
   COLUMNS: ColumnsField,
   SECTION: SectionField,
+  TABS: TabsField,
+  ACCORDION: AccordionField,
 };
 
 export function getFieldComponent(type: FieldType): FieldComponent | undefined {

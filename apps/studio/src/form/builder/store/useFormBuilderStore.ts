@@ -11,7 +11,7 @@ import {
   setColumnWeights,
   type Placement,
 } from '../definition-edits';
-import { descendantFields } from '../../engine';
+import { descendantFields, isSectionGroup } from '../../engine';
 
 const HISTORY_LIMIT = 50;
 /** Keystrokes into the same setting within this window are one undo step. */
@@ -56,6 +56,12 @@ export interface FormBuilderState {
 
   undo: () => void;
   redo: () => void;
+}
+
+/** Tabs and accordions hold sections only; everything else takes any field. */
+function fitsIn(fields: FormField[], type: FieldType, parentId: string | undefined): boolean {
+  const parent = parentId ? fields.find((f) => f.id === parentId) : undefined;
+  return !parent || !isSectionGroup(parent) || type === 'SECTION';
 }
 
 const USABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -111,6 +117,7 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
       const { form } = get();
       if (!form) return '';
       if (type === 'CAPTCHA' && form.fields.some((f) => f.type === 'CAPTCHA')) return '';
+      if (typeof place === 'object' && !fitsIn(form.fields, type, place.parentId)) return '';
       const field = createField(type, form.fields.map((f) => f.name));
       let fields: FormField[];
       if (typeof place === 'number' || place === undefined) {
@@ -118,6 +125,13 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
         fields.splice(place ?? fields.length, 0, field);
       } else {
         fields = placeField([...form.fields, field], field, place);
+      }
+      // Tabs and an accordion are nothing without sections: start with two.
+      if (isSectionGroup(field)) {
+        for (const n of [1, 2]) {
+          const section = createField('SECTION', fields.map((f) => f.name));
+          fields.push({ ...section, label: `${type === 'TABS' ? 'Tab' : 'Panel'} ${n}`, parentId: field.id, column: 0 });
+        }
       }
       const next = withFields(fields);
       // A CAPTCHA field needs the form-level provider settings to publish.
@@ -164,6 +178,7 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
     moveField: (fieldId, place) => {
       const { form } = get();
       const field = form?.fields.find((f) => f.id === fieldId);
+      if (form && field && !fitsIn(form.fields, field.type, place.parentId)) return;
       if (!form || !field) return;
       const fields = placeField(form.fields, field, place);
       if (fields !== form.fields) commit(withFields(fields));

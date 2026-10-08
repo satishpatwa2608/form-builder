@@ -3,7 +3,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { ArrowDown, ArrowUp, Copy, GripVertical, Trash2 } from 'lucide-react';
 import type { FormDefinition, FormField } from '../../types';
 import { paletteItem } from '../field-catalog';
-import { buildLayoutIndex, childrenOf, columnWeights, fieldParents, isContainerField, ROOT, type LayoutIndex } from '../../engine';
+import { buildLayoutIndex, childrenOf, columnWeights, fieldParents, isContainerField, isSectionGroup, ROOT, type LayoutIndex } from '../../engine';
 import type { Placement } from '../definition-edits';
 import { columnsStyle } from '../../runtime/FieldRenderer/FieldRenderer';
 
@@ -44,6 +44,8 @@ function cardTitle(field: FormField) {
   if (field.type === 'HIDDEN') return 'Hidden value';
   if (field.type === 'COLUMNS') return `${columnWeights(field).length} columns`;
   if (field.label) return field.label;
+  if (field.type === 'TABS' || field.type === 'ACCORDION') return field.type === 'TABS' ? 'Tabs' : 'Accordion';
+  if (field.type === 'IMAGE') return typeof field.props?.alt === 'string' && field.props.alt ? field.props.alt : 'Picture';
   return field.type === 'SECTION' ? 'Untitled section' : <em>No label</em>;
 }
 
@@ -149,16 +151,16 @@ function FieldCard({
           ))}
         </div>
       )}
-      {field.type === 'SECTION' && (
+      {(field.type === 'SECTION' || isSectionGroup(field)) && (
         <div className="fb-section-body">
-          <CanvasList parentId={field.id} column={0} {...shared} />
+          <CanvasList parentId={field.id} column={0} sectionsOnly={isSectionGroup(field)} {...shared} />
         </div>
       )}
     </div>
   );
 }
 
-function EndSlot({ parentId, column, empty, readOnly }: { parentId: string; column: number; empty: boolean; readOnly: boolean }) {
+function EndSlot({ parentId, column, empty, readOnly, sectionsOnly }: { parentId: string; column: number; empty: boolean; readOnly: boolean; sectionsOnly?: boolean }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `end:${parentId}:${column}`,
     data: slotOf(parentId, column) satisfies DropData,
@@ -168,13 +170,13 @@ function EndSlot({ parentId, column, empty, readOnly }: { parentId: string; colu
   const nested = parentId !== ROOT;
   return (
     <div ref={setNodeRef} className={`fb-drop-end${nested ? ' fb-drop-end--nested' : ''}${isOver ? ' fb-drop-end--over' : ''}`}>
-      {empty ? (nested ? 'Drop fields here' : 'Drag a field here from the palette, or click one to add it') : '+ Drop here'}
+      {sectionsOnly ? '+ Drop a Section here to add another' : empty ? (nested ? 'Drop fields here' : 'Drag a field here from the palette, or click one to add it') : '+ Drop here'}
     </div>
   );
 }
 
 /** The fields in one slot (root, or a container column), then a drop zone for the slot's end. */
-function CanvasList({ parentId, column, ...shared }: Shared & { parentId: string; column: number }) {
+function CanvasList({ parentId, column, sectionsOnly, ...shared }: Shared & { parentId: string; column: number; sectionsOnly?: boolean }) {
   const items = childrenOf(shared.layout, parentId, column);
   const slot = slotOf(parentId, column);
   return (
@@ -182,7 +184,7 @@ function CanvasList({ parentId, column, ...shared }: Shared & { parentId: string
       {items.map((field, index) => (
         <FieldCard key={field.id} field={field} slot={slot} index={index} count={items.length} {...shared} />
       ))}
-      <EndSlot parentId={parentId} column={column} empty={items.length === 0} readOnly={shared.readOnly} />
+      <EndSlot parentId={parentId} column={column} empty={items.length === 0} readOnly={shared.readOnly} sectionsOnly={sectionsOnly} />
     </>
   );
 }
