@@ -16,5 +16,10 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "dev:gateway": "pnpm --filter @fb/gateway build && node apps/gateway/dist/main.js"
+  },
+  "pnpm": {
+    "overrides": {
+      "multer": "^2.3.0"
+    }
   }
 }
