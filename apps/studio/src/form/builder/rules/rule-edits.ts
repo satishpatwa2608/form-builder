@@ -1,4 +1,4 @@
-import type { FormDefinition, FormField, FormRule, RuleAction } from '../../types';
+import type { FormDefinition, FormEvent, FormEventAction, FormField, FormRule, RuleAction } from '../../types';
 import { isExpressionCondition, isOptionField, isValueField, validateFormDefinition } from '../../engine';
 import { defaultCondition } from '../components/ConditionEditor';
 
@@ -89,6 +89,76 @@ export function withConditionMode(rule: FormRule, mode: ConditionMode, fields: F
     return rest;
   }
   return { ...rule, when: mode === 'formula' ? { expr: '' } : defaultCondition(readableFields(fields)[0]) };
+}
+
+/** The same, for the form's events. */
+export function eventProblems(def: FormDefinition): Map<number, string[]> {
+  const problems = new Map<number, string[]>();
+  const result = validateFormDefinition(def, 'publish');
+  if (result.success) return problems;
+  for (const issue of result.issues) {
+    const match = /^events\.(\d+)/.exec(issue.path);
+    if (match) problems.set(Number(match[1]), [...(problems.get(Number(match[1])) ?? []), issue.message]);
+  }
+  return problems;
+}
+
+export type TriggerType = FormEvent['on']['type'];
+export type EventActionType = FormEventAction['type'];
+
+export const TRIGGER_LABEL: Record<TriggerType, string> = {
+  LOAD: 'When the form opens',
+  CLICK: 'When a button is clicked',
+  SUBMIT_SUCCESS: 'After a successful submit',
+  SUBMIT_ERROR: 'When a submit fails',
+};
+
+export const EVENT_ACTION_LABEL: Record<EventActionType, string> = {
+  SET_VALUE: 'Set the value of',
+  FETCH: 'Look up and fill in',
+  GO_TO_STEP: 'Go to step',
+  SHOW_MESSAGE: 'Show this message',
+  REDIRECT: 'Go to this address',
+};
+
+/** What can happen at each moment (mirrors what publishing accepts). */
+export const EVENT_ACTIONS_FOR: Record<TriggerType, EventActionType[]> = {
+  LOAD: ['SET_VALUE', 'FETCH'],
+  CLICK: ['SET_VALUE', 'FETCH', 'GO_TO_STEP'],
+  SUBMIT_SUCCESS: ['SHOW_MESSAGE', 'REDIRECT'],
+  SUBMIT_ERROR: ['SHOW_MESSAGE'],
+};
+
+export const buttonsOf = (fields: FormField[]): FormField[] => fields.filter((f) => f.type === 'BUTTON');
+export const stepsOf = (fields: FormField[]): FormField[] => fields.filter((f) => f.type === 'SECTION' && f.parentId === undefined);
+
+export function eventActionOf(type: EventActionType, fields: FormField[]): FormEventAction {
+  switch (type) {
+    case 'SET_VALUE':
+      return { type, target: targetsFor('SET_VALUE', fields)[0]?.name ?? '', value: '' };
+    case 'FETCH':
+      return { type, source: { url: '', method: 'GET' }, set: {} };
+    case 'GO_TO_STEP':
+      return { type, step: stepsOf(fields)[0]?.name ?? '' };
+    case 'SHOW_MESSAGE':
+      return { type, message: '' };
+    case 'REDIRECT':
+      return { type, url: '' };
+  }
+}
+
+/** Changing when an event happens keeps the actions that still fit, or starts with one that does. */
+export function withTrigger(event: FormEvent, type: TriggerType, fields: FormField[]): FormEvent {
+  const on: FormEvent['on'] = type === 'CLICK' ? { type, field: buttonsOf(fields)[0]?.name ?? '' } : { type };
+  const kept = event.do.filter((a) => EVENT_ACTIONS_FOR[type].includes(a.type));
+  return { ...event, on, do: kept.length ? kept : [eventActionOf(EVENT_ACTIONS_FOR[type][0], fields)] };
+}
+
+export function newEvent(events: FormEvent[], fields: FormField[]): FormEvent {
+  const taken = new Set(events.map((e) => e.id));
+  let n = events.length + 1;
+  while (taken.has(`event_${n}`)) n++;
+  return { id: `event_${n}`, name: '', on: { type: 'SUBMIT_SUCCESS' }, do: [eventActionOf('SHOW_MESSAGE', fields)] };
 }
 
 /** What stops each rule from publishing, by rule index; `-1` holds problems about the rules as a whole. */

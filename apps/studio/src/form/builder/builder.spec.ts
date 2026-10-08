@@ -91,6 +91,33 @@ describe('definition edits', () => {
       { id: 'd', then: [{ type: 'SHOW', target: 'note' }] },
     ]);
     expect(rulesReferencing(next, 'qty')).toEqual([]);
+
+    const withEvents: FormDefinition = {
+      ...form,
+      fields: [...form.fields, { id: '5', type: 'BUTTON', name: 'go', label: 'Go' }],
+      events: [
+        {
+          id: 'e',
+          on: { type: 'CLICK', field: 'go' },
+          when: { expr: 'qty > 0' },
+          do: [
+            { type: 'SET_VALUE', target: 'qty', value: 'qty + 1' },
+            { type: 'FETCH', source: { url: 'stock', method: 'GET', params: { q: '{{qty}}', fixed: 'x' } }, set: { qty: 'onHand', note: 'remark' } },
+          ],
+        },
+      ],
+    };
+    expect(renameFieldReferences(renameFieldReferences(withEvents, 'qty', 'quantity'), 'go', 'lookup').events).toEqual([
+      {
+        id: 'e',
+        on: { type: 'CLICK', field: 'lookup' },
+        when: { expr: 'quantity > 0' },
+        do: [
+          { type: 'SET_VALUE', target: 'quantity', value: 'quantity + 1' },
+          { type: 'FETCH', source: { url: 'stock', method: 'GET', params: { q: '{{quantity}}', fixed: 'x' } }, set: { quantity: 'onHand', note: 'remark' } },
+        ],
+      },
+    ]);
     // A form with no rules does not grow an empty list.
     expect(renameFieldReferences(blank(), 'a', 'b')).not.toHaveProperty('rules');
   });
@@ -111,6 +138,37 @@ describe('definition edits', () => {
 
 describe('useFormBuilderStore', () => {
   beforeEach(() => state().load(blank()));
+
+  it('retyping a field key never merges its rules with another field\'s', () => {
+    const a = state().addField('NUMBER');
+    const ab = state().addField('NUMBER');
+    const total = state().addField('NUMBER');
+    state().updateField(a, { name: 'a' });
+    state().updateField(ab, { name: 'ab' });
+    state().updateField(total, { name: 'total' });
+    state().updateForm({ rules: [{ id: 'r', then: [{ type: 'SET_VALUE', target: 'total', value: 'a + ab' }] }] });
+    const formula = () => (state().form!.rules![0].then[0] as { value: string }).value;
+
+    // Clear the key of "ab" and type "a", "ac", "acc": it passes through empty and through another field's key.
+    for (const name of ['', 'a', 'ac', 'acc']) state().updateField(ab, { name });
+    expect(formula()).toBe('a + acc');
+
+    // The other field renames normally afterwards, and so does this one again.
+    state().updateField(a, { name: 'first' });
+    state().updateField(ab, { name: 'second' });
+    expect(formula()).toBe('first + second');
+    expect(state().form!.rules![0].then[0]).toMatchObject({ target: 'total' });
+  });
+
+  it('a key left clashing keeps the rules pointing at the old name', () => {
+    const a = state().addField('NUMBER');
+    const b = state().addField('NUMBER');
+    state().updateField(a, { name: 'a' });
+    state().updateField(b, { name: 'b' });
+    state().updateForm({ rules: [{ id: 'r', when: { expr: 'b > 1' }, then: [{ type: 'REQUIRE', target: 'a' }] }] });
+    state().updateField(b, { name: 'a' });
+    expect(state().form!.rules![0]).toMatchObject({ when: { expr: 'b > 1' }, then: [{ type: 'REQUIRE', target: 'a' }] });
+  });
 
   it('adds fields at an index and selects the new one', () => {
     const first = state().addField('TEXT');

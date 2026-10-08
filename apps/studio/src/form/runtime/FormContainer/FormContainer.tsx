@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { useForm, useWatch, type Resolver, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form } from '@ui/form';
-import type { FormDefinition, FormStyle, FormValues, SubmissionResult, SystemContext } from '../../types';
+import type { FormDefinition, FormEventTrigger, FormStyle, FormValues, SubmissionResult, SystemContext } from '../../types';
 import type { FormState } from '../../engine';
 import {
   buildDefaultValues,
@@ -12,7 +12,12 @@ import {
   buildSteps,
   buildZodSchema,
   childrenOf,
+  clickableButtons,
+  coerceToField,
   computeFormState,
+  eventActions,
+  evaluateExpression,
+  resolveParams,
   descendantsOf,
   emptyValueFor,
   isEmptyValue,
@@ -122,6 +127,14 @@ function useDependencyReset(
   }, [values, children, definition, form, skipNext]);
 }
 
+/** `a.b.c` in a fetched row, reading only what the row itself holds. */
+function readOwnPath(row: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>(
+    (at, key) => (at && typeof at === 'object' && Object.prototype.hasOwnProperty.call(at, key) ? (at as Record<string, unknown>)[key] : undefined),
+    row,
+  );
+}
+
 function browserTimeZone(): string | undefined {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -203,6 +216,8 @@ function FormRuntime({
     [allSteps, states],
   );
   const [stepIndex, setStepIndex] = useState(0);
+  const stepsRef = useRef(steps);
+  stepsRef.current = steps;
   const step = steps ? steps[Math.min(stepIndex, steps.length - 1)] : undefined;
   const isLastStep = !steps || stepIndex >= steps.length - 1;
   const pendingFocus = useRef<string | null>(null);
@@ -217,6 +232,10 @@ function FormRuntime({
   const [result, setResult] = useState<SubmissionResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
+  /** Set by a "submit succeeded" event: shown instead of the form's standard thank-you text. */
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  /** What a look-up has to say when it finds nothing or fails. */
+  const [notice, setNotice] = useState<string | null>(null);
   const [resetKey, setResetKey] = useState(0);
 
   const captcha = useRef<CaptchaWidget | null>(null);
@@ -226,6 +245,50 @@ function FormRuntime({
   const captchaField = definition.fields.find((f) => f.type === 'CAPTCHA');
   const resolvedCaptchaMode: CaptchaMode = captchaMode ?? (definition.captcha?.siteKey ? 'live' : 'mock');
 
+  /**
+   * Runs the form's events for what just happened: fill a field, open a step,
+   * look a row up. All of it is a convenience for the person filling in - the
+   * server trusts none of it and applies every rule again on submit.
+   */
+  const runEvent = useCallback(
+    async (trigger: FormEventTrigger) => {
+      const current = () => computeFormState(definition, form.getValues(), context).values;
+      const fill = (name: string, value: unknown) => {
+        const target = definition.fields.find((f) => f.name === name);
+        if (target) form.setValue(name, coerceToField(value, target), { shouldDirty: true, shouldValidate: !!form.formState.errors[name] });
+      };
+      setNotice(null);
+      for (const action of eventActions(definition, trigger, current(), context)) {
+        if (action.type === 'SET_VALUE') fill(action.target, evaluateExpression(action.value, current(), context).value);
+        else if (action.type === 'GO_TO_STEP') {
+          const index = stepsRef.current?.findIndex((st) => st.section?.name === action.step) ?? -1;
+          if (index >= 0) setStepIndex(index);
+        } else if (action.type === 'FETCH') {
+          const { params, unresolved } = resolveParams(action.source.params, current(), context);
+          if (unresolved.length) {
+            setNotice('Fill in the fields this looks up by first.');
+            continue;
+          }
+          try {
+            const [row] = await dataSourceAdapter.fetchRows({ ...action.source, valueField: '', labelField: '' }, params);
+            if (!row) setNotice('Nothing was found.');
+            else for (const [name, path] of Object.entries(action.set)) fill(name, readOwnPath(row, path));
+          } catch {
+            setNotice('That could not be looked up. Please try again.');
+          }
+        }
+      }
+    },
+    [definition, form, context, dataSourceAdapter],
+  );
+
+  const loaded = useRef(false);
+  useEffect(() => {
+    if (loaded.current) return;
+    loaded.current = true;
+    void runEvent({ type: 'LOAD' });
+  }, [runEvent]);
+
   const resetForm = () => {
     skipDependencyReset.current = true;
     form.reset(defaults);
@@ -233,6 +296,8 @@ function FormRuntime({
     setResult(null);
     setSubmitError(null);
     setShowSummary(false);
+    setSuccessMessage(null);
+    setNotice(null);
     setResetKey((k) => k + 1);
     setStepIndex(0);
   };
@@ -240,6 +305,7 @@ function FormRuntime({
   const onValid = async (submitted: FormValues) => {
     setShowSummary(false);
     setSubmitError(null);
+    const computed = computeFormState(definition, submitted, context).values;
     try {
       const res = await submissionAdapter.submit({
         definition,
@@ -253,16 +319,26 @@ function FormRuntime({
           if (definition.fields.some((f) => f.name === fe.field)) form.setError(fe.field, { type: 'server', message: fe.message });
         }
         if (res.fieldErrors?.length) setShowSummary(true);
-        setSubmitError(res.error ?? 'Submission failed. Please try again.');
+        const told = eventActions(definition, { type: 'SUBMIT_ERROR' }, computed, context).find((a) => a.type === 'SHOW_MESSAGE');
+        setSubmitError(told?.type === 'SHOW_MESSAGE' ? told.message : res.error ?? 'Submission failed. Please try again.');
         captcha.current?.reset();
         return;
       }
       onSubmitted?.(res);
+      // An event for this outcome (e.g. "over 5,000: say a manager will call") replaces the standard ending.
+      const after = eventActions(definition, { type: 'SUBMIT_SUCCESS' }, computed, context);
+      const redirect = after.find((a) => a.type === 'REDIRECT');
+      const message = after.find((a) => a.type === 'SHOW_MESSAGE');
       const success = definition.submission.success;
-      if (success?.type === 'REDIRECT' && success.redirectUrl) onNavigate(success.redirectUrl);
+      if (redirect?.type === 'REDIRECT') onNavigate(redirect.url);
+      else if (message?.type === 'SHOW_MESSAGE') {
+        setSuccessMessage(message.message);
+        if (!stayOnSubmit) setResult(res);
+      } else if (success?.type === 'REDIRECT' && success.redirectUrl) onNavigate(success.redirectUrl);
       else if (!stayOnSubmit) setResult(res);
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : 'Submission failed. Please try again.');
+      const told = eventActions(definition, { type: 'SUBMIT_ERROR' }, computed, context).find((a) => a.type === 'SHOW_MESSAGE');
+      setSubmitError(told?.type === 'SHOW_MESSAGE' ? told.message : e instanceof Error ? e.message : 'Submission failed. Please try again.');
       captcha.current?.reset();
     }
   };
@@ -330,6 +406,9 @@ function FormRuntime({
   // Switched off by a rule, or filled in by one: either way not for typing into.
   const readOnly = useMemo(() => new Set([...formState.disabled, ...formState.calculated]), [formState]);
 
+  const clickable = useMemo(() => clickableButtons(definition), [definition]);
+  const onButtonClick = useCallback((name: string) => runEvent({ type: 'CLICK', field: name }), [runEvent]);
+
   const runtimeValue = useMemo(
     () => ({
       definition,
@@ -337,6 +416,8 @@ function FormRuntime({
       states,
       readOnly,
       allowedOptions: formState.options,
+      clickable,
+      onButtonClick,
       systemContext: context,
       navigate: onNavigate,
       dataSourceAdapter,
@@ -346,7 +427,7 @@ function FormRuntime({
       layout,
       stepSectionId: step?.section?.id,
     }),
-    [definition, values, states, readOnly, formState.options, context, onNavigate, dataSourceAdapter, resolvedCaptchaMode, registerCaptcha, resetKey, layout, step],
+    [definition, values, states, readOnly, formState.options, clickable, onButtonClick, context, onNavigate, dataSourceAdapter, resolvedCaptchaMode, registerCaptcha, resetKey, layout, step],
   );
 
   if (result) {
@@ -354,7 +435,7 @@ function FormRuntime({
       <div className={`space-y-6 ${scope}`}>
         <style>{css}</style>
         {showHeader && <FormHeader definition={definition} />}
-        <FormSuccess message={definition.submission.success?.message ?? DEFAULT_SUCCESS_MESSAGE} reference={result.ref} onReset={resetForm} />
+        <FormSuccess message={successMessage ?? definition.submission.success?.message ?? DEFAULT_SUCCESS_MESSAGE} reference={result.ref} onReset={resetForm} />
       </div>
     );
   }
@@ -382,6 +463,11 @@ function FormRuntime({
             <FormErrorSummary definition={definition} errors={form.formState.errors} onSelect={focusField} />
           )}
           <FieldList items={step ? step.items : childrenOf(layout)} />
+          {notice && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {notice}
+            </p>
+          )}
           {submitError && (
             <p role="alert" className="text-sm" style={errorText}>
               {submitError}

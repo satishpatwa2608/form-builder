@@ -5,9 +5,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@ui/input';
 import { Switch } from '@ui/switch';
 import type { Condition, FormDefinition, FormField, FormRule, RuleAction } from '../../types';
-import { checkExpression, EXPRESSION_FUNCTIONS, isExpressionCondition, MAX_RULES } from '../../engine';
+import { EXPRESSION_FUNCTIONS, isExpressionCondition, MAX_RULES } from '../../engine';
 import { ConditionEditor } from '../components/ConditionEditor';
 import { ChoiceSelect } from '../components/settings';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ui/tabs';
+import { FormulaInput, MONO } from './FormulaInput';
+import { EventsEditor } from './EventsEditor';
 import { VISIBLE_BORDER } from '../../runtime/styles';
 import { errorText } from '../../runtime/styles';
 import {
@@ -25,23 +28,7 @@ import {
 } from './rule-edits';
 
 const LOCK = { border: 0, padding: 0, margin: 0, minWidth: 0 } as const;
-const MONO = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' } as const;
 const fieldName = (f: FormField) => f.label || f.name;
-
-/** A formula box that says what is wrong with it as you type. */
-function FormulaInput({ label, value, names, placeholder, onChange }: { label: string; value: string; names: ReadonlySet<string>; placeholder: string; onChange: (value: string) => void }) {
-  const problem = value.trim() ? checkExpression(value, names) : null;
-  return (
-    <div className="fb-settings" style={{ gap: 4 }}>
-      <Input aria-label={label} className={VISIBLE_BORDER} style={MONO} value={value} placeholder={placeholder} spellCheck={false} onChange={(e) => onChange(e.target.value)} />
-      {problem && (
-        <span role="alert" className="text-sm" style={errorText}>
-          {problem}
-        </span>
-      )}
-    </div>
-  );
-}
 
 interface ActionRowProps {
   action: RuleAction;
@@ -274,6 +261,12 @@ export function RulesDialog({ form, readOnly, open, onOpenChange, onChange }: Ru
             Calculate values and change what {form.name} shows, requires and accepts as it is filled in. The same rules are checked again when it is submitted.
           </DialogDescription>
         </DialogHeader>
+        <Tabs defaultValue="rules">
+          <TabsList>
+            <TabsTrigger value="rules">Rules{rules.length ? ` (${rules.length})` : ''}</TabsTrigger>
+            <TabsTrigger value="events">Events{form.events?.length ? ` (${form.events.length})` : ''}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="rules">
         <fieldset disabled={readOnly} style={LOCK}>
           <div className="fb-settings" style={{ gap: 16 }}>
             {!rules.length && <p className="fb-muted">No rules yet. Add one to calculate a total, show a section only when it applies, or check one answer against another.</p>}
@@ -304,6 +297,13 @@ export function RulesDialog({ form, readOnly, open, onOpenChange, onChange }: Ru
             <FormulaHelp fields={form.fields} />
           </div>
         </fieldset>
+          </TabsContent>
+          <TabsContent value="events">
+            <fieldset disabled={readOnly} style={LOCK}>
+              <EventsEditor form={form} readOnly={readOnly} onChange={(events) => onChange({ events })} />
+            </fieldset>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

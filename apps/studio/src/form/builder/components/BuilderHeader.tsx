@@ -55,7 +55,7 @@ export function BuilderHeader(props: BuilderHeaderProps) {
         )}
         <Button type="button" variant="outline" onClick={props.onRules} title="Calculations and conditional behaviour">
           <Sigma /> Rules
-          {!!form.rules?.length && <span className="fb-chip">{form.rules.length}</span>}
+          {!!(form.rules?.length || form.events?.length) && <span className="fb-chip">{(form.rules?.length ?? 0) + (form.events?.length ?? 0)}</span>}
         </Button>
         <Button type="button" variant="outline" onClick={props.onWorkflow} title="What happens after a submission">
           <Workflow /> Workflow

@@ -1,3 +1,4 @@
+import { isTimeZone } from '../../engine';
 import type { FontFamily, FormActionConfig, FormDefinition, FormTheme, SubmissionConfig } from '../../types';
 import { useStyles } from '../../adapters/styles/style-master';
 import { ColorSetting, SelectSetting, SwitchSetting, TextSetting } from './settings';
@@ -54,6 +55,18 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
             { label: 'Signed-in users only', value: 'AUTHENTICATED' },
           ]}
           onChange={(access) => onChange({ access })}
+        />
+
+        <TextSetting
+          label="Time zone"
+          value={form.timeZone}
+          placeholder="Each person's own"
+          hint={
+            form.timeZone && !isTimeZone(form.timeZone)
+              ? 'Not a time zone yet. Use a name such as Asia/Kolkata or Europe/London.'
+              : 'What "today" means in rules. Leave empty to use the zone of whoever is filling in the form.'
+          }
+          onChange={(timeZone) => onChange({ timeZone: timeZone.trim() || undefined })}
         />
 
         <div className="fb-panel__title">Layout</div>

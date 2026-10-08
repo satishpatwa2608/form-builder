@@ -9,14 +9,20 @@ export function HiddenField(_props: FieldComponentProps) {
 
 /**
  * An extra, non-submit button. Submit and cancel come from
- * `definition.actions`, not from fields. `props.href` navigates.
+ * `definition.actions`, not from fields. It runs the form's click events for
+ * it, then `props.href` navigates.
  */
 export function ButtonField({ field }: FieldComponentProps) {
-  const { navigate } = useFormRuntime();
+  const { navigate, clickable, onButtonClick } = useFormRuntime();
   const href = typeof field.props?.href === 'string' ? field.props.href : undefined;
+  const acts = clickable.has(field.name);
+  const onClick = async () => {
+    if (acts) await onButtonClick(field.name);
+    if (href) navigate(href);
+  };
   return (
     <div>
-      <Button type="button" variant="outline" disabled={field.disabled || !href} onClick={() => href && navigate(href)}>
+      <Button type="button" variant="outline" disabled={field.disabled || (!href && !acts)} onClick={() => void onClick()}>
         {field.label ?? field.name}
       </Button>
     </div>

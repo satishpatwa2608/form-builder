@@ -21,7 +21,7 @@ export function publishIssues(def: FormDefinition): PublishIssue[] {
     return {
       message: issue.message,
       fieldId: field?.id,
-      fieldLabel: field ? field.label || field.name : /^(workflow|automations)\b/.test(issue.path) ? 'Workflow' : /^rules\b/.test(issue.path) ? 'Rules' : undefined,
+      fieldLabel: field ? field.label || field.name : /^(workflow|automations)\b/.test(issue.path) ? 'Workflow' : /^(rules|events)\b/.test(issue.path) ? 'Rules' : undefined,
     };
   });
 }

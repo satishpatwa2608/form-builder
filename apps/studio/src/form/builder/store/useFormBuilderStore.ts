@@ -58,6 +58,8 @@ export interface FormBuilderState {
   redo: () => void;
 }
 
+const USABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
   /** Apply an edit to the open form, recording history. */
   const commit = (next: FormDefinition, editKey?: string, extra: Partial<FormBuilderState> = {}) => {
@@ -77,6 +79,9 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
 
   const withFields = (fields: FormField[]) => ({ ...get().form!, fields });
 
+  /** Field id -> the name rules still use for it, while its key is being retyped (see updateField). */
+  const heldNames = new Map<string, string>();
+
   return {
     form: null,
     selectedFieldId: undefined,
@@ -84,10 +89,15 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
     past: [],
     future: [],
 
-    load: (form) =>
-      set({ form, selectedFieldId: undefined, isDirty: false, past: [], future: [], lastEdit: undefined }),
+    load: (form) => {
+      heldNames.clear();
+      set({ form, selectedFieldId: undefined, isDirty: false, past: [], future: [], lastEdit: undefined });
+    },
 
-    reset: () => set({ form: null, selectedFieldId: undefined, isDirty: false, past: [], future: [], lastEdit: undefined }),
+    reset: () => {
+      heldNames.clear();
+      set({ form: null, selectedFieldId: undefined, isDirty: false, past: [], future: [], lastEdit: undefined });
+    },
 
     markSaved: (form) => set({ form, isDirty: false, lastEdit: undefined }),
 
@@ -122,7 +132,16 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
       if (!form || !current) return;
       let next = withFields(form.fields.map((f) => (f.id === fieldId ? { ...f, ...changes } : f)));
       if (changes.name !== undefined && changes.name !== current.name) {
-        next = renameFieldReferences(next, current.name, changes.name);
+        // The key is typed a character at a time. While it is empty, half-typed or the same as
+        // another field's, rules keep the name they had; they follow once the key is usable again.
+        // Renaming through a clash would merge the two fields' references for good.
+        const others = new Set(form.fields.filter((f) => f.id !== fieldId).map((f) => f.name));
+        const known = heldNames.get(fieldId) ?? current.name;
+        if (!USABLE_NAME.test(changes.name) || others.has(changes.name) || others.has(known)) heldNames.set(fieldId, known);
+        else {
+          next = renameFieldReferences(next, known, changes.name);
+          heldNames.delete(fieldId);
+        }
       }
       commit(next, `field:${fieldId}:${Object.keys(changes).join(',')}`);
     },

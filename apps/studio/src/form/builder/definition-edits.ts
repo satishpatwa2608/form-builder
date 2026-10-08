@@ -1,4 +1,4 @@
-import type { Condition, FormDefinition, FormField, FormRule, RuleAction } from '../types';
+import type { Condition, FormDefinition, FormEvent, FormField, FormRule, RuleAction, RuleCondition } from '../types';
 import { buildLayoutIndex, childrenOf, conditionFields, descendantFields, expressionFields, isExpressionCondition, placement, renameExpressionField, ROOT } from '../engine';
 
 /**
@@ -10,6 +10,28 @@ function renameInCondition(cond: Condition, from: string, to: string): Condition
   if ('all' in cond) return { all: cond.all.map((c) => renameInCondition(c, from, to)) };
   if ('any' in cond) return { any: cond.any.map((c) => renameInCondition(c, from, to)) };
   return cond.field === from ? { ...cond, field: to } : cond;
+}
+
+const renameInWhen = (when: RuleCondition, from: string, to: string): RuleCondition =>
+  isExpressionCondition(when) ? { expr: renameExpressionField(when.expr, from, to) } : renameInCondition(when, from, to);
+
+const renameInParams = (params: Record<string, string>, from: string, to: string) =>
+  Object.fromEntries(Object.entries(params).map(([k, v]) => [k, v.split(`{{${from}}}`).join(`{{${to}}}`)]));
+
+function renameInEvent(event: FormEvent, from: string, to: string): FormEvent {
+  const swap = (name: string) => (name === from ? to : name);
+  return {
+    ...event,
+    on: event.on.type === 'CLICK' ? { ...event.on, field: swap(event.on.field) } : event.on,
+    ...(event.when ? { when: renameInWhen(event.when, from, to) } : {}),
+    do: event.do.map((a) => {
+      if (a.type === 'SET_VALUE') return { ...a, target: swap(a.target), value: renameExpressionField(a.value, from, to) };
+      if (a.type === 'GO_TO_STEP') return { ...a, step: swap(a.step) };
+      if (a.type !== 'FETCH') return a;
+      const source = a.source.params ? { ...a.source, params: renameInParams(a.source.params, from, to) } : a.source;
+      return { ...a, source, set: Object.fromEntries(Object.entries(a.set).map(([name, path]) => [swap(name), path])) };
+    }),
+  };
 }
 
 function renameInRule(rule: FormRule, from: string, to: string): FormRule {
@@ -55,7 +77,13 @@ export function renameFieldReferences(def: FormDefinition, from: string, to: str
         }
       : def.submission;
 
-  return { ...def, fields, submission, ...(def.rules ? { rules: def.rules.map((r) => renameInRule(r, from, to)) } : {}) };
+  return {
+    ...def,
+    fields,
+    submission,
+    ...(def.rules ? { rules: def.rules.map((r) => renameInRule(r, from, to)) } : {}),
+    ...(def.events ? { events: def.events.map((e) => renameInEvent(e, from, to)) } : {}),
+  };
 }
 
 export function moveItem<T>(items: T[], from: number, to: number): T[] {

@@ -17,6 +17,9 @@ export interface FormRuntimeValue {
   readOnly: ReadonlySet<string>;
   /** Option values a rule currently allows, for the lists a rule narrows. */
   allowedOptions: ReadonlyMap<string, ReadonlySet<string>>;
+  /** BUTTON fields that have an event to run when clicked. */
+  clickable: ReadonlySet<string>;
+  onButtonClick: (name: string) => Promise<void>;
   systemContext: SystemContext;
   navigate: (url: string) => void;
   dataSourceAdapter: DataSourceAdapter;
