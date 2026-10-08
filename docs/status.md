@@ -67,7 +67,7 @@ API 60 · Studio 74 · Engine 68 · Connectors 15 · Runtime 2. Production build
 - Local `.env` uses the Business plan so the demo isn't capped; new orgs elsewhere start on Free.
 
 ### Engineering work remaining
-- **Worker app**: move SLA sweeps, automations and webhooks out of the API (needed before running more than one API server).
+- **AEM parity, Phases 4–12**: see [aem-parity.md](aem-parity.md). Phase 4 (rule engine, job queue and worker, CI) is mostly built; its table lists what is left.
 - **Gateways with several API servers**: sticky routing or routing between instances.
 - **Server-side PDF** stored as the document of record (today it's browser print).
 - SAML sign-in (only OpenID Connect today).

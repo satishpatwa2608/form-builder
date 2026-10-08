@@ -68,8 +68,32 @@ routing between instances is added, run a single API instance or pin
 
 ## Background work
 
-SLA sweeps, automations and webhooks run inside the API process today. With
-more than one instance they must move to `apps/worker` (SQS) first.
+Automations and webhook deliveries are stored as jobs in the `jobs` collection
+before they are attempted, so they survive a restart. A job is retried with a
+growing delay (30 s, 1 min, 2 min ... up to 1 hour) when it fails or its
+process dies: automations get 3 attempts, webhook deliveries 5. After that it
+stays in the collection as `FAILED` with its last error for 30 days; finished
+jobs are removed after 7 days.
+
+`JOBS_ROLE` decides which process runs them:
+
+| Value | Use |
+|---|---|
+| `all` (default) | One process stores and runs jobs. Development, or a single API server. |
+| `enqueue` | The API only stores jobs. Needs a worker beside it. |
+| `run` | Set by the worker itself. |
+
+The worker is the same build as the API, started with `node dist/worker`
+(`pnpm dev:worker` locally). It has no HTTP port. It also runs the SLA sweep.
+Several workers can run at once; each job is claimed by one of them.
+
+Before splitting the API and the worker, note one limit: an automation step
+that calls a connector through a gateway only works in the process the
+gateway is connected to, which is the API. Until gateway calls are routed
+between processes, keep `JOBS_ROLE=all` if any form uses such a step.
+
+To see what is stuck: `db.jobs.find({ status: 'FAILED' })`. To run one again,
+set its `status` to `PENDING`, `attempts` to 0 and `runAt` to now.
 
 ## Data retention
 

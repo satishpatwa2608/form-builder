@@ -68,6 +68,8 @@ import { FormRateLimit, FormRateLimitSchema, FormUpload, FormUploadSchema } from
 import { CaptchaVerifierService } from './work/services/captcha-verifier.service';
 import { DataSourceQueryService } from './work/services/data-source-query.service';
 import { FormAutomationService } from './work/services/form-automation.service';
+import { Job, JobSchema } from './jobs/job.schema';
+import { JobQueue } from './jobs/job-queue.service';
 import { FormCalendarService } from './work/services/form-calendar.service';
 import { FormContextService } from './work/services/form-context.service';
 import { FormDefinitionService } from './work/services/form-definition.service';
@@ -133,6 +135,7 @@ export class AppModule {
           { name: FormStat.name, schema: FormStatSchema },
           { name: FormDraft.name, schema: FormDraftSchema },
           { name: SsoState.name, schema: SsoStateSchema },
+          { name: Job.name, schema: JobSchema },
         ]),
         JwtModule.register({ secret: config.JWT_SECRET, signOptions: { algorithm: 'HS256' }, verifyOptions: { algorithms: ['HS256'] } }),
         ThrottlerModule.forRootAsync({
@@ -212,6 +215,7 @@ export class AppModule {
         FormSubmissionService,
         FormCalendarService,
         FormRecordService,
+        JobQueue,
         FormAutomationService,
         FormHandlerRegistry,
         WorkItemService,

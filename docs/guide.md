@@ -32,6 +32,29 @@ skip to the sections they need.
   missing styles are created (admins), and connectors it uses are listed so you
   can re-bind them.
 
+### Rules
+
+**Rules** in the builder's top bar holds the form's calculations and
+conditional behaviour. Each rule is: *when* (always, a set of conditions, or a
+formula that is true) → *then* one or more actions → optionally *otherwise*.
+
+| Action | What it does |
+|---|---|
+| Show / Hide | The field or section appears only while the rule holds (or only while it does not). Hidden answers are not submitted. |
+| Make required | Required while the rule holds. |
+| Enable / Disable | Shown but not editable. |
+| Set the value of | Fills the field from a formula, e.g. `round(quantity * unitPrice * 1.18, 2)`. The field becomes read-only. |
+| Show an error on | Blocks submission with your message, e.g. when `endDate < startDate`. |
+| Limit the options of | Offers only some of a fixed option list. |
+
+Formulas use field names, numbers, text in quotes, `+ - * / %`, `&` to join
+text, comparisons and `&&` `||` `!`. Functions include `sum`, `round`, `min`,
+`max`, `if`, `concat`, `today`, `dateAdd` and `dateDiff`; the full list is
+under "Writing formulas" in the dialog. A blank field counts as 0 in sums.
+
+Every rule is applied again on the server when the form is submitted: a
+calculated value is always the server's own result, whatever was sent.
+
 ## 3. Sharing forms
 
 - Public link: `https://<forms host>/f/<your org id>/<FORM_CODE>`.

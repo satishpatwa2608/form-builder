@@ -494,6 +494,26 @@ export class FormRecordService {
     }
   }
 
+  /** Whether the timeline already has an event of this type (so a repeated job does not log it twice). */
+  async hasEvent(orgId: string, recordId: string, type: RecordEventType): Promise<boolean> {
+    return !!(await this.events.exists({ orgId, recordId, type }));
+  }
+
+  /**
+   * What one automation run has put on the timeline so far, by step index.
+   * `-1` is present once the run was stopped after a failed step.
+   */
+  async runSteps(orgId: string, recordId: string, runId: string): Promise<Map<number, Record<string, unknown>>> {
+    const rows = await this.events.find({ orgId, recordId, type: 'AUTOMATION', 'data.runId': runId }).select('data').lean();
+    const steps = new Map<number, Record<string, unknown>>();
+    for (const row of rows) {
+      const data = (row.data ?? {}) as Record<string, unknown>;
+      if (data.stopped) steps.set(-1, data);
+      else if (typeof data.stepIndex === 'number') steps.set(data.stepIndex, data);
+    }
+    return steps;
+  }
+
   /**
    * Move a record to `to`. `from` guards against two people moving it at
    * once: the write only happens if it's still in the status we checked.

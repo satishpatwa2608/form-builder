@@ -46,7 +46,7 @@ A phase is not done until its tests are written and pass. Testing is part of eac
 ### Phase 4 – Foundations (4 weeks)
 
 - Commit the code, add CI (lint, typecheck, tests, dependency and secret scanning). Nothing is committed today.
-- **Worker app:** move SLA sweeps, automations and webhooks out of the API onto a queue with retries (SQS in AWS, a MongoDB-backed queue locally).
+- **Worker app:** move SLA sweeps, automations and webhooks out of the API onto a queue with retries.
 - **Rule engine v2** in `packages/engine`, replacing today's three separate mechanisms (`visibility`, `requiredWhen`, `dependency`) with one model, while still reading the old ones:
   - Actions: show/hide, enable/disable, set value, calculate, validate with a custom message, set options, navigate to a step, call a connector operation.
   - When / then / else, nested all/any conditions (the condition model already supports nesting).
@@ -57,7 +57,23 @@ A phase is not done until its tests are written and pass. Testing is part of eac
 
 **Testing:** Engine unit tests for every action, operator and function, including cycles, division by zero and wrong types. API e2e: tampered calculated value rejected, rule validation enforced without a browser. Worker: a job is retried after a failure and is not run twice. Studio: rule editor creates, edits and deletes each action type. The old `visibility` / `requiredWhen` / `dependency` forms still pass their existing tests unchanged.
 
-**Done when:** a form computes a total from other fields, the API rejects a tampered total, and automations survive an API restart mid-run.
+**Done when:** a form computes a total from other fields, the API stores its own total whatever the browser sent, and automations survive an API restart mid-run.
+
+**Status, 8 October 2026:**
+
+| Item | State |
+|---|---|
+| First commit, CI workflow (typecheck, tests, build, dependency audit, secret scan) | Done. The workflow has not run yet: the repository has no remote. No lint step, because the project has no linter configured. |
+| Worker and queue | Done. Jobs are kept in MongoDB in every environment (SQS was not needed to get retries and a separate worker; revisit if volume calls for it). The worker is a second entry point of the API app (`node dist/worker`), so the empty `apps/worker` skeleton was removed. |
+| Rule engine: show/hide, enable/disable, require, set value, error, narrow options; when / then / otherwise; expression language and function library | Done, in the engine, the API, the live form and the builder. |
+| Server recomputes calculations and re-checks rules | Done. A sent value for a calculated field is replaced, not rejected. |
+| Rule editor in the builder | Done as a Rules dialog. The per-field visibility and required-when editors are unchanged and still work. |
+| Actions that react to an event: go to a step, call a connector operation, run on submit success or error | Not started. |
+| Renaming or deleting a field updates the rules that mention it | Not started. Today publishing reports the broken reference. |
+| A form-level time zone | Not started. `today()` uses the browser's zone, which the server accepts from the request. |
+| Customer-written functions | Deferred (section 5). |
+
+Tests added in this phase: engine 68 → 115, API 60 → 78, studio 74 → 89; 299 in total, all passing.
 
 ### Phase 5 – Components (4 weeks)
 
@@ -165,7 +181,7 @@ Each one follows the existing connector contract and security rules in plan.md s
 | Before | Decision | Recommendation |
 |---|---|---|
 | 4 | Custom functions written by customers: allow or not | Not in Phase 4. Ship the built-in library first; customer code needs a sandbox and a security review. |
-| 4 | Local queue | MongoDB-backed, same interface as SQS, so development needs no AWS account. |
+| 4 | Local queue | Decided: MongoDB-backed in every environment for now. |
 | 6 | PDF engine | Headless Chromium in the worker for HTML templates (reuses the form's own styling); a PDF library for merge, split and protect. |
 | 6 | Where documents are kept by default | Our S3 in Mumbai; the customer's bucket when a file connector is bound. |
 | 7 | Signature providers and accounts | DocuSign plus one Aadhaar eSign provider; needs commercial accounts. |

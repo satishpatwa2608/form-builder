@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { OnEvent } from '@nestjs/event-emitter';
+import { createHash } from 'node:crypto';
+import { JobQueue, type JobContext } from '../../jobs/job-queue.service';
 import { Model } from 'mongoose';
 import { newId as uuidv4 } from '../../common/crypto';
 import { MailService } from './mail.service';
@@ -54,6 +56,12 @@ function fromHandler(key: string, result: FormHandlerResult): StepResult {
   return { summary: result.summary || `ran ${key}`, data };
 }
 
+/** The same two ids always give the same id, shaped like the random ones. */
+function stableId(a: string, b: string): string {
+  const h = createHash('sha256').update(`${a}:${b}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
 /**
@@ -74,51 +82,61 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     private readonly records: FormRecordService,
     private readonly mail: MailService,
     private readonly handlers: FormHandlerRegistry,
+    private readonly jobs: JobQueue,
   ) {}
 
   // ---------------------------------------------------------------- triggers
 
+  // Each trigger becomes a stored job, so the work survives a restart, is retried, and
+  // can run in the worker instead of the API. The handlers below do the work.
+
   @OnEvent(FORM_SUBMITTED_EVENT, { async: true })
   async onSubmitted(e: FormSubmittedEvent) {
-    try {
-      const { record, definition } = await this.records.load(e.orgId, e.submissionId);
-      await this.records.log(e.orgId, record.uuid, 'CREATED', record.submittedBy, `Submitted via ${record.channel}`, {
-        status: record.status,
-        ref: record.ref,
-      });
-      if (record.assigneeId) {
-        await this.records.log(e.orgId, record.uuid, 'ASSIGNED', '', 'Assigned by the form\'s rule', { from: '', to: record.assigneeId });
-        this.records.notify(e.orgId, [record.assigneeId], `New ${definition.name}: ${record.ref}`, record.uuid, record.ref, definition.name);
-      }
-      await this.run('SUBMITTED', e.orgId, record.uuid, 0, record.submittedBy);
-    } catch (err) {
-      this.logger.error(`automations after submission ${e.submissionId} failed: ${(err as Error).message}`);
-    }
+    await this.queue('automation.submitted', { ...e }, e.orgId, `submitted:${e.submissionId}`);
   }
 
   @OnEvent(FORM_RECORD_FIELDS_EVENT, { async: true })
   async onFieldsUpdated(e: RecordFieldsEvent) {
-    try {
-      await this.run('FIELD_UPDATED', e.orgId, e.recordId, 0, e.by, e.fields);
-    } catch (err) {
-      this.logger.error(`automations after work field update of ${e.recordId} failed: ${(err as Error).message}`);
-    }
+    await this.queue('automation.fields', { ...e }, e.orgId);
   }
 
   @OnEvent(FORM_RECORD_STATUS_EVENT, { async: true })
   async onStatusChanged(e: RecordStatusEvent) {
+    await this.queue('automation.status', { ...e }, e.orgId);
+  }
+
+  private async queue(type: string, payload: Record<string, unknown>, orgId: string, dedupeKey?: string) {
     try {
-      await this.run('STATUS_CHANGED', e.orgId, e.recordId, e.depth, e.by);
+      await this.jobs.enqueue(type, payload, { orgId, dedupeKey });
     } catch (err) {
-      this.logger.error(`automations after status change of ${e.recordId} failed: ${(err as Error).message}`);
+      this.logger.error(`could not queue ${type} for org ${orgId}: ${(err as Error).message}`);
     }
+  }
+
+  /** A job may be started again after a crash, so nothing here is logged or sent twice. */
+  private async afterSubmission(e: FormSubmittedEvent, job: JobContext) {
+    const { record, definition } = await this.records.load(e.orgId, e.submissionId);
+    if (!(await this.records.hasEvent(e.orgId, record.uuid, 'CREATED'))) {
+      await this.records.log(e.orgId, record.uuid, 'CREATED', record.submittedBy, `Submitted via ${record.channel}`, {
+        status: record.status,
+        ref: record.ref,
+      });
+    }
+    if (record.assigneeId && !(await this.records.hasEvent(e.orgId, record.uuid, 'ASSIGNED'))) {
+      await this.records.log(e.orgId, record.uuid, 'ASSIGNED', '', 'Assigned by the form\'s rule', { from: '', to: record.assigneeId });
+      this.records.notify(e.orgId, [record.assigneeId], `New ${definition.name}: ${record.ref}`, record.uuid, record.ref, definition.name);
+    }
+    await this.run('SUBMITTED', e.orgId, record.uuid, 0, record.submittedBy, [], undefined, job.id);
   }
 
   // ---------------------------------------------------------------- SLA sweep
 
   onModuleInit() {
-    // On by default; FORM_WORKFLOW_SWEEP=false turns it off (tests call sweep() directly).
-    if (process.env.FORM_WORKFLOW_SWEEP === 'false' || process.env.NODE_ENV === 'test') return;
+    this.jobs.register('automation.submitted', (e: FormSubmittedEvent, job) => this.afterSubmission(e, job));
+    this.jobs.register('automation.fields', (e: RecordFieldsEvent, job) => this.run('FIELD_UPDATED', e.orgId, e.recordId, 0, e.by, e.fields, undefined, job.id));
+    this.jobs.register('automation.status', (e: RecordStatusEvent, job) => this.run('STATUS_CHANGED', e.orgId, e.recordId, e.depth, e.by, [], undefined, job.id));
+    // The sweep belongs to whichever process runs jobs. FORM_WORKFLOW_SWEEP=false turns it off (tests call sweep() directly).
+    if (!this.jobs.runsJobs || process.env.FORM_WORKFLOW_SWEEP === 'false' || process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => void this.sweep(), WORKFLOW.sweepEveryMs);
     this.timer.unref?.();
   }
@@ -271,7 +289,21 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** `actor` is who caused this (the submitter, the person who moved it) - used as the task creator. */
-  async run(trigger: AutomationTrigger, orgId: string, recordId: string, depth: number, actor: string, changed: string[] = [], sla?: 'STATUS' | 'RESPONSE' | 'RESOLUTION') {
+  /**
+   * `jobId` ties the run to the job that started it: each flow's run id is then
+   * derived from it, so a job started again after a crash carries on after the
+   * steps already on the timeline instead of repeating them.
+   */
+  async run(
+    trigger: AutomationTrigger,
+    orgId: string,
+    recordId: string,
+    depth: number,
+    actor: string,
+    changed: string[] = [],
+    sla?: 'STATUS' | 'RESPONSE' | 'RESOLUTION',
+    jobId?: string,
+  ) {
     const { record, definition } = await this.records.load(orgId, recordId);
     const automations = this.matching(definition, trigger, record.status, changed).filter((a) => trigger !== 'SLA_BREACHED' || !a.sla || a.sla === sla);
     if (!automations.length) return;
@@ -283,7 +315,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     const values = valuesFromPayload(definition, record.payload as FormValues);
     for (const automation of automations) {
       if (automation.if && !evaluateCondition(automation.if, conditionValues(values, record.status, {}, { priority: record.priority, work: record.work }))) continue;
-      await this.runFlow(automation, { orgId, trigger, definition, values, recordId }, depth, actor);
+      await this.runFlow(automation, { orgId, trigger, definition, values, recordId }, depth, actor, undefined, jobId ? stableId(jobId, automation.id) : undefined);
     }
   }
 
@@ -300,10 +332,15 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     depth: number,
     actor: string,
     resume?: { runId: string; from: number; steps: Record<string, unknown> },
+    /** Set when a job started this run: the same job always gets the same run id. */
+    jobRunId?: string,
   ) {
     const { orgId, recordId } = run;
-    const runId = resume?.runId ?? uuidv4();
+    const runId = resume?.runId ?? jobRunId ?? uuidv4();
     const steps: Record<string, unknown> = { ...(resume?.steps ?? {}) };
+    // What an earlier attempt of the same job already did, by step.
+    const earlier = jobRunId ? await this.records.runSteps(orgId, recordId, runId) : new Map<number, Record<string, unknown>>();
+    if (earlier.has(-1)) return;
     const log = (message: string, data: Record<string, unknown>) =>
       this.records.log(orgId, recordId, 'AUTOMATION', '', `${automation.name}: ${message}`, { runId, automationId: automation.id, ...data });
     const finish = (status: 'DONE' | 'STOPPED') =>
@@ -313,6 +350,14 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       const action = automation.actions[index];
       const key = stepKey(action, index);
       const base = { stepKey: key, stepIndex: index, action: action.type };
+      const before = earlier.get(index);
+      if (before) {
+        // Already done before the restart: take its outcome instead of doing it again.
+        if (before.waiting) return;
+        if (before.ok === false && !action.continueOnError) return finish('STOPPED');
+        if (before.output && typeof before.output === 'object') steps[key] = before.output;
+        continue;
+      }
       // Earlier steps (ASSIGN, SET_STATUS) may have changed the record.
       const live = (await this.records.load(orgId, recordId)).record;
       if (action.if && !evaluateCondition(action.if, conditionValues(run.values, live.status, steps, { priority: live.priority, work: live.work }))) {

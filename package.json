@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev:api": "pnpm --filter @fb/api dev",
-    "dev:worker": "pnpm --filter @fb/worker dev",
+    "dev:worker": "pnpm --filter @fb/api dev:worker",
     "dev:studio": "pnpm --filter @fb/studio dev",
     "dev:runtime": "pnpm --filter @fb/runtime dev",
     "build": "pnpm -r build",

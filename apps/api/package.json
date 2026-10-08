@@ -7,6 +7,8 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main",
+    "dev:worker": "nest start --watch --entryFile worker",
+    "start:worker": "node dist/worker",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest",
     "set-plan": "node dist/cli/set-plan.js"

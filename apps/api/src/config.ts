@@ -26,6 +26,12 @@ const schema = z.object({
   API_URL: z.string().url().default('http://localhost:4100'),
   /** AWS KMS key that wraps each connector's data key. Required in production. */
   KMS_KEY_ID: z.string().default(''),
+  /**
+   * Background jobs (automations, webhooks, SLA sweeps): `all` stores and runs
+   * them in this process (development, one server); `enqueue` only stores them
+   * (the API beside a worker); `run` is the worker.
+   */
+  JOBS_ROLE: z.enum(['all', 'enqueue', 'run']).default('all'),
   /** Plan for organisations billing hasn't set one on (see src/plans/plans.ts). */
   DEFAULT_PLAN: z.enum(['FREE', 'TEAM', 'BUSINESS', 'ENTERPRISE']).default('FREE'),
   /** Secure cookies (https only). Must be true outside local development. */

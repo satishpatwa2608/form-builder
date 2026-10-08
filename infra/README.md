@@ -23,5 +23,5 @@ Nothing is provisioned yet (by design: no AWS resources are created without the 
 - Domain names for studio, runtime (public forms) and API.
 - Terraform or AWS CDK (Terraform is not installed on the dev machine yet).
 - How customer custom domains get TLS: CloudFront + ACM certificate per host (automated), or an edge proxy with on-demand TLS (e.g. Caddy) that checks `GET /public/domains/:host`. See docs/operations.md.
-- One API instance at first, or sticky routing for gateway WebSockets; background jobs move to `apps/worker` + SQS before running several instances.
+- One API instance at first, or sticky routing for gateway WebSockets; background jobs run in the worker (`node dist/worker`, same image as the API) once the API is set to `JOBS_ROLE=enqueue`.
 - Billing provider (Razorpay for India, Stripe for international) and the plan prices/limits.

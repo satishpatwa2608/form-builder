@@ -11,11 +11,10 @@ A hosted form platform: build forms, connect them to your own data (MongoDB, Pos
 
 | Path | What |
 |---|---|
-| `apps/api` | NestJS API: auth, orgs, permissions, forms, submissions, work items, connectors, gateways, plans, branding, domains, SSO, audit (port 4100) |
+| `apps/api` | NestJS API: auth, orgs, permissions, forms, submissions, work items, connectors, gateways, plans, branding, domains, SSO, audit (port 4100). Also the worker: the same app without HTTP, running queued jobs (`pnpm dev:worker`) |
 | `apps/studio` | React designer app: builder, forms, work inbox & dashboard, connectors, members, access, audit, organisation settings (port 5173) |
 | `apps/runtime` | React public form page: `/f/:org/:CODE`, or `/:CODE` on a customer's own domain (port 5174) |
 | `apps/gateway` | Agent that runs inside a customer network and runs connector operations there ([README](apps/gateway/README.md)) |
-| `apps/worker` | Background jobs — skeleton only; jobs still run inside the API (see Status) |
 | `packages/engine` | Form + workflow rules shared by all apps (ported from Sangam form-platform) |
 | `packages/connectors` | Connector contract, registry, plugins, gateway protocol |
 | `packages/ui` | Design tokens |
@@ -83,6 +82,5 @@ Not done — needs a decision, an account or more time:
 
 - **Billing provider** (Razorpay/Stripe): needs the account and pricing. Until then plans are set with `pnpm --filter @fb/api set-plan <orgId> <PLAN>`; the limits in `apps/api/src/plans/plans.ts` are placeholders.
 - **Infrastructure** (AWS account, domains, Terraform vs CDK, TLS for custom domains): see infra/README.md.
-- **Worker app**: SLA sweeps, automations and webhooks run inside the API process. Fine for one instance; move them to `apps/worker` + SQS before scaling out.
 - **PDF as document of record**: a submission prints to PDF from the browser; server-side generation and storage through a file connector is not built.
 - SAML (only OIDC), multi-language forms, per-field drop-off analytics, onboarding tour, external penetration test, DPDP documents.
