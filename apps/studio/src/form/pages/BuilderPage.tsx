@@ -17,7 +17,7 @@ import { descendantFields, FormDefinitionError, isContainerField } from '../engi
 import { useFormBuilderStore } from '../builder/store/useFormBuilderStore';
 import { useCreateNewVersion, useFormDoc, useFormFamily, usePublishForm, useSaveFormDraft } from '../adapters/registry/useFormRegistry';
 import { paletteItem } from '../builder/field-catalog';
-import { fieldsReferencing } from '../builder/definition-edits';
+import { fieldsReferencing, rulesReferencing } from '../builder/definition-edits';
 import { publishIssues } from '../builder/publish-issues';
 import { BuilderHeader } from '../builder/components/BuilderHeader';
 import { FieldPalette } from '../builder/components/FieldPalette';
@@ -193,10 +193,15 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
       return;
     }
     const dependents = fieldsReferencing(form, field.name);
-    if (!dependents.length) return store.removeField(field.id);
+    const rules = rulesReferencing(form, field.name);
+    if (!dependents.length && !rules.length) return store.removeField(field.id);
+    const users = [
+      ...dependents.map((d) => `"${d.label || d.name}"`),
+      ...rules.map((r) => `the rule "${r.name?.trim() || `Rule ${(form.rules ?? []).indexOf(r) + 1}`}"`),
+    ];
     setConfirm({
       title: `Delete "${field.label || field.name}"?`,
-      description: `Rules on ${dependents.map((d) => `"${d.label || d.name}"`).join(', ')} use this field and will need fixing before you can publish.`,
+      description: `Rules on ${users.join(', ')} use this field and will need fixing before you can publish.`,
       confirmLabel: 'Delete',
       destructive: true,
       onConfirm: () => store.removeField(field.id),

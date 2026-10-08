@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkExpression, evaluateExpression, expressionFields, EXPRESSION_FUNCTIONS, parseExpression } from '../src';
+import { checkExpression, evaluateExpression, expressionFields, EXPRESSION_FUNCTIONS, parseExpression, renameExpressionField } from '../src';
 import type { FormValues } from '../src/types';
 
 const now = new Date('2026-10-08T20:30:00.000Z');
@@ -180,6 +180,15 @@ describe('expressions — references', () => {
   it('lists the fields an expression reads, once each', () => {
     expect(expressionFields('round(qty * price, 2) + if(qty > 10, bonus, 0)').sort()).toEqual(['bonus', 'price', 'qty']);
     expect(expressionFields('1 +')).toEqual([]);
+  });
+
+  it('renames a field wherever it is read, and nothing else', () => {
+    expect(renameExpressionField('qty * price + qty', 'qty', 'quantity')).toBe('quantity * price + quantity');
+    // Not part of a longer name, not a function of the same name, not text in quotes.
+    expect(renameExpressionField('sum(sum, summary, "sum")', 'sum', 'total')).toBe('sum(total, summary, "sum")');
+    expect(renameExpressionField('a>1?a:-a', 'a', 'amount')).toBe('amount>1?amount:-amount');
+    expect(renameExpressionField('qty * "unclosed', 'qty', 'quantity')).toBe('qty * "unclosed');
+    expect(renameExpressionField('qty *', 'qty', 'quantity')).toBe('quantity *');
   });
 
   it('checks references against the form', () => {

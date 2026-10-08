@@ -1,5 +1,5 @@
-import type { Condition, FormDefinition, FormField } from '../types';
-import { buildLayoutIndex, childrenOf, descendantFields, placement, ROOT } from '../engine';
+import type { Condition, FormDefinition, FormField, FormRule, RuleAction } from '../types';
+import { buildLayoutIndex, childrenOf, conditionFields, descendantFields, expressionFields, isExpressionCondition, placement, renameExpressionField, ROOT } from '../engine';
 
 /**
  * Pure edits on a FormDefinition that the builder store composes. Kept out of
@@ -10,6 +10,19 @@ function renameInCondition(cond: Condition, from: string, to: string): Condition
   if ('all' in cond) return { all: cond.all.map((c) => renameInCondition(c, from, to)) };
   if ('any' in cond) return { any: cond.any.map((c) => renameInCondition(c, from, to)) };
   return cond.field === from ? { ...cond, field: to } : cond;
+}
+
+function renameInRule(rule: FormRule, from: string, to: string): FormRule {
+  const action = (a: RuleAction): RuleAction => {
+    const target = a.target === from ? to : a.target;
+    return a.type === 'SET_VALUE' ? { ...a, target, value: renameExpressionField(a.value, from, to) } : { ...a, target };
+  };
+  const when = !rule.when
+    ? undefined
+    : isExpressionCondition(rule.when)
+      ? { expr: renameExpressionField(rule.when.expr, from, to) }
+      : renameInCondition(rule.when, from, to);
+  return { ...rule, ...(when ? { when } : {}), then: rule.then.map(action), ...(rule.else ? { else: rule.else.map(action) } : {}) };
 }
 
 /**
@@ -42,7 +55,7 @@ export function renameFieldReferences(def: FormDefinition, from: string, to: str
         }
       : def.submission;
 
-  return { ...def, fields, submission };
+  return { ...def, fields, submission, ...(def.rules ? { rules: def.rules.map((r) => renameInRule(r, from, to)) } : {}) };
 }
 
 export function moveItem<T>(items: T[], from: number, to: number): T[] {
@@ -65,6 +78,17 @@ export function fieldsReferencing(def: FormDefinition, name: string): FormField[
     (f) =>
       f.name !== name &&
       (mentions(f.visibility?.when) || mentions(f.requiredWhen) || !!f.dependency?.dependsOn.includes(name)),
+  );
+}
+
+/** Form rules that read or act on `name` - shown before deleting a field. */
+export function rulesReferencing(def: FormDefinition, name: string): FormRule[] {
+  const reads = (rule: FormRule) =>
+    !rule.when ? [] : isExpressionCondition(rule.when) ? expressionFields(rule.when.expr) : conditionFields(rule.when);
+  return (def.rules ?? []).filter(
+    (rule) =>
+      reads(rule).includes(name) ||
+      [...rule.then, ...(rule.else ?? [])].some((a) => a.target === name || (a.type === 'SET_VALUE' && expressionFields(a.value).includes(name))),
   );
 }
 

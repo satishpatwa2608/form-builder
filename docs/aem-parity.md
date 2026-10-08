@@ -69,11 +69,11 @@ A phase is not done until its tests are written and pass. Testing is part of eac
 | Server recomputes calculations and re-checks rules | Done. A sent value for a calculated field is replaced, not rejected. |
 | Rule editor in the builder | Done as a Rules dialog. The per-field visibility and required-when editors are unchanged and still work. |
 | Actions that react to an event: go to a step, call a connector operation, run on submit success or error | Not started. |
-| Renaming or deleting a field updates the rules that mention it | Not started. Today publishing reports the broken reference. |
+| Renaming a field updates the rules that mention it; deleting one warns which rules use it | Done. |
 | A form-level time zone | Not started. `today()` uses the browser's zone, which the server accepts from the request. |
 | Customer-written functions | Deferred (section 5). |
 
-Tests added in this phase: engine 68 → 115, API 60 → 78, studio 74 → 89; 299 in total, all passing.
+Tests added in this phase: engine 68 → 116, API 60 → 78, studio 74 → 90; 301 in total, all passing.
 
 ### Phase 5 – Components (4 weeks)
 

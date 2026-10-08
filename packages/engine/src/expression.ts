@@ -232,6 +232,30 @@ export function expressionFields(src: string): string[] {
   return [...names];
 }
 
+/**
+ * The expression with every reference to field `from` renamed to `to`.
+ * Function names and text in quotes are left alone. Returned unchanged when
+ * it cannot be read (a half-typed formula keeps what the author wrote).
+ */
+export function renameExpressionField(src: string, from: string, to: string): string {
+  let tokens: Token[];
+  try {
+    tokens = tokenize(src);
+  } catch {
+    return src;
+  }
+  let out = '';
+  let at = 0;
+  tokens.forEach((tok, i) => {
+    const next = tokens[i + 1];
+    const isCall = next?.k === 'op' && next.v === '(';
+    if (tok.k !== 'id' || tok.v !== from || isCall) return;
+    out += src.slice(at, tok.pos) + to;
+    at = tok.pos + from.length;
+  });
+  return out + src.slice(at);
+}
+
 /** Why an expression cannot be used, or null. `fields` are the names it may refer to. */
 export function checkExpression(src: string, fields: ReadonlySet<string>): string | null {
   try {

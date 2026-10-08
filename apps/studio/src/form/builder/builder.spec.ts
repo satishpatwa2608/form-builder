@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useFormBuilderStore } from './store/useFormBuilderStore';
 import { createField, DEFAULT_CAPTCHA_CONFIG, PALETTE_GROUPS, uniqueFieldName } from './field-catalog';
-import { fieldsReferencing, moveItem, renameFieldReferences } from './definition-edits';
+import { fieldsReferencing, moveItem, renameFieldReferences, rulesReferencing } from './definition-edits';
 import { createBlankForm, suggestCode } from './blank-form';
 import { publishIssues } from './publish-issues';
 import { validateFormDefinition } from '../engine';
@@ -62,6 +62,37 @@ describe('definition edits', () => {
     expect(product.dependency?.dependsOn).toEqual(['kind']);
     expect(product.dataSource?.api?.params).toEqual({ c: '{{kind}}' });
     expect(next.submission.mapping).toEqual({ kind: 'complaintCategory' });
+  });
+
+  it('renaming a field carries through form rules, and rules that use a field are found', () => {
+    const form: FormDefinition = {
+      ...blank(),
+      fields: [
+        { id: '1', type: 'NUMBER', name: 'qty', label: 'Quantity' },
+        { id: '2', type: 'NUMBER', name: 'price', label: 'Price' },
+        { id: '3', type: 'NUMBER', name: 'total', label: 'Total' },
+        { id: '4', type: 'TEXT', name: 'note', label: 'Note' },
+      ],
+      rules: [
+        { id: 'a', then: [{ type: 'SET_VALUE', target: 'total', value: 'qty * price' }] },
+        { id: 'b', when: { expr: 'qty > 10' }, then: [{ type: 'REQUIRE', target: 'note' }], else: [{ type: 'HIDE', target: 'qty' }] },
+        { id: 'c', when: { field: 'qty', operator: 'isEmpty' }, then: [{ type: 'ERROR', target: 'price', message: 'qty first' }] },
+        { id: 'd', then: [{ type: 'SHOW', target: 'note' }] },
+      ],
+    };
+    expect(rulesReferencing(form, 'qty').map((r) => r.id)).toEqual(['a', 'b', 'c']);
+    expect(rulesReferencing(form, 'total').map((r) => r.id)).toEqual(['a']);
+
+    const next = renameFieldReferences(form, 'qty', 'quantity');
+    expect(next.rules).toEqual([
+      { id: 'a', then: [{ type: 'SET_VALUE', target: 'total', value: 'quantity * price' }] },
+      { id: 'b', when: { expr: 'quantity > 10' }, then: [{ type: 'REQUIRE', target: 'note' }], else: [{ type: 'HIDE', target: 'quantity' }] },
+      { id: 'c', when: { field: 'quantity', operator: 'isEmpty' }, then: [{ type: 'ERROR', target: 'price', message: 'qty first' }] },
+      { id: 'd', then: [{ type: 'SHOW', target: 'note' }] },
+    ]);
+    expect(rulesReferencing(next, 'qty')).toEqual([]);
+    // A form with no rules does not grow an empty list.
+    expect(renameFieldReferences(blank(), 'a', 'b')).not.toHaveProperty('rules');
   });
 
   it('moveItem and fieldsReferencing', () => {
