@@ -260,7 +260,7 @@ export function useRecordAction(id: string | undefined) {
  * endpoint - no CAPTCHA, source PORTAL.
  */
 export const portalSubmissionAdapter: SubmissionAdapter = {
-  async submit({ definition, payload, values }) {
+  async submit({ definition, payload, values, systemContext }) {
     try {
       const body: FormValues = { ...values };
       for (const f of definition.fields.filter((x) => x.type === 'FILE')) {
@@ -268,7 +268,7 @@ export const portalSubmissionAdapter: SubmissionAdapter = {
         body[f.name] = await Promise.all(files.filter((x): x is File => x instanceof File).map((file) => uploadFile(definition, f.name, file)));
       }
       const data = unwrap<{ submissionId: string; ref?: string; payload: FormValues }>(
-        await adminApi.post('/work-items', { formCode: definition.code, values: body, idempotencyKey: crypto.randomUUID() }),
+        await adminApi.post('/work-items', { formCode: definition.code, values: body, idempotencyKey: crypto.randomUUID(), timeZone: systemContext.timeZone }),
       );
       return { ok: true, submissionId: data.submissionId, ref: data.ref || undefined, payload: data.payload };
     } catch (e) {

@@ -12,11 +12,11 @@ import { getFieldComponent } from './field-registry';
  * attribute lets the error summary scroll to and focus any field type.
  */
 export function FieldRenderer({ field }: { field: FormField }) {
-  const { states, systemContext } = useFormRuntime();
+  const { states, systemContext, readOnly } = useFormRuntime();
   const state = states.get(field.name);
   if (state && !state.visible) return null;
-  // Filled from the signed-in user and locked: read-only (the server enforces it too).
-  const shown = isPrefillLocked(field, systemContext) ? { ...field, disabled: true } : field;
+  // Locked to the signed-in user, switched off by a rule, or calculated: read-only (the server enforces it too).
+  const shown = isPrefillLocked(field, systemContext) || readOnly.has(field.name) ? { ...field, disabled: true } : field;
 
   const Component = getFieldComponent(field.type) ?? UnsupportedField;
   if (field.type === 'HIDDEN') return <Component field={shown} required={false} />;

@@ -28,7 +28,8 @@ const NO_OPTIONS: SelectOption[] = [];
  * themselves - no manual refetch wiring for dependent dropdowns.
  */
 export function useFieldOptions(field: FormField): FieldOptions {
-  const { values, systemContext, dataSourceAdapter, definition } = useFormRuntime();
+  const { values, systemContext, dataSourceAdapter, definition, allowedOptions } = useFormRuntime();
+  const allowed = allowedOptions.get(field.name);
   const api = field.dataSource?.type === 'API' ? field.dataSource.api : undefined;
 
   // Cheap to recompute; TanStack hashes the key by value, so an unrelated
@@ -43,12 +44,16 @@ export function useFieldOptions(field: FormField): FieldOptions {
   });
 
   const options = useMemo<SelectOption[]>(() => {
-    if (!api) return field.dataSource?.options ?? NO_OPTIONS;
+    if (!api) {
+      const all = field.dataSource?.options ?? NO_OPTIONS;
+      // A rule may be narrowing this list for the current answers.
+      return allowed ? all.filter((o) => allowed.has(o.value)) : all;
+    }
     return (query.data ?? []).map((row) => ({
       value: String(readPath(row, api.valueField) ?? ''),
       label: String(readPath(row, api.labelField) ?? ''),
     }));
-  }, [api, field.dataSource, query.data]);
+  }, [api, field.dataSource, query.data, allowed]);
 
   if (!api) return { options, status: 'ready', waitingFor: [] };
   if (resolved && resolved.unresolved.length) {

@@ -13,6 +13,10 @@ export interface FormRuntimeValue {
   values: FormValues;
   /** Visible/required state of every field for the current values. */
   states: FieldStates;
+  /** Names a rule has switched off or is calculating: shown, not editable. */
+  readOnly: ReadonlySet<string>;
+  /** Option values a rule currently allows, for the lists a rule narrows. */
+  allowedOptions: ReadonlyMap<string, ReadonlySet<string>>;
   systemContext: SystemContext;
   navigate: (url: string) => void;
   dataSourceAdapter: DataSourceAdapter;

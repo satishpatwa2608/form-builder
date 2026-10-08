@@ -28,7 +28,7 @@ export const httpSubmissionAdapter: SubmissionAdapter = {
       }
       const data = await publicApi<{ submissionId: string; ref?: string; payload: FormValues }>(
         `/forms/${encodeURIComponent(definition.code)}/submissions?org=${encodeURIComponent(definition.orgId)}`,
-        { method: 'POST', body: { values: body, idempotencyKey: crypto.randomUUID(), channel: systemContext.sourceChannel, urlParams: systemContext.urlParams } },
+        { method: 'POST', body: { values: body, idempotencyKey: crypto.randomUUID(), channel: systemContext.sourceChannel, urlParams: systemContext.urlParams, timeZone: systemContext.timeZone } },
       );
       return { ok: true, submissionId: data.submissionId, ref: data.ref || undefined, payload: data.payload };
     } catch (e) {

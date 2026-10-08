@@ -3,6 +3,7 @@ import { useForm, useWatch, type Resolver, type UseFormReturn } from 'react-hook
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form } from '@ui/form';
 import type { FormDefinition, FormStyle, FormValues, SubmissionResult, SystemContext } from '../../types';
+import type { FormState } from '../../engine';
 import {
   buildDefaultValues,
   buildFormCss,
@@ -11,7 +12,7 @@ import {
   buildSteps,
   buildZodSchema,
   childrenOf,
-  computeFieldStates,
+  computeFormState,
   descendantsOf,
   emptyValueFor,
   isEmptyValue,
@@ -121,6 +122,39 @@ function useDependencyReset(
   }, [values, children, definition, form, skipNext]);
 }
 
+function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Rule engine -> form state: writes each calculated value into the form so
+ * the person sees it, and drops a choice a rule has just removed from a
+ * narrowed option list. The server recomputes both on submit regardless.
+ */
+function useRuleValues(form: UseFormReturn<FormValues>, definition: FormDefinition, values: FormValues, state: FormState) {
+  useEffect(() => {
+    for (const name of state.calculated) {
+      if (JSON.stringify(values[name]) === JSON.stringify(state.values[name])) continue;
+      form.setValue(name, state.values[name], { shouldDirty: true, shouldValidate: !!form.formState.errors[name] });
+    }
+    for (const [name, allowed] of state.options) {
+      const value = values[name];
+      const field = definition.fields.find((f) => f.name === name);
+      if (!field || isEmptyValue(value)) continue;
+      if (Array.isArray(value)) {
+        const kept = value.filter((v) => allowed.has(String(v)));
+        if (kept.length !== value.length) form.setValue(name, kept, { shouldDirty: true });
+      } else if (!allowed.has(String(value))) {
+        form.setValue(name, emptyValueFor(field.type), { shouldDirty: true });
+      }
+    }
+  }, [form, definition, values, state]);
+}
+
 function FormRuntime({
   definition,
   systemContext,
@@ -136,8 +170,9 @@ function FormRuntime({
   stayOnSubmit = false,
 }: FormRuntimeProps & { definition: FormDefinition }) {
   const containerRef = useRef<HTMLFormElement>(null);
-  const context = useMemo(() => systemContextFor(definition, systemContext), [definition, systemContext]);
-  const schema = useMemo(() => buildZodSchema(definition), [definition]);
+  // The person's own zone, so `today()` in a rule is their date; the server is told the same zone on submit.
+  const context = useMemo(() => systemContextFor(definition, { timeZone: browserTimeZone(), ...systemContext }), [definition, systemContext]);
+  const schema = useMemo(() => buildZodSchema(definition, context), [definition, context]);
   const defaults = useMemo(() => ({ ...buildDefaultValues(definition, context), ...initialValues }), [definition, context, initialValues]);
 
   const form = useForm<FormValues>({
@@ -147,7 +182,9 @@ function FormRuntime({
   });
 
   const values = useWatch({ control: form.control }) as FormValues;
-  const states = useMemo(() => computeFieldStates(definition, values), [definition, values]);
+  const formState = useMemo(() => computeFormState(definition, values, context), [definition, values, context]);
+  const { states } = formState;
+  useRuleValues(form, definition, values, formState);
 
   const layout = useMemo(() => buildLayoutIndex(definition.fields), [definition]);
 
@@ -206,7 +243,7 @@ function FormRuntime({
     try {
       const res = await submissionAdapter.submit({
         definition,
-        payload: buildPayload(definition, submitted),
+        payload: buildPayload(definition, submitted, context),
         values: submitted,
         systemContext: context,
       });
@@ -290,11 +327,16 @@ function FormRuntime({
     }
   });
 
+  // Switched off by a rule, or filled in by one: either way not for typing into.
+  const readOnly = useMemo(() => new Set([...formState.disabled, ...formState.calculated]), [formState]);
+
   const runtimeValue = useMemo(
     () => ({
       definition,
       values,
       states,
+      readOnly,
+      allowedOptions: formState.options,
       systemContext: context,
       navigate: onNavigate,
       dataSourceAdapter,
@@ -304,7 +346,7 @@ function FormRuntime({
       layout,
       stepSectionId: step?.section?.id,
     }),
-    [definition, values, states, context, onNavigate, dataSourceAdapter, resolvedCaptchaMode, registerCaptcha, resetKey, layout, step],
+    [definition, values, states, readOnly, formState.options, context, onNavigate, dataSourceAdapter, resolvedCaptchaMode, registerCaptcha, resetKey, layout, step],
   );
 
   if (result) {

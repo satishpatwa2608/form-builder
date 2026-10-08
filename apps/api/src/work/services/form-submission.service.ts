@@ -40,6 +40,8 @@ export interface SubmitBody {
   idempotencyKey?: unknown;
   channel?: unknown;
   urlParams?: unknown;
+  /** The browser's IANA time zone, so `today()` in a rule is the same day the person saw. */
+  timeZone?: unknown;
 }
 
 export interface FormSubmittedEvent {
@@ -86,6 +88,17 @@ export class FormSubmissionService {
       if (user.orgId !== orgId) throw new ForbiddenException('This form belongs to another organisation');
     }
     return def;
+  }
+
+  /** Only a zone this runtime knows; anything else falls back to UTC. */
+  private static cleanTimeZone(input: unknown): string | undefined {
+    if (typeof input !== 'string' || input.length > 64) return undefined;
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: input });
+      return input;
+    } catch {
+      return undefined;
+    }
   }
 
   /** URL params are client-controlled (they feed URL_PARAMETER hidden fields): strings only, bounded. */
@@ -141,6 +154,7 @@ export class FormSubmissionService {
       sourceChannel: channel,
       now: new Date(),
       urlParams: FormSubmissionService.cleanUrlParams(body.urlParams),
+      timeZone: FormSubmissionService.cleanTimeZone(body.timeZone),
     });
     for (const f of def.fields) {
       if (f.type === 'HIDDEN') values[f.name] = f.systemSource ? resolveSystemValue(f, ctx) : f.defaultValue;

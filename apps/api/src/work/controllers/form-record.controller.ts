@@ -110,12 +110,12 @@ export class FormRecordController {
    */
   @Post('work-items')
   @RequirePermission('record.work')
-  createWorkItem(@Body() body: { formCode?: unknown; values?: unknown; idempotencyKey?: unknown; source?: unknown }, @Req() req: any) {
+  createWorkItem(@Body() body: { formCode?: unknown; values?: unknown; idempotencyKey?: unknown; source?: unknown; timeZone?: unknown }, @Req() req: any) {
     const code = typeof body?.formCode === 'string' ? body.formCode : '';
     return this.submissions.submit(
       req.user.orgId,
       code,
-      { values: body?.values, idempotencyKey: body?.idempotencyKey, channel: 'APP' },
+      { values: body?.values, idempotencyKey: body?.idempotencyKey, channel: 'APP', timeZone: body?.timeZone },
       req.user,
       req.ip,
       { source: body?.source === 'API' ? 'API' : 'PORTAL', trusted: true },
