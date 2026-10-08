@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { newId as uuidv4 } from '../../common/crypto';
@@ -6,6 +6,7 @@ import { OBJECT_STORE, type ObjectStore } from '../../common/object-store';
 import type { FormDefinition, FormField } from '@fb/engine';
 import { LIMITS } from '../constants';
 import { mimeAllowed, SNIFF_BYTES, sniffFileType } from '../security/file-sniff';
+import { FILE_SCANNER, type FileScanner } from '../security/file-scanner';
 import { FormUpload, FormUploadDocument } from '../schemas/upload.schema';
 import type { SubmissionFile } from '../schemas/form-submission.schema';
 
@@ -15,7 +16,8 @@ const DEFAULT_MAX_MB = 5;
 /**
  * Form attachments: browser -> PRIVATE S3 bucket via short-lived pre-signed
  * PUT (size and type pinned in the signature), then the server reads the
- * first bytes and checks the real type before the file can be attached.
+ * first bytes and checks the real type, and has the file scanned for malware,
+ * before it can be attached.
  *
  * Storage is an ObjectStore: S3 in production (IAM role, private bucket),
  * local disk in development. Unattached objects live under `.../pending/`;
@@ -28,6 +30,7 @@ export class FormUploadService {
   constructor(
     @InjectModel(FormUpload.name) private readonly uploads: Model<FormUploadDocument>,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
+    @Inject(FILE_SCANNER) private readonly scanner: FileScanner,
   ) {}
 
   private static rules(field: FormField) {
@@ -103,8 +106,24 @@ export class FormUploadService {
       this.logger.warn(`upload ${uploadId} rejected: declared ${upload.contentType}, detected ${detected?.mime ?? 'unknown'}`);
       throw new UnprocessableEntityException("The file's content doesn't match its type");
     }
+    // Then the malware check, on the whole file. No answer means no: the upload stays unverified and can be tried again.
+    let verdict;
+    try {
+      verdict = await this.scanner.scan(await this.store.readHead(upload.key, upload.size));
+    } catch (e) {
+      this.logger.error(`upload ${uploadId} could not be scanned: ${(e as Error).message}`);
+      throw new ServiceUnavailableException('The file could not be checked just now. Please try again.');
+    }
+    if (!verdict.clean) {
+      await this.store.remove(upload.key);
+      upload.status = 'REJECTED';
+      await upload.save();
+      this.logger.warn(`upload ${uploadId} rejected by ${this.scanner.name}: ${verdict.threat}`);
+      throw new UnprocessableEntityException('This file was blocked because it may be harmful');
+    }
     upload.status = 'VERIFIED';
     upload.contentType = detected!.mime;
+    upload.scannedBy = this.scanner.name;
     await upload.save();
     return { uploadId, name: upload.name, size: upload.size, contentType: upload.contentType };
   }

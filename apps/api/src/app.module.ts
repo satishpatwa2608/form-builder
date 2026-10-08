@@ -76,6 +76,7 @@ import { FormDefinitionService } from './work/services/form-definition.service';
 import { FormRecordService } from './work/services/form-record.service';
 import { FormSubmissionService } from './work/services/form-submission.service';
 import { FormUploadService } from './work/services/form-upload.service';
+import { ClamAvScanner, FILE_SCANNER, NoFileScanner } from './work/security/file-scanner';
 import { FormWebhookService } from './work/services/form-webhook.service';
 import { FormHandlerRegistry } from './work/services/form-workflow.registry';
 import { MailService } from './work/services/mail.service';
@@ -186,6 +187,7 @@ export class AppModule {
               ? new S3ObjectStore(config.UPLOADS_BUCKET, config.AWS_REGION)
               : new LocalObjectStore(config.LOCAL_STORAGE_DIR, config.API_URL, Buffer.from(config.SECRET_KEY, 'base64')),
         },
+        { provide: FILE_SCANNER, useValue: config.FILE_SCANNER === 'clamav' ? new ClamAvScanner(config.CLAMAV_HOST, config.CLAMAV_PORT) : new NoFileScanner() },
         // Order matters: rate limit first, then authentication.
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: AuthGuard },

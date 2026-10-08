@@ -22,6 +22,14 @@ const schema = z.object({
   STORAGE_PROVIDER: z.enum(['local', 's3']).default('local'),
   UPLOADS_BUCKET: z.string().default(''),
   LOCAL_STORAGE_DIR: z.string().default('.local-uploads'),
+  /**
+   * Malware check on uploaded files before they can be attached: `none`, or
+   * `clamav` (a clamd daemon at CLAMAV_HOST:CLAMAV_PORT). With a scanner set,
+   * a file it cannot check is refused.
+   */
+  FILE_SCANNER: z.enum(['none', 'clamav']).default('none'),
+  CLAMAV_HOST: z.string().default('127.0.0.1'),
+  CLAMAV_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
   /** This API's public URL (local storage links). */
   API_URL: z.string().url().default('http://localhost:4100'),
   /** AWS KMS key that wraps each connector's data key. Required in production. */

@@ -32,6 +32,19 @@ skip to the sections they need.
   missing styles are created (admins), and connectors it uses are listed so you
   can re-bind them.
 
+### Fields added in this release
+
+- **Repeating section**: people add a copy of the fields inside for every row
+  ("add another line"). Set the fewest and most rows, the add-button text,
+  whether rows show as cards or as a table, and which number fields to total.
+  Uploads, signatures and other sections cannot go inside one.
+- **Tabs** and **Accordion**: each Section dropped inside is a tab or a panel.
+- **Switch**, **Tick boxes**, **Stepper**, **Picture**, **Signature** (drawn or
+  typed) and **Terms & consent**.
+- **Form settings → Review before sending** shows people all their answers,
+  with a way back to each, before anything is submitted.
+- CAPTCHA can use **hCaptcha** as well as reCAPTCHA and Turnstile.
+
 ### Rules
 
 **Rules** in the builder's top bar holds the form's calculations and
@@ -51,6 +64,11 @@ Formulas use field names, numbers, text in quotes, `+ - * / %`, `&` to join
 text, comparisons and `&&` `||` `!`. Functions include `sum`, `round`, `min`,
 `max`, `if`, `concat`, `today`, `dateAdd` and `dateDiff`; the full list is
 under "Writing formulas" in the dialog. A blank field counts as 0 in sums.
+
+In a repeating section a rule works row by row: `qty * price` uses that
+row's quantity and price. Outside the section the same name means the whole
+column, so `sum(lineTotal)` adds up every row and `count(lines)` is the
+number of rows.
 
 Every rule is applied again on the server when the form is submitted: a
 calculated value is always the server's own result, whatever was sent.

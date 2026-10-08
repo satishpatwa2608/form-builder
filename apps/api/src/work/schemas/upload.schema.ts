@@ -36,6 +36,10 @@ export class FormUpload {
   @Prop({ type: String, enum: ['PENDING', 'VERIFIED', 'REJECTED', 'ATTACHED'], default: 'PENDING' })
   status: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'ATTACHED';
 
+  /** Which scanner cleared the file (`none` when no scanner is configured). */
+  @Prop({ type: String, default: '' })
+  scannedBy: string;
+
   /** Unattached uploads expire; an S3 lifecycle rule on the `pending/` prefix removes their objects. */
   @Prop({ type: Date, required: true })
   expiresAt: Date;

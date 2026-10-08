@@ -66,6 +66,26 @@ With more than one API instance, a gateway is connected to one of them: until
 routing between instances is added, run a single API instance or pin
 `/gateway/connect` and connector calls with sticky routing.
 
+## Uploads and malware scanning
+
+Every upload is checked by its real content type before it can be attached.
+Set `FILE_SCANNER=clamav` (with `CLAMAV_HOST`, `CLAMAV_PORT`, default 3310)
+to also send each file to a ClamAV daemon:
+
+- a clean file is attached as usual;
+- an infected file is deleted and refused;
+- if the daemon is down, slow (30 s) or gives an unexpected answer, the
+  upload is refused with "could not be checked" and can be retried.
+
+The default is `none`: no malware scan. The daemon must be reachable from
+the API only; it needs no access to storage, because the API streams each
+file to it. Scanning reads the whole file into memory (uploads are capped at
+25 MB each).
+
+CAPTCHA secrets: `FORM_RECAPTCHA_SECRET`, `FORM_TURNSTILE_SECRET`,
+`FORM_HCAPTCHA_SECRET`. A form whose provider has no secret set is refused,
+never waved through.
+
 ## Background work
 
 Automations and webhook deliveries are stored as jobs in the `jobs` collection

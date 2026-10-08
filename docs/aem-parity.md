@@ -91,6 +91,28 @@ Tests added in this phase: engine 68 → 125, API 60 → 80, studio 74 → 111; 
 
 **Done when:** an expense claim with line items, a computed total, a review step and a signature runs end to end and exports correctly to CSV.
 
+**Status, 9 October 2026: built and tested.**
+
+| Item | State |
+|---|---|
+| Repeating section, with an optional table layout and column totals | Done. Rows are a list of objects in the payload. Rules run row by row; outside the section a row field reads as the whole column, so `sum(lineTotal)` totals it. At most 200 rows. |
+| Accordion, horizontal and vertical tabs | Done. Each holds Sections. The one with a mistake is flagged, and opens when its field is focused. |
+| Switch, tick-box group, numeric stepper, picture, signature (drawn or typed), terms and consent | Done. |
+| Review step before submit, with a way back to each answer | Done (Form settings → Review before sending). |
+| hCaptcha | Done, beside reCAPTCHA and Turnstile. |
+| File rules | Types, size and count per field already existed; a rule can now fault a file field (`length(receipt) < 1`). |
+| Virus-scan hook | Done: `FILE_SCANNER=clamav` sends each upload to a ClamAV daemon before it can be attached. A file the scanner cannot check is refused. Default is `none`. |
+| Form title, header and footer as separate components | Not built: the form already shows its name, description and logo. |
+| Uploaded-file list as a separate component | Not built: the file field lists its own files. |
+| Chart | Deferred to Phase 10, as planned. |
+
+Limits to know:
+
+- Inside a repeating section: no uploads, signatures, consent, hidden or system-filled fields, no other sections, and option lists must be fixed (not from a connector).
+- An event cannot fill a field inside a repeating section.
+- A repeating section with no fields yet, and a picture with no address yet, can be published (they show nothing), in line with how a button with no link already behaves.
+- A signature is kept in the submission itself as a small PNG (at most about 110 KB), not as an uploaded file.
+
 ### Phase 6 – Documents (5 weeks)
 
 - **Document of record:** server-side PDF for every submission, generated in the worker, stored through the file connector (our S3 or the customer's).
