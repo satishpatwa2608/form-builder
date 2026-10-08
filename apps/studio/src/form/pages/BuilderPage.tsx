@@ -26,6 +26,7 @@ import { FieldConfigPanel } from '../builder/components/FieldConfigPanel';
 import { FormSettingsPanel } from '../builder/components/FormSettingsPanel';
 import { PreviewDialog } from '../builder/components/PreviewDialog';
 import { WorkflowDialog } from '../builder/workflow/WorkflowDialog';
+import { RulesDialog } from '../builder/rules/RulesDialog';
 import { IssuesList } from '../builder/components/IssuesList';
 import { ConfirmDialog, type ConfirmRequest } from '../builder/components/ConfirmDialog';
 import { copyPublicFormLink } from '../links';
@@ -86,6 +87,7 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [showIssues, setShowIssues] = useState(false);
   const [dragging, setDragging] = useState<DragData | null>(null);
@@ -264,6 +266,7 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
         onUndo={store.undo}
         onRedo={store.redo}
         onPreview={() => setPreviewOpen(true)}
+        onRules={() => setRulesOpen(true)}
         onWorkflow={() => setWorkflowOpen(true)}
         onSave={onSave}
         onPublish={onPublish}
@@ -319,6 +322,7 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
       </DndContext>
 
       <PreviewDialog form={form} open={previewOpen} onOpenChange={setPreviewOpen} />
+      <RulesDialog form={form} readOnly={readOnly} open={rulesOpen} onOpenChange={setRulesOpen} onChange={store.updateForm} />
       <WorkflowDialog
         form={form}
         versions={family}

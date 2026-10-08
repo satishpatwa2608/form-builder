@@ -1,4 +1,4 @@
-import { ArrowLeft, Eye, GitBranch, Link2, Redo2, Save, Send, Undo2, Workflow } from 'lucide-react';
+import { ArrowLeft, Eye, GitBranch, Link2, Redo2, Save, Send, Sigma, Undo2, Workflow } from 'lucide-react';
 import { Button } from '@ui/button';
 import type { FormDefinition } from '../../types';
 import { FormStatusBadge } from './FormStatusBadge';
@@ -16,6 +16,7 @@ interface BuilderHeaderProps {
   onUndo: () => void;
   onRedo: () => void;
   onPreview: () => void;
+  onRules: () => void;
   onWorkflow: () => void;
   onSave: () => void;
   onPublish: () => void;
@@ -52,6 +53,10 @@ export function BuilderHeader(props: BuilderHeaderProps) {
             </button>
           </>
         )}
+        <Button type="button" variant="outline" onClick={props.onRules} title="Calculations and conditional behaviour">
+          <Sigma /> Rules
+          {!!form.rules?.length && <span className="fb-chip">{form.rules.length}</span>}
+        </Button>
         <Button type="button" variant="outline" onClick={props.onWorkflow} title="What happens after a submission">
           <Workflow /> Workflow
           {(form.workflow?.enabled || !!form.automations?.length) && <span className="fb-chip">On</span>}
