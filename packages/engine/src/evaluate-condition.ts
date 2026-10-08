@@ -8,14 +8,14 @@ const isPrimitive = (v: unknown): v is string | number | boolean =>
  * Select values arrive as strings while a rule author may write a number or
  * boolean, so primitives compare by their string form ("5" equals 5).
  */
-function sameValue(a: unknown, b: unknown): boolean {
+export function sameValue(a: unknown, b: unknown): boolean {
   if (isPrimitive(a) && isPrimitive(b)) return String(a) === String(b);
   if (isEmptyValue(a) && isEmptyValue(b)) return true;
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** Numbers and numeric strings compare as numbers, ISO date strings as timestamps. */
-function toComparable(v: unknown): number | undefined {
+export function toComparable(v: unknown): number | undefined {
   if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
   if (typeof v !== 'string' || v.trim() === '') return undefined;
   const n = Number(v);

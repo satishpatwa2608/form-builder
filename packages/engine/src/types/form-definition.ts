@@ -1,4 +1,5 @@
 import type { FormField } from './field';
+import type { FormRule } from './rules';
 import type { FormActionConfig, SubmissionConfig } from './submission';
 import type { CaptchaConfig } from './captcha';
 import type { FormLayout, FormStyle, FormTheme } from './style';
@@ -24,6 +25,8 @@ export interface FormDefinition {
   access: FormAccess;
 
   fields: FormField[];
+  /** Calculations, conditional states and cross-field validation. */
+  rules?: FormRule[];
   actions?: FormActionConfig;
   submission: SubmissionConfig;
   captcha?: CaptchaConfig;

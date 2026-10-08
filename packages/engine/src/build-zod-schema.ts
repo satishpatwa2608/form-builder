@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import type { FormDefinition, FormField, FormValues } from './types';
+import type { FormDefinition, FormField, FormValues, SystemContext } from './types';
 import { fieldLabel, isEmptyValue, isValueField } from './field-kinds';
-import { computeFieldStates } from './field-states';
+import { computeFormState } from './form-state';
 
 /** Used when a PHONE field has no pattern of its own. */
 export const DEFAULT_PHONE_PATTERN = '^\\+?[0-9][0-9\\s-]{6,14}$';
@@ -106,27 +106,30 @@ const requiredMessage = (field: FormField) =>
  * baked into a static object shape. Instead the schema is one pass over the
  * values that works out each field's state, skips hidden fields, applies
  * required, and runs the field's own value schema on anything filled in.
+ * Calculated fields are checked on the value the rules compute, and a rule's
+ * own error shows when nothing more basic is wrong with the field.
  * Build it once per definition version, not per render.
  */
-export function buildZodSchema(def: Pick<FormDefinition, 'fields'>) {
+export function buildZodSchema(def: Pick<FormDefinition, 'fields' | 'rules'>, ctx?: SystemContext) {
   const valueSchemas = new Map<string, z.ZodType>();
   for (const field of def.fields) {
     const schema = isValueField(field) ? buildFieldValueSchema(field) : null;
     if (schema) valueSchemas.set(field.name, schema);
   }
 
-  return z.looseObject({}).superRefine((values: FormValues, ctx) => {
-    const states = computeFieldStates(def, values);
+  return z.looseObject({}).superRefine((input: FormValues, issues) => {
+    const { states, values, errors, options } = computeFormState(def, input, ctx);
     for (const field of def.fields) {
       const schema = valueSchemas.get(field.name);
       const state = states.get(field.name);
       if (!schema || !state?.visible) continue;
 
       const value = values[field.name];
+      const ruleError = errors.get(field.name);
       if (isMissing(field, value)) {
-        if (state.required) {
-          ctx.addIssue({ code: 'custom', path: [field.name], message: requiredMessage(field) });
-        }
+        // A rule can fault an empty field too ("give a phone number or an email").
+        const message = state.required ? requiredMessage(field) : ruleError;
+        if (message) issues.addIssue({ code: 'custom', path: [field.name], message });
         continue;
       }
 
@@ -134,8 +137,16 @@ export function buildZodSchema(def: Pick<FormDefinition, 'fields'>) {
       if (!result.success) {
         // One message per field is what the UI shows; the first is the most relevant.
         const issue = result.error.issues[0];
-        ctx.addIssue({ code: 'custom', path: [field.name], message: issue.message });
+        issues.addIssue({ code: 'custom', path: [field.name], message: issue.message });
+        continue;
       }
+
+      const allowed = options.get(field.name);
+      if (allowed && ![value].flat().every((v) => allowed.has(String(v)))) {
+        issues.addIssue({ code: 'custom', path: [field.name], message: 'Select a valid option' });
+        continue;
+      }
+      if (ruleError) issues.addIssue({ code: 'custom', path: [field.name], message: ruleError });
     }
   });
 }

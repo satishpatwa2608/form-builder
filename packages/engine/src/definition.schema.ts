@@ -1,6 +1,8 @@
 import { z } from 'zod';
-import type { Condition, FormDefinition, FormField } from './types';
+import type { Condition, FormDefinition, FormField, RuleAction } from './types';
 import { conditionFields } from './evaluate-condition';
+import { checkExpression, expressionFields, MAX_EXPRESSION_LENGTH } from './expression';
+import { isExpressionCondition } from './form-state';
 import { isContainerField, isOptionField, isValueField } from './field-kinds';
 import { columnCount } from './layout';
 import { isHexColor, safeImageUrl, usedStyleIds } from './style-css';
@@ -51,6 +53,27 @@ const dataSourceSchema = z.object({
       params: z.record(z.string(), z.string()).optional(),
     })
     .optional(),
+});
+
+const expressionText = z.string().min(1).max(MAX_EXPRESSION_LENGTH);
+
+const ruleActionSchema: z.ZodType<RuleAction> = z.union([
+  z.object({ type: z.enum(['SHOW', 'HIDE', 'ENABLE', 'DISABLE', 'REQUIRE']), target: z.string().min(1) }),
+  z.object({ type: z.literal('SET_VALUE'), target: z.string().min(1), value: expressionText }),
+  z.object({ type: z.literal('ERROR'), target: z.string().min(1), message: z.string().min(1).max(300) }),
+  z.object({ type: z.literal('SET_OPTIONS'), target: z.string().min(1), values: z.array(z.string().min(1)).min(1).max(500) }),
+]);
+
+export const MAX_RULES = 100;
+const MAX_RULE_ACTIONS = 20;
+
+const ruleSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().max(120).optional(),
+  disabled: z.boolean().optional(),
+  when: z.union([z.object({ expr: expressionText }), conditionSchema]).optional(),
+  then: z.array(ruleActionSchema).min(1).max(MAX_RULE_ACTIONS),
+  else: z.array(ruleActionSchema).max(MAX_RULE_ACTIONS).optional(),
 });
 
 const FIELD_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -600,6 +623,96 @@ function checkFields(fields: FormField[], ctx: z.RefinementCtx) {
   }
 }
 
+/** Types a rule can calculate a value into. Lists and files are chosen, never computed. */
+const CALCULABLE_TYPES: ReadonlySet<FormField['type']> = new Set([
+  'TEXT',
+  'TEXTAREA',
+  'NUMBER',
+  'EMAIL',
+  'PHONE',
+  'DATE',
+  'DATETIME',
+  'CHECKBOX',
+  'RADIO',
+  'DROPDOWN',
+  'HIDDEN',
+]);
+
+function checkRules(def: FormDefinition, ctx: z.RefinementCtx) {
+  const rules = def.rules ?? [];
+  const byName = new Map(def.fields.map((f) => [f.name, f]));
+  const names = new Set(byName.keys());
+  const ids = new Set<string>();
+  const calcEdges = new Map<string, string[]>();
+  const visibilityEdges = new Map<string, string[]>();
+  for (const f of def.fields) if (f.visibility) visibilityEdges.set(f.name, conditionFields(f.visibility.when));
+  const legacyLoop = !!findCycle(visibilityEdges);
+  const link = (edges: Map<string, string[]>, from: string, to: string[]) => edges.set(from, [...(edges.get(from) ?? []), ...to]);
+
+  rules.forEach((rule, r) => {
+    const issue = (path: (string | number)[], message: string) =>
+      ctx.addIssue({ code: 'custom', path: ['rules', r, ...path], message });
+    if (ids.has(rule.id)) issue(['id'], `Duplicate rule id "${rule.id}"`);
+    ids.add(rule.id);
+
+    let reads: string[] = [];
+    if (rule.when && isExpressionCondition(rule.when)) {
+      const problem = checkExpression(rule.when.expr, names);
+      if (problem) issue(['when'], problem);
+      reads = expressionFields(rule.when.expr);
+    } else if (rule.when) {
+      reads = conditionFields(rule.when);
+      for (const ref of reads) if (!names.has(ref)) issue(['when'], `Refers to unknown field "${ref}"`);
+    }
+    if (rule.else?.length && !rule.when) issue(['else'], 'A rule with no condition always holds, so "otherwise" never happens');
+
+    const check = (action: RuleAction, branch: 'then' | 'else', a: number) => {
+      const at = (message: string) => issue([branch, a], message);
+      const target = byName.get(action.target);
+      if (!target) return at(`Acts on unknown field "${action.target}"`);
+      switch (action.type) {
+        case 'SHOW':
+        case 'HIDE':
+          if (reads.includes(target.name)) at(`"${target.name}" cannot be shown or hidden by its own value`);
+          link(visibilityEdges, target.name, reads);
+          break;
+        case 'ENABLE':
+        case 'DISABLE':
+        case 'REQUIRE':
+        case 'ERROR':
+          if (!isValueField(target) || target.type === 'HIDDEN' || target.type === 'CAPTCHA') {
+            at(`"${target.name}" is not a field people fill in`);
+          }
+          break;
+        case 'SET_VALUE': {
+          if (!CALCULABLE_TYPES.has(target.type)) at(`A ${target.type} field cannot be calculated`);
+          if (target.systemSource || target.prefill?.lock) at(`"${target.name}" already takes its value from the system`);
+          const problem = checkExpression(action.value, names);
+          if (problem) at(problem);
+          link(calcEdges, target.name, [...expressionFields(action.value), ...reads]);
+          break;
+        }
+        case 'SET_OPTIONS': {
+          const known = target.dataSource?.type === 'STATIC' ? new Set((target.dataSource.options ?? []).map((o) => o.value)) : null;
+          if (!isOptionField(target) || !known) at(`"${target.name}" has no fixed option list to narrow`);
+          else for (const v of action.values) if (!known.has(v)) at(`"${v}" is not an option of "${target.name}"`);
+          break;
+        }
+      }
+    };
+    rule.then.forEach((action, a) => check(action, 'then', a));
+    (rule.else ?? []).forEach((action, a) => check(action, 'else', a));
+  });
+
+  const calcLoop = findCycle(calcEdges);
+  if (calcLoop) ctx.addIssue({ code: 'custom', path: ['rules'], message: `Calculations loop: ${calcLoop.join(' -> ')}` });
+  // checkFields already reports a loop made only of per-field visibility.
+  const visibilityLoop = legacyLoop ? null : findCycle(visibilityEdges);
+  if (visibilityLoop) {
+    ctx.addIssue({ code: 'custom', path: ['rules'], message: `Visibility rules loop: ${visibilityLoop.join(' -> ')}` });
+  }
+}
+
 /**
  * Structure only: right types, right enums. Enough to store a DRAFT - a
  * half-built form may still have a rule pointing at a field not yet added.
@@ -615,6 +728,7 @@ const formDefinitionShapeObject = z.object({
   status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']),
   access: z.enum(['PUBLIC', 'AUTHENTICATED']),
   fields: z.array(fieldSchema),
+  rules: z.array(ruleSchema).max(MAX_RULES).optional(),
   actions: z
     .object({
       submit: z.object({ enabled: z.boolean(), label: z.string() }).optional(),
@@ -679,6 +793,7 @@ export const formDefinitionShape: z.ZodType<FormDefinition> = formDefinitionShap
 /** Structure plus internal consistency. Required to publish and to render publicly. */
 export const formDefinitionSchema: z.ZodType<FormDefinition> = formDefinitionShapeObject.superRefine((def, ctx) => {
   checkFields(def.fields, ctx);
+  checkRules(def, ctx);
   checkWorkflow(def, ctx);
 
   const names = new Set(def.fields.map((f) => f.name));
