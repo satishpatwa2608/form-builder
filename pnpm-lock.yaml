@@ -348,6 +348,9 @@ importers:
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.43
+      mongodb:
+        specifier: ^6.12.0
+        version: 6.20.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

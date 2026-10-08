@@ -82,6 +82,8 @@ export async function startStack(): Promise<StackState> {
         JOBS_ROLE: 'all',
         FILE_SCANNER: 'none',
         FORM_ALLOW_MOCK_CAPTCHA: 'true',
+        // The "customer database" the connector scenario reads is on this machine.
+        CONNECTOR_ALLOW_PRIVATE_NETWORK: 'true',
       }),
     );
     save();
