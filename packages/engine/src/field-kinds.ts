@@ -1,13 +1,16 @@
 import type { FieldType, FormField } from './types';
 
 /** Layout containers - hold other fields. */
-const CONTAINER_TYPES: ReadonlySet<FieldType> = new Set(['COLUMNS', 'SECTION', 'TABS', 'ACCORDION']);
+const CONTAINER_TYPES: ReadonlySet<FieldType> = new Set(['COLUMNS', 'SECTION', 'TABS', 'ACCORDION', 'REPEAT']);
+
+/** Containers that only arrange what is inside them. A REPEAT is a container that also holds a value. */
+const LAYOUT_ONLY_TYPES: ReadonlySet<FieldType> = new Set(['COLUMNS', 'SECTION', 'TABS', 'ACCORDION']);
 
 /** Containers whose direct children must all be SECTIONs (each one a tab or a panel). */
 const SECTION_GROUP_TYPES: ReadonlySet<FieldType> = new Set(['TABS', 'ACCORDION']);
 
 /** Types that render something but never carry a value. */
-const NON_VALUE_TYPES: ReadonlySet<FieldType> = new Set(['HTML', 'BUTTON', 'IMAGE', ...CONTAINER_TYPES]);
+const NON_VALUE_TYPES: ReadonlySet<FieldType> = new Set(['HTML', 'BUTTON', 'IMAGE', ...LAYOUT_ONLY_TYPES]);
 
 /** Types whose value comes from a data source. */
 const OPTION_TYPES: ReadonlySet<FieldType> = new Set(['RADIO', 'DROPDOWN', 'MULTI_SELECT', 'CHECKBOX_GROUP']);
@@ -22,6 +25,7 @@ export const isBooleanField = (field: Pick<FormField, 'type'>): boolean => BOOLE
 export const isListField = (field: Pick<FormField, 'type'>): boolean => LIST_TYPES.has(field.type);
 /** Stored as a number. */
 export const isNumberField = (field: Pick<FormField, 'type'>): boolean => NUMBER_TYPES.has(field.type);
+export const isRepeat = (field: Pick<FormField, 'type'>): boolean => field.type === 'REPEAT';
 export const isSectionGroup = (field: Pick<FormField, 'type'>): boolean => SECTION_GROUP_TYPES.has(field.type);
 
 /** What a SIGNATURE value must look like: a PNG the browser drew, nothing else. */
@@ -50,7 +54,7 @@ export function isEmptyValue(value: unknown): boolean {
 /** The value a field starts with when neither a default nor a system source applies. */
 export function emptyValueFor(type: FieldType): unknown {
   if (BOOLEAN_TYPES.has(type)) return false;
-  if (LIST_TYPES.has(type) || type === 'FILE') return [];
+  if (LIST_TYPES.has(type) || type === 'FILE' || type === 'REPEAT') return [];
   if (NUMBER_TYPES.has(type)) return undefined;
   return '';
 }

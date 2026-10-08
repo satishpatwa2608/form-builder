@@ -34,6 +34,13 @@ export type FieldType =
   /** Layout containers: hold other fields, never carry a value. */
   | 'COLUMNS'
   | 'SECTION'
+  /**
+   * A section people can add copies of ("add another line"). Its value is a
+   * list of rows, each an object of the answers to the fields inside it:
+   * `{ lines: [{ item: 'Pen', qty: 2 }, { item: 'Ink', qty: 1 }] }`.
+   * `validation.min` / `max` bound the number of rows.
+   */
+  | 'REPEAT'
   /** Hold SECTIONs only, shown as tabs (`props.orientation`: horizontal | vertical). */
   | 'TABS'
   /** Hold SECTIONs only, shown as panels of which one is open at a time. */

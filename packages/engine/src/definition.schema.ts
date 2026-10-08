@@ -4,7 +4,8 @@ import { conditionFields } from './evaluate-condition';
 import { checkExpression, expressionFields, MAX_EXPRESSION_LENGTH } from './expression';
 import { isExpressionCondition } from './form-state';
 import { isTimeZone, safeLinkUrl } from './form-events';
-import { isContainerField, isOptionField, isSectionGroup, isValueField } from './field-kinds';
+import { formShape, MAX_ROWS, ROW_FIELD_TYPES } from './repeat';
+import { isContainerField, isNumberField, isOptionField, isRepeat, isSectionGroup, isValueField } from './field-kinds';
 import { columnCount } from './layout';
 import { isHexColor, safeImageUrl, usedStyleIds } from './style-css';
 import { fieldParents, paramReferences } from './resolve-params';
@@ -136,6 +137,7 @@ const fieldSchema = z.object({
     'SECTION',
     'TABS',
     'ACCORDION',
+    'REPEAT',
   ]),
   name: z.string().regex(FIELD_NAME, 'Field name must be letters, digits or _, not starting with a digit'),
   label: z.string().optional(),
@@ -577,6 +579,7 @@ function checkFields(fields: FormField[], ctx: z.RefinementCtx) {
     names.add(f.name);
   });
 
+  const shape = formShape(fields);
   const visibilityEdges = new Map<string, string[]>();
   const layoutEdges = new Map<string, string[]>();
   const byId = new Map(fields.map((f) => [f.id, f]));
@@ -636,6 +639,25 @@ function checkFields(fields: FormField[], ctx: z.RefinementCtx) {
     if (f.type === 'CONSENT' && (typeof f.props?.text !== 'string' || !f.props.text.trim())) issue(i, 'props', `"${f.name}" needs the terms people are accepting`);
     if (f.type === 'STEPPER' && f.props?.step !== undefined && !(typeof f.props.step === 'number' && f.props.step > 0)) {
       issue(i, 'props', 'The step must be a number above 0');
+    }
+    const section = shape.repeatOf.get(f.name);
+    if (section) {
+      const inside = `inside the repeating section "${section.name}"`;
+      if (!ROW_FIELD_TYPES.has(f.type)) issue(i, 'parentId', `A ${f.type} field cannot go ${inside}`);
+      if (f.prefill || f.systemSource) issue(i, 'parentId', `"${f.name}" is filled from the system, which does not work ${inside}`);
+      if (f.dataSource?.type === 'API') issue(i, 'dataSource', `Use a fixed option list ${inside}`);
+      if (f.dependency) issue(i, 'dependency', `"Clear when another field changes" does not work ${inside}`);
+    }
+    if (isRepeat(f)) {
+      const children = shape.repeats.find((r) => r.field === f)?.valueChildren ?? [];
+      if (!children.length) issue(i, 'type', `Add at least one field inside "${f.name}"`);
+      if (f.validation?.max !== undefined && f.validation.max > MAX_ROWS) issue(i, 'validation', `A repeating section can have at most ${MAX_ROWS} rows`);
+      if (f.defaultValue !== undefined) issue(i, 'defaultValue', 'A repeating section has no default value');
+      const totals = Array.isArray(f.props?.totals) ? (f.props.totals as unknown[]) : [];
+      for (const name of totals) {
+        const child = children.find((c) => c.name === name);
+        if (!child || !isNumberField(child)) issue(i, 'props', `Only a number field inside "${f.name}" can be totalled, not "${String(name)}"`);
+      }
     }
     if (f.systemSource === 'URL_PARAMETER' && !f.systemParam) {
       issue(i, 'systemParam', 'URL_PARAMETER needs systemParam (the query-string key)');
@@ -796,6 +818,7 @@ function checkEvents(def: FormDefinition, ctx: z.RefinementCtx) {
       if (!target) at(`Acts on unknown field "${name}"`);
       else if (!CALCULABLE_TYPES.has(target.type)) at(`A ${target.type} field cannot be filled in this way`);
       else if (target.systemSource || target.prefill?.lock) at(`"${target.name}" already takes its value from the system`);
+      else if (formShape(def.fields).repeatOf.has(name)) at(`"${name}" is inside a repeating section; an event cannot fill it`);
     };
     event.do.forEach((action, a) => {
       const at = (message: string) => issue(['do', a], message);
@@ -922,6 +945,9 @@ export const formDefinitionSchema: z.ZodType<FormDefinition> = formDefinitionSha
   for (const key of Object.keys(def.submission.mapping ?? {})) {
     if (!names.has(key)) {
       ctx.addIssue({ code: 'custom', path: ['submission', 'mapping', key], message: `Maps unknown field "${key}"` });
+    }
+    else if (formShape(def.fields).repeatOf.has(key)) {
+      ctx.addIssue({ code: 'custom', path: ['submission', 'mapping', key], message: `"${key}" is inside a repeating section and is saved with its rows` });
     }
   }
 

@@ -1,5 +1,6 @@
 import type { FormDefinition, FormValues, SystemContext } from './types';
-import { isValueField } from './field-kinds';
+import { isRepeat, isValueField } from './field-kinds';
+import { formShape, rowKey, rowsOf } from './repeat';
 import { computeFormState } from './form-state';
 
 /**
@@ -9,7 +10,8 @@ import { computeFormState } from './form-state';
  *   form state so it survives the field being shown again).
  * - Calculated fields carry the value the rules compute, not the one passed in.
  * - Unfilled values (undefined, '') are dropped; `false` and 0 are kept.
- * - `submission.mapping` renames keys.
+ * - A repeating section is a list of row objects, each trimmed the same way.
+ * - `submission.mapping` renames top-level keys.
  */
 export function buildPayload(
   def: Pick<FormDefinition, 'fields' | 'submission' | 'rules'>,
@@ -17,13 +19,24 @@ export function buildPayload(
   ctx?: SystemContext,
 ): FormValues {
   const { states, values } = computeFormState(def, input, ctx);
+  const shape = formShape(def.fields);
   const mapping = def.submission.mapping ?? {};
   const payload: FormValues = {};
+  const filled = (value: unknown) => value !== undefined && value !== '';
 
-  for (const field of def.fields) {
+  for (const field of shape.top) {
     if (!isValueField(field) || !states.get(field.name)?.visible) continue;
-    const value = values[field.name];
-    if (value === undefined || value === '') continue;
+    let value = values[field.name];
+    if (isRepeat(field)) {
+      // Each row keeps only its own visible, filled-in answers.
+      const children = shape.repeats.find((r) => r.field === field)?.valueChildren ?? [];
+      value = rowsOf(value).map((row, i) =>
+        Object.fromEntries(
+          children.filter((c) => states.get(rowKey(field.name, i, c.name))?.visible && filled(row[c.name])).map((c) => [c.name, row[c.name]]),
+        ),
+      );
+    }
+    if (!filled(value)) continue;
     payload[mapping[field.name] ?? field.name] = value;
   }
   return payload;

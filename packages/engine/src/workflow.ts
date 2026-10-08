@@ -1,3 +1,4 @@
+import { formShape } from './repeat';
 import { plainAnswer } from './answer-text';
 import type { FormDefinition, FormValues, Priority, WorkflowAction, WorkflowConfig, WorkflowStatus } from './types';
 import { evaluateCondition } from './evaluate-condition';
@@ -74,7 +75,8 @@ export function dueAt(status: WorkflowStatus | undefined, from: Date): Date | nu
 export function valuesFromPayload(def: Pick<FormDefinition, 'fields' | 'submission'>, payload: FormValues): FormValues {
   const mapping = def.submission.mapping ?? {};
   const out: FormValues = {};
-  for (const f of def.fields) {
+  // Fields inside a repeating section live in its rows, not at the top of the payload.
+  for (const f of formShape(def.fields).top) {
     const key = mapping[f.name] ?? f.name;
     if (key in payload) out[f.name] = payload[key];
   }

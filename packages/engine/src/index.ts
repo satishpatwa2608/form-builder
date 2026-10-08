@@ -11,6 +11,7 @@ export * from './field-kinds';
 export * from './answer-text';
 export * from './evaluate-condition';
 export * from './expression';
+export * from './repeat';
 export * from './form-state';
 export * from './form-events';
 export * from './field-states';

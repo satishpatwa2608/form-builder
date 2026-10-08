@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { FormDefinition, FormField, FormValues, SystemContext } from './types';
-import { fieldLabel, isBooleanField, isEmptyValue, isSignature, isValueField } from './field-kinds';
+import { fieldLabel, isBooleanField, isEmptyValue, isRepeat, isSignature, isValueField } from './field-kinds';
+import { formShape, MAX_ROWS, rowKey, rowsOf } from './repeat';
 import { computeFormState } from './form-state';
 
 /** Used when a PHONE field has no pattern of its own. */
@@ -88,6 +89,8 @@ export function buildFieldValueSchema(field: FormField): z.ZodType | null {
     }
     case 'CAPTCHA':
       return z.string();
+    // A repeating section is checked row by row in buildZodSchema, not as one value.
+    case 'REPEAT':
     case 'HIDDEN':
     case 'HTML':
     case 'BUTTON':
@@ -113,6 +116,18 @@ const requiredMessage = (field: FormField) =>
         ? 'Please sign'
         : `${fieldLabel(field)} is required`);
 
+/** How many rows a repeating section must and may have. */
+function rowCountProblem(field: FormField, count: number, required: boolean): string | null {
+  const { min, max, messages } = field.validation ?? {};
+  const atLeast = Math.max(min ?? 0, required ? 1 : 0);
+  if (count < atLeast) {
+    if (count === 0 && required) return messages?.required ?? `Add at least one row to ${fieldLabel(field)}`;
+    return messages?.min ?? `Add at least ${atLeast} rows`;
+  }
+  const atMost = Math.min(max ?? MAX_ROWS, MAX_ROWS);
+  return count > atMost ? messages?.max ?? `No more than ${atMost} rows` : null;
+}
+
 /**
  * FormDefinition -> Zod schema for React Hook Form.
  *
@@ -122,9 +137,12 @@ const requiredMessage = (field: FormField) =>
  * required, and runs the field's own value schema on anything filled in.
  * Calculated fields are checked on the value the rules compute, and a rule's
  * own error shows when nothing more basic is wrong with the field.
+ * A repeating section is checked for its number of rows, then row by row;
+ * a mistake in a row is reported at `[section, row, field]`.
  * Build it once per definition version, not per render.
  */
 export function buildZodSchema(def: Pick<FormDefinition, 'fields' | 'rules'>, ctx?: SystemContext) {
+  const shape = formShape(def.fields);
   const valueSchemas = new Map<string, z.ZodType>();
   for (const field of def.fields) {
     const schema = isValueField(field) ? buildFieldValueSchema(field) : null;
@@ -133,34 +151,44 @@ export function buildZodSchema(def: Pick<FormDefinition, 'fields' | 'rules'>, ct
 
   return z.looseObject({}).superRefine((input: FormValues, issues) => {
     const { states, values, errors, options } = computeFormState(def, input, ctx);
-    for (const field of def.fields) {
-      const schema = valueSchemas.get(field.name);
-      const state = states.get(field.name);
-      if (!schema || !state?.visible) continue;
 
-      const value = values[field.name];
-      const ruleError = errors.get(field.name);
+    /** One answer: `key` finds its state, `path` is where a problem is reported. */
+    const check = (field: FormField, value: unknown, key: string, path: (string | number)[]) => {
+      const schema = valueSchemas.get(field.name);
+      const state = states.get(key);
+      if (!schema || !state?.visible) return;
+      const add = (message: string) => issues.addIssue({ code: 'custom', path, message });
+
+      const ruleError = errors.get(key);
       if (isMissing(field, value)) {
         // A rule can fault an empty field too ("give a phone number or an email").
         const message = state.required ? requiredMessage(field) : ruleError;
-        if (message) issues.addIssue({ code: 'custom', path: [field.name], message });
-        continue;
+        if (message) add(message);
+        return;
       }
-
       const result = schema.safeParse(value);
-      if (!result.success) {
-        // One message per field is what the UI shows; the first is the most relevant.
-        const issue = result.error.issues[0];
-        issues.addIssue({ code: 'custom', path: [field.name], message: issue.message });
-        continue;
-      }
+      // One message per field is what the UI shows; the first is the most relevant.
+      if (!result.success) return add(result.error.issues[0].message);
 
-      const allowed = options.get(field.name);
-      if (allowed && ![value].flat().every((v) => allowed.has(String(v)))) {
-        issues.addIssue({ code: 'custom', path: [field.name], message: 'Select a valid option' });
+      const allowed = options.get(key);
+      if (allowed && ![value].flat().every((v) => allowed.has(String(v)))) return add('Select a valid option');
+      if (ruleError) add(ruleError);
+    };
+
+    for (const field of shape.top) {
+      if (!isRepeat(field)) {
+        check(field, values[field.name], field.name, [field.name]);
         continue;
       }
-      if (ruleError) issues.addIssue({ code: 'custom', path: [field.name], message: ruleError });
+      const state = states.get(field.name);
+      if (!state?.visible) continue;
+      const rows = rowsOf(values[field.name]);
+      const problem = rowCountProblem(field, rows.length, state.required) ?? errors.get(field.name);
+      if (problem) issues.addIssue({ code: 'custom', path: [field.name], message: problem });
+      const children = shape.repeats.find((r) => r.field === field)?.valueChildren ?? [];
+      rows.forEach((row, i) => {
+        for (const child of children) check(child, row[child.name], rowKey(field.name, i, child.name), [field.name, i, child.name]);
+      });
     }
   });
 }

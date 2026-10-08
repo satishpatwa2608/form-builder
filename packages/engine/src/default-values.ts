@@ -1,5 +1,6 @@
 import type { FormDefinition, FormField, FormValues, SystemContext, SystemFieldSource } from './types';
-import { emptyValueFor, isValueField } from './field-kinds';
+import { emptyValueFor, isRepeat } from './field-kinds';
+import { answerFields, formShape, MAX_ROWS } from './repeat';
 
 /**
  * A system value by source. `param` is the query-string key for URL_PARAMETER.
@@ -63,10 +64,21 @@ export function systemContextFor(def: FormDefinition, host: SystemContext = {}):
   };
 }
 
+/** A new, empty row of a repeating section: each field inside at its default. */
+export function defaultRow(def: Pick<FormDefinition, 'fields'>, repeat: FormField): Record<string, unknown> {
+  const children = formShape(def.fields).repeats.find((r) => r.field.id === repeat.id)?.valueChildren ?? [];
+  return Object.fromEntries(children.map((c) => [c.name, c.defaultValue ?? emptyValueFor(c.type)]));
+}
+
 export function buildDefaultValues(def: Pick<FormDefinition, 'fields'>, ctx: SystemContext): FormValues {
   const values: FormValues = {};
-  for (const field of def.fields) {
-    if (!isValueField(field)) continue;
+  for (const field of answerFields(def.fields)) {
+    if (isRepeat(field)) {
+      // Starts with as many rows as it must have, so nobody has to add the first one.
+      const rows = Math.min(Math.max(field.validation?.min ?? 0, field.required ? 1 : 0), MAX_ROWS);
+      values[field.name] = Array.from({ length: rows }, () => defaultRow(def, field));
+      continue;
+    }
     const system = field.systemSource ? resolveSystemValue(field, ctx) : prefillValue(field, ctx);
     values[field.name] = system ?? field.defaultValue ?? emptyValueFor(field.type);
   }
