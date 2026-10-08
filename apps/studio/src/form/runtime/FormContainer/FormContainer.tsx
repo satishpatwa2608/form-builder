@@ -1,0 +1,362 @@
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type MutableRefObject } from 'react';
+import { useForm, useWatch, type Resolver, type UseFormReturn } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Form } from '@ui/form';
+import type { FormDefinition, FormStyle, FormValues, SubmissionResult, SystemContext } from '../../types';
+import {
+  buildDefaultValues,
+  buildFormCss,
+  buildLayoutIndex,
+  buildPayload,
+  buildSteps,
+  buildZodSchema,
+  childrenOf,
+  computeFieldStates,
+  descendantsOf,
+  emptyValueFor,
+  isEmptyValue,
+  isValueField,
+  namesWithin,
+  resetChildren,
+  usedStyleIds,
+  systemContextFor,
+} from '../../engine';
+import { defaultSubmissionAdapter, type SubmissionAdapter } from '../../adapters/submission/submission-adapter';
+import { defaultDataSourceAdapter, type DataSourceAdapter } from '../../adapters/data-source/data-source-adapter';
+import type { CaptchaWidget } from '../../adapters/captcha/captcha-provider';
+import { usePublishedForm } from '../../adapters/registry/useFormRegistry';
+import { FormRuntimeProvider, type CaptchaMode } from '../FormRuntimeContext';
+import { FieldList } from '../FieldRenderer/FieldRenderer';
+import '../../styles/form-runtime.css';
+import { FormActions, FormErrorSummary, FormHeader, FormSuccess } from './FormParts';
+import { errorText } from '../styles';
+
+export interface FormRuntimeProps {
+  /** Host-supplied context (user, source channel, URL params). Overrides form-owned values. */
+  systemContext?: SystemContext;
+  submissionAdapter?: SubmissionAdapter;
+  dataSourceAdapter?: DataSourceAdapter;
+  /**
+   * 'live' renders the configured CAPTCHA provider, 'mock' a local stand-in.
+   * Defaults to live when the form has a site key, mock otherwise.
+   */
+  captchaMode?: CaptchaMode;
+  /** Called after the adapter accepts a submission. */
+  onSubmitted?: (result: SubmissionResult) => void;
+  onValuesChange?: (values: FormValues) => void;
+  /** Used for cancel/success redirects and BUTTON links. Defaults to a full page load. */
+  onNavigate?: (url: string) => void;
+  showHeader?: boolean;
+  /**
+   * Live style-master entries for drafts (preview / playground). Published
+   * versions carry their own snapshot in `definition.styles`, so the public
+   * runtime never needs the master.
+   */
+  liveStyles?: FormStyle[];
+  /** Start from these values (e.g. editing saved work fields) instead of the field defaults. */
+  initialValues?: FormValues;
+  /** Keep the form (with its values) after a successful submit instead of showing the success screen. */
+  stayOnSubmit?: boolean;
+}
+
+export interface FormContainerProps extends FormRuntimeProps {
+  /** Render this definition directly (preview, playground, embedding a known form). */
+  definition?: FormDefinition;
+  /** Or load the latest PUBLISHED version of this form code from the registry. */
+  formCode?: string;
+}
+
+const DEFAULT_SUCCESS_MESSAGE = 'Thank you. Your response has been submitted.';
+const FOCUSABLE = 'input:not([type="hidden"]), textarea, select, button, [tabindex]:not([tabindex="-1"])';
+const fullPageNavigate = (url: string) => window.location.assign(url);
+
+/**
+ * The one runtime entry point for every form. Knows nothing about complaints
+ * or any other domain - everything comes from the definition.
+ */
+export function FormContainer({ definition, formCode, ...runtime }: FormContainerProps) {
+  if (definition) return <FormRuntime key={`${definition.id}@${definition.version}`} definition={definition} {...runtime} />;
+  if (formCode) return <PublishedForm formCode={formCode} {...runtime} />;
+  return null;
+}
+
+function PublishedForm({ formCode, ...runtime }: FormRuntimeProps & { formCode: string }) {
+  const { data, isLoading, error } = usePublishedForm(formCode);
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading form…</p>;
+  if (error) return <p style={errorText}>Could not load this form.</p>;
+  if (!data) return <p className="text-sm text-muted-foreground">This form is not available.</p>;
+  return <FormRuntime key={`${data.id}@${data.version}`} definition={data} {...runtime} />;
+}
+
+/**
+ * Dependency engine: when a parent's value changes, clear every field
+ * downstream of it (Business -> Section -> Sub-section). Their options reload
+ * on their own because the option queries are keyed on the parent value.
+ */
+function useDependencyReset(
+  form: UseFormReturn<FormValues>,
+  definition: FormDefinition,
+  values: FormValues,
+  skipNext: MutableRefObject<boolean>,
+) {
+  const children = useMemo(() => resetChildren(definition.fields), [definition]);
+  const previous = useRef(values);
+
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = values;
+    if (skipNext.current) {
+      skipNext.current = false;
+      return;
+    }
+    for (const parent of children.keys()) {
+      if (JSON.stringify(before[parent]) === JSON.stringify(values[parent])) continue;
+      for (const name of descendantsOf(parent, children)) {
+        const field = definition.fields.find((f) => f.name === name);
+        if (!field || isEmptyValue(values[name])) continue;
+        form.setValue(name, emptyValueFor(field.type), { shouldDirty: true, shouldValidate: false });
+        form.clearErrors(name);
+      }
+    }
+  }, [values, children, definition, form, skipNext]);
+}
+
+function FormRuntime({
+  definition,
+  systemContext,
+  submissionAdapter = defaultSubmissionAdapter,
+  dataSourceAdapter = defaultDataSourceAdapter,
+  captchaMode,
+  onSubmitted,
+  onValuesChange,
+  onNavigate = fullPageNavigate,
+  showHeader = true,
+  liveStyles,
+  initialValues,
+  stayOnSubmit = false,
+}: FormRuntimeProps & { definition: FormDefinition }) {
+  const containerRef = useRef<HTMLFormElement>(null);
+  const context = useMemo(() => systemContextFor(definition, systemContext), [definition, systemContext]);
+  const schema = useMemo(() => buildZodSchema(definition), [definition]);
+  const defaults = useMemo(() => ({ ...buildDefaultValues(definition, context), ...initialValues }), [definition, context, initialValues]);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema) as Resolver<FormValues>,
+    defaultValues: defaults,
+    mode: 'onTouched',
+  });
+
+  const values = useWatch({ control: form.control }) as FormValues;
+  const states = useMemo(() => computeFieldStates(definition, values), [definition, values]);
+
+  const layout = useMemo(() => buildLayoutIndex(definition.fields), [definition]);
+
+  // Look and feel: published forms carry a style snapshot; drafts/previews read the live master.
+  const scope = `fpf-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  const css = useMemo(() => {
+    const ids = usedStyleIds(definition);
+    const styles = definition.styles ?? (liveStyles ?? []).filter((st) => ids.includes(st.id));
+    return buildFormCss(`.${scope}`, definition.theme, styles);
+  }, [definition, liveStyles, scope]);
+
+  // Steps mode: top-level sections become pages; hidden sections are skipped.
+  const allSteps = useMemo(() => (definition.layout?.mode === 'steps' ? buildSteps(definition.fields) : null), [definition]);
+  const steps = useMemo(
+    () => allSteps?.filter((st) => !st.section || states.get(st.section.name)?.visible !== false) ?? null,
+    [allSteps, states],
+  );
+  const [stepIndex, setStepIndex] = useState(0);
+  const step = steps ? steps[Math.min(stepIndex, steps.length - 1)] : undefined;
+  const isLastStep = !steps || stepIndex >= steps.length - 1;
+  const pendingFocus = useRef<string | null>(null);
+
+  const skipDependencyReset = useRef(false);
+  useDependencyReset(form, definition, values, skipDependencyReset);
+
+  useEffect(() => {
+    onValuesChange?.(values);
+  }, [values, onValuesChange]);
+
+  const [result, setResult] = useState<SubmissionResult | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
+
+  const captcha = useRef<CaptchaWidget | null>(null);
+  const registerCaptcha = useCallback((widget: CaptchaWidget | null) => {
+    captcha.current = widget;
+  }, []);
+  const captchaField = definition.fields.find((f) => f.type === 'CAPTCHA');
+  const resolvedCaptchaMode: CaptchaMode = captchaMode ?? (definition.captcha?.siteKey ? 'live' : 'mock');
+
+  const resetForm = () => {
+    skipDependencyReset.current = true;
+    form.reset(defaults);
+    captcha.current?.reset();
+    setResult(null);
+    setSubmitError(null);
+    setShowSummary(false);
+    setResetKey((k) => k + 1);
+    setStepIndex(0);
+  };
+
+  const onValid = async (submitted: FormValues) => {
+    setShowSummary(false);
+    setSubmitError(null);
+    try {
+      const res = await submissionAdapter.submit({
+        definition,
+        payload: buildPayload(definition, submitted),
+        values: submitted,
+        systemContext: context,
+      });
+      if (!res.ok) {
+        // The server re-validates; show its per-field findings where they belong.
+        for (const fe of res.fieldErrors ?? []) {
+          if (definition.fields.some((f) => f.name === fe.field)) form.setError(fe.field, { type: 'server', message: fe.message });
+        }
+        if (res.fieldErrors?.length) setShowSummary(true);
+        setSubmitError(res.error ?? 'Submission failed. Please try again.');
+        captcha.current?.reset();
+        return;
+      }
+      onSubmitted?.(res);
+      const success = definition.submission.success;
+      if (success?.type === 'REDIRECT' && success.redirectUrl) onNavigate(success.redirectUrl);
+      else if (!stayOnSubmit) setResult(res);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Submission failed. Please try again.');
+      captcha.current?.reset();
+    }
+  };
+
+  /**
+   * Invisible and v3 CAPTCHAs have no token until asked, so fetch one before
+   * validation runs - otherwise the required-token check would always fail.
+   */
+  /** Validate only what's on this step, then move on. */
+  const goNext = async () => {
+    if (!steps || !step) return;
+    const onStep = namesWithin(definition.fields, step.items);
+    const names = definition.fields
+      .filter((f) => onStep.has(f.name) && isValueField(f) && states.get(f.name)?.visible !== false)
+      .map((f) => f.name);
+    if (await form.trigger(names, { shouldFocus: true })) {
+      setStepIndex((i) => Math.min(i + 1, steps.length - 1));
+      containerRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    // Enter in a text box submits the HTML form; before the last step that means "Next".
+    if (!isLastStep) return goNext();
+    const mode = definition.captcha?.mode;
+    if (captchaField && mode && mode !== 'CHECKBOX' && !form.getValues(captchaField.name) && captcha.current) {
+      try {
+        form.setValue(captchaField.name, await captcha.current.execute());
+      } catch {
+        setSubmitError('Verification failed. Please try again.');
+        return;
+      }
+    }
+    await form.handleSubmit(onValid, () => setShowSummary(true))();
+  };
+
+  const onCancel = () => {
+    const cancel = definition.actions?.cancel;
+    if (cancel?.behavior === 'REDIRECT' && cancel.redirectUrl) onNavigate(cancel.redirectUrl);
+    else resetForm();
+  };
+
+  const focusField = (name: string) => {
+    // In steps mode the field may be on another step: go there first, focus after it renders.
+    const target = steps?.findIndex((st) => namesWithin(definition.fields, st.items).has(name)) ?? -1;
+    if (steps && target >= 0 && target !== stepIndex) {
+      pendingFocus.current = name;
+      setStepIndex(target);
+      return;
+    }
+    const wrapper = containerRef.current?.querySelector<HTMLElement>(`[data-field-name="${name}"]`);
+    wrapper?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    wrapper?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+  };
+
+  useEffect(() => {
+    if (pendingFocus.current) {
+      const name = pendingFocus.current;
+      pendingFocus.current = null;
+      focusField(name);
+    }
+  });
+
+  const runtimeValue = useMemo(
+    () => ({
+      definition,
+      values,
+      states,
+      systemContext: context,
+      navigate: onNavigate,
+      dataSourceAdapter,
+      captchaMode: resolvedCaptchaMode,
+      registerCaptcha,
+      resetKey,
+      layout,
+      stepSectionId: step?.section?.id,
+    }),
+    [definition, values, states, context, onNavigate, dataSourceAdapter, resolvedCaptchaMode, registerCaptcha, resetKey, layout, step],
+  );
+
+  if (result) {
+    return (
+      <div className={`space-y-6 ${scope}`}>
+        <style>{css}</style>
+        {showHeader && <FormHeader definition={definition} />}
+        <FormSuccess message={definition.submission.success?.message ?? DEFAULT_SUCCESS_MESSAGE} reference={result.ref} onReset={resetForm} />
+      </div>
+    );
+  }
+
+  return (
+    <FormRuntimeProvider value={runtimeValue}>
+      <Form {...form}>
+        <style>{css}</style>
+        <form ref={containerRef} noValidate aria-label={definition.name} className={`space-y-6 ${scope}`} onSubmit={onSubmit}>
+          {showHeader && <FormHeader definition={definition} />}
+          {steps && step && steps.length > 1 && (
+            <div className="fp-steps" aria-live="polite">
+              <div className="fp-steps__label">
+                <span className="fp-steps__title">{step.title}</span>
+                <span>
+                  Step {Math.min(stepIndex, steps.length - 1) + 1} of {steps.length}
+                </span>
+              </div>
+              <div className="fp-steps__bar">
+                <div className="fp-steps__fill" style={{ width: `${((Math.min(stepIndex, steps.length - 1) + 1) / steps.length) * 100}%` }} />
+              </div>
+            </div>
+          )}
+          {showSummary && (
+            <FormErrorSummary definition={definition} errors={form.formState.errors} onSelect={focusField} />
+          )}
+          <FieldList items={step ? step.items : childrenOf(layout)} />
+          {submitError && (
+            <p role="alert" className="text-sm" style={errorText}>
+              {submitError}
+            </p>
+          )}
+          <FormActions
+            definition={definition}
+            isSubmitting={form.formState.isSubmitting}
+            onCancel={onCancel}
+            steps={
+              steps && steps.length > 1
+                ? { canGoBack: stepIndex > 0, isLast: isLastStep, onBack: () => setStepIndex((i) => Math.max(0, i - 1)) }
+                : undefined
+            }
+          />
+        </form>
+      </Form>
+    </FormRuntimeProvider>
+  );
+}

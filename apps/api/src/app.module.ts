@@ -1,0 +1,223 @@
+import { SsoController } from './sso/sso.controller';
+import { SsoService } from './sso/sso.service';
+import { SsoState, SsoStateSchema } from './sso/sso.schema';
+import { DraftsService } from './drafts/drafts.service';
+import { FormDraft, FormDraftSchema } from './drafts/draft.schema';
+import { DNS_TXT, SiteService, systemTxtResolver } from './site/site.service';
+import { SiteController, SitePublicController } from './site/site.controller';
+import { PlansController } from './plans/plans.controller';
+import { PlansService } from './plans/plans.service';
+import { FormStat, FormStatSchema, UsageMonth, UsageMonthSchema } from './plans/usage.schema';
+import { Module, type DynamicModule } from '@nestjs/common';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { APP_GUARD, DiscoveryModule } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
+import { MongooseModule } from '@nestjs/mongoose';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AccessController } from './access/access.controller';
+import { Folder, FolderSchema, Grant, GrantSchema } from './access/access.schemas';
+import { AccessService } from './access/access.service';
+import { PermissionService } from './access/permission.service';
+import { AuditController } from './audit/audit.controller';
+import { AuditEntry, AuditEntrySchema } from './audit/audit.schema';
+import { AuditService } from './audit/audit.service';
+import { AuthController } from './auth/auth.controller';
+import { AuthGuard } from './auth/auth.guard';
+import { AuthToken, AuthTokenSchema, Session, SessionSchema, User, UserSchema } from './auth/auth.schemas';
+import { AuthService } from './auth/auth.service';
+import { MAILER, mailerFor } from './common/mailer';
+import { LocalObjectStore, OBJECT_STORE, S3ObjectStore } from './common/object-store';
+import { APP_CONFIG, type AppConfig } from './config';
+import { Form, FormSchema } from './forms/form.schema';
+import { FormsController } from './forms/forms.controller';
+import { FormsService } from './forms/forms.service';
+import { HealthController } from './health.controller';
+import { Connector, ConnectorCall, ConnectorCallSchema, ConnectorSchema } from './connectors/connector.schema';
+import { ConnectorsController } from './connectors/connectors.controller';
+import { ConnectorsService } from './connectors/connectors.service';
+import { Gateway, GatewaySchema } from './gateways/gateway.schema';
+import { GatewaysController } from './gateways/gateways.controller';
+import { GatewaysService } from './gateways/gateways.service';
+import { KEY_PROVIDER, KmsKeyProvider, LocalKeyProvider } from './common/key-provider';
+import { Style, StyleSchema } from './styles/style.schema';
+import { StylesController } from './styles/styles.controller';
+import { StylesService } from './styles/styles.service';
+import { FormPublicController } from './work/controllers/form-public.controller';
+import { FormRecordController } from './work/controllers/form-record.controller';
+import { LocalStoreController } from './work/controllers/local-store.controller';
+import { NotificationsController } from './work/controllers/notifications.controller';
+import { Notification, NotificationSchema } from './work/schemas/notification.schema';
+import {
+  FormCalendar,
+  FormCalendarSchema,
+  FormCounter,
+  FormCounterSchema,
+  FormFlowRun,
+  FormFlowRunSchema,
+  FormRecordEvent,
+  FormRecordEventSchema,
+  FormWebhook,
+  FormWebhookSchema,
+  FormWorkSettings,
+  FormWorkSettingsSchema,
+  FormWorkView,
+  FormWorkViewSchema,
+} from './work/schemas/form-record.schema';
+import { FormSubmission, FormSubmissionSchema } from './work/schemas/form-submission.schema';
+import { FormRateLimit, FormRateLimitSchema, FormUpload, FormUploadSchema } from './work/schemas/upload.schema';
+import { CaptchaVerifierService } from './work/services/captcha-verifier.service';
+import { DataSourceQueryService } from './work/services/data-source-query.service';
+import { FormAutomationService } from './work/services/form-automation.service';
+import { FormCalendarService } from './work/services/form-calendar.service';
+import { FormContextService } from './work/services/form-context.service';
+import { FormDefinitionService } from './work/services/form-definition.service';
+import { FormRecordService } from './work/services/form-record.service';
+import { FormSubmissionService } from './work/services/form-submission.service';
+import { FormUploadService } from './work/services/form-upload.service';
+import { FormWebhookService } from './work/services/form-webhook.service';
+import { FormHandlerRegistry } from './work/services/form-workflow.registry';
+import { MailService } from './work/services/mail.service';
+import { MongoThrottlerStorage } from './work/services/mongo-throttler.storage';
+import { NotificationsService } from './work/services/notifications.service';
+import { PeopleService } from './work/services/people.service';
+import { WorkItemService } from './work/services/work-item.service';
+import { WorkPortalService } from './work/services/work-portal.service';
+import { Invitation, InvitationSchema, Membership, MembershipSchema, Organization, OrganizationSchema } from './orgs/org.schemas';
+import { OrgsController } from './orgs/orgs.controller';
+import { OrgsService } from './orgs/orgs.service';
+
+/** Rate-limit counters in MongoDB, shared by every API instance (in its own module so the throttler factory can inject it). */
+function rateLimitModule(): DynamicModule {
+  return {
+    module: class RateLimitModule {},
+    imports: [MongooseModule.forFeature([{ name: FormRateLimit.name, schema: FormRateLimitSchema }])],
+    providers: [MongoThrottlerStorage],
+    exports: [MongoThrottlerStorage],
+  };
+}
+
+@Module({})
+export class AppModule {
+  /** Built from validated config so tests can run the real app against an in-memory Mongo. */
+  static forRoot(config: AppConfig): DynamicModule {
+    return {
+      module: AppModule,
+      imports: [
+        MongooseModule.forRoot(config.MONGODB_URL, { autoIndex: true }),
+        MongooseModule.forFeature([
+          { name: User.name, schema: UserSchema },
+          { name: Session.name, schema: SessionSchema },
+          { name: AuthToken.name, schema: AuthTokenSchema },
+          { name: Organization.name, schema: OrganizationSchema },
+          { name: Membership.name, schema: MembershipSchema },
+          { name: Invitation.name, schema: InvitationSchema },
+          { name: Folder.name, schema: FolderSchema },
+          { name: Grant.name, schema: GrantSchema },
+          { name: AuditEntry.name, schema: AuditEntrySchema },
+          { name: Form.name, schema: FormSchema },
+          { name: Style.name, schema: StyleSchema },
+          { name: FormSubmission.name, schema: FormSubmissionSchema },
+          { name: FormUpload.name, schema: FormUploadSchema },
+          { name: FormRecordEvent.name, schema: FormRecordEventSchema },
+          { name: FormCounter.name, schema: FormCounterSchema },
+          { name: FormFlowRun.name, schema: FormFlowRunSchema },
+          { name: FormCalendar.name, schema: FormCalendarSchema },
+          { name: FormWebhook.name, schema: FormWebhookSchema },
+          { name: FormWorkView.name, schema: FormWorkViewSchema },
+          { name: FormWorkSettings.name, schema: FormWorkSettingsSchema },
+          { name: Notification.name, schema: NotificationSchema },
+          { name: Connector.name, schema: ConnectorSchema },
+          { name: ConnectorCall.name, schema: ConnectorCallSchema },
+          { name: Gateway.name, schema: GatewaySchema },
+          { name: UsageMonth.name, schema: UsageMonthSchema },
+          { name: FormStat.name, schema: FormStatSchema },
+          { name: FormDraft.name, schema: FormDraftSchema },
+          { name: SsoState.name, schema: SsoStateSchema },
+        ]),
+        JwtModule.register({ secret: config.JWT_SECRET, signOptions: { algorithm: 'HS256' }, verifyOptions: { algorithms: ['HS256'] } }),
+        ThrottlerModule.forRootAsync({
+          imports: [rateLimitModule()],
+          inject: [MongoThrottlerStorage],
+          useFactory: (storage: MongoThrottlerStorage) => ({
+            throttlers: [{ ttl: 60_000, limit: 300 }],
+            storage,
+            // Tests sign in many times from one IP; they opt back in with this header to test the limiter itself.
+            skipIf: (ctx) => config.NODE_ENV === 'test' && !ctx.switchToHttp().getRequest().headers['x-test-throttle'],
+          }),
+        }),
+        EventEmitterModule.forRoot(),
+        // Finds @FormWorkflow methods anywhere in the app (none ship yet).
+        DiscoveryModule,
+      ],
+      controllers: [
+        HealthController,
+        AuthController,
+        SsoController,
+        // Before OrgsController: /org/usage is a static route.
+        PlansController,
+        SiteController,
+        OrgsController,
+        AccessController,
+        AuditController,
+        FormsController,
+        StylesController,
+        FormPublicController,
+        SitePublicController,
+        FormRecordController,
+        NotificationsController,
+        ConnectorsController,
+        GatewaysController,
+        ...(config.STORAGE_PROVIDER === 'local' ? [LocalStoreController] : []),
+      ],
+      providers: [
+        { provide: APP_CONFIG, useValue: config },
+        { provide: MAILER, useValue: mailerFor(config) },
+        {
+          provide: KEY_PROVIDER,
+          useValue: config.KMS_KEY_ID ? new KmsKeyProvider(config.KMS_KEY_ID, config.AWS_REGION) : new LocalKeyProvider(Buffer.from(config.SECRET_KEY, 'base64')),
+        },
+        {
+          provide: OBJECT_STORE,
+          useValue:
+            config.STORAGE_PROVIDER === 's3'
+              ? new S3ObjectStore(config.UPLOADS_BUCKET, config.AWS_REGION)
+              : new LocalObjectStore(config.LOCAL_STORAGE_DIR, config.API_URL, Buffer.from(config.SECRET_KEY, 'base64')),
+        },
+        // Order matters: rate limit first, then authentication.
+        { provide: APP_GUARD, useClass: ThrottlerGuard },
+        { provide: APP_GUARD, useClass: AuthGuard },
+        AuditService,
+        AuthService,
+        OrgsService,
+        PermissionService,
+        AccessService,
+        FormsService,
+        StylesService,
+        ConnectorsService,
+        GatewaysService,
+        PlansService,
+        SiteService,
+        DraftsService,
+        SsoService,
+        { provide: DNS_TXT, useValue: systemTxtResolver },
+        // Work items (ported from Sangam form-platform).
+        FormDefinitionService,
+        PeopleService,
+        MailService,
+        NotificationsService,
+        FormContextService,
+        DataSourceQueryService,
+        CaptchaVerifierService,
+        FormUploadService,
+        FormSubmissionService,
+        FormCalendarService,
+        FormRecordService,
+        FormAutomationService,
+        FormHandlerRegistry,
+        WorkItemService,
+        FormWebhookService,
+        WorkPortalService,
+      ],
+    };
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@fb/ui",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Design system: tokens, themes and shared components.",
+  "exports": { "./tokens.css": "./tokens.css" }
+}

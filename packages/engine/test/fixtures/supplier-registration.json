@@ -1,0 +1,82 @@
+{
+  "id": "supplier-registration-001",
+  "orgId": "ORG001",
+  "businessId": "BUSINESS001",
+  "name": "Supplier Registration",
+  "code": "SUPPLIER_REGISTRATION",
+  "description": "Register as a supplier in three short steps.",
+  "version": 1,
+  "status": "PUBLISHED",
+  "access": "PUBLIC",
+  "layout": { "mode": "steps" },
+  "theme": { "primaryColor": "#0f766e", "fontFamily": "default" },
+  "fields": [
+    { "id": "s1", "type": "SECTION", "name": "companySection", "label": "Company", "props": { "description": "Tell us who you are." } },
+    { "id": "s1c", "type": "COLUMNS", "name": "companyCols", "parentId": "s1", "column": 0, "props": { "columns": [2, 1] } },
+    { "id": "s1a", "type": "TEXT", "name": "companyName", "label": "Company name", "required": true, "parentId": "s1c", "column": 0 },
+    {
+      "id": "s1b",
+      "type": "TEXT",
+      "name": "gstNumber",
+      "label": "GST number",
+      "required": true,
+      "parentId": "s1c",
+      "column": 1,
+      "validation": { "pattern": "^[0-9]{2}[A-Z0-9]{13}$", "messages": { "pattern": "15 characters, e.g. 27ABCDE1234F1Z5" } }
+    },
+    {
+      "id": "s1d",
+      "type": "DROPDOWN",
+      "name": "supplies",
+      "label": "What do you supply?",
+      "required": true,
+      "parentId": "s1",
+      "column": 0,
+      "dataSource": {
+        "type": "STATIC",
+        "options": [
+          { "label": "Raw material", "value": "RAW" },
+          { "label": "Chemicals", "value": "CHEM" },
+          { "label": "Spares", "value": "SPARES" },
+          { "label": "Services", "value": "SERVICES" }
+        ]
+      }
+    },
+
+    { "id": "s2", "type": "SECTION", "name": "contactSection", "label": "Contact" },
+    { "id": "s2a", "type": "TEXT", "name": "contactName", "label": "Contact person", "required": true, "parentId": "s2", "column": 0 },
+    { "id": "s2b", "type": "EMAIL", "name": "contactEmail", "label": "Email", "required": true, "width": "half", "parentId": "s2", "column": 0 },
+    { "id": "s2c", "type": "PHONE", "name": "contactPhone", "label": "Phone", "width": "half", "parentId": "s2", "column": 0 },
+
+    { "id": "s3", "type": "SECTION", "name": "declarationSection", "label": "Declaration" },
+    {
+      "id": "s3a",
+      "type": "CHECKBOX",
+      "name": "declaration",
+      "label": "The information above is correct",
+      "required": true,
+      "styleId": "highlight-box",
+      "parentId": "s3",
+      "column": 0
+    }
+  ],
+  "actions": {
+    "submit": { "enabled": true, "label": "Register" },
+    "cancel": { "enabled": false, "label": "Cancel", "behavior": "RESET" }
+  },
+  "submission": {
+    "method": "POST",
+    "endpointId": "supplier-register",
+    "success": { "type": "MESSAGE", "message": "Thanks - our purchase team will be in touch." }
+  },
+  "styles": [
+    {
+      "id": "highlight-box",
+      "name": "Highlight box",
+      "description": "Soft blue panel for important questions",
+      "props": { "backgroundColor": "#eff6ff", "borderColor": "#bfdbfe", "borderWidth": 1, "borderRadius": 10, "padding": 16 }
+    }
+  ],
+  "createdBy": "system",
+  "updatedBy": "system"
+}

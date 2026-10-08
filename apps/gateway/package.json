@@ -1,0 +1,25 @@
+{
+  "name": "@fb/gateway",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Gateway agent: runs inside a customer's network, connects out to Form Builder, runs connector operations with local credentials.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fb/connectors": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.2"
+  },
+  "types": "dist/index.d.ts",
+  "bin": {
+    "fb-gateway": "dist/main.js"
+  }
+}

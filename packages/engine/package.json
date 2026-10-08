@@ -1,0 +1,23 @@
+{
+  "name": "@fb/engine",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Form + workflow rules shared by api, worker, studio and runtime (ported from Sangam form-platform).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.2"
+  },
+  "files": [
+    "dist"
+  ]
+}

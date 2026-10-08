@@ -1,0 +1,150 @@
+import { Body, Controller, UseFilters, Get, Headers, HttpCode, Ip, NotFoundException, Param, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { FormDefinitionService } from '../services/form-definition.service';
+import { Public } from '../../auth/auth.guard';
+import { Throttle } from '@nestjs/throttler';
+import apiResponse from '../response';
+import { THROTTLE } from '../constants';
+import { FormFieldErrorsFilter } from '../security/form-http';
+import { isPlainObject } from '../../forms/payload-guard';
+import { FormContextService } from '../services/form-context.service';
+import { DataSourceQueryService } from '../services/data-source-query.service';
+import { FormSubmissionService, SubmitBody } from '../services/form-submission.service';
+import { FormUploadService } from '../services/form-upload.service';
+import { FormThrottlerGuard } from './form-throttler.guard';
+import { PlansService } from '../../plans/plans.service';
+import { DraftsService } from '../../drafts/drafts.service';
+
+/**
+ * Endpoints the public form page uses. No AuthGuard: anonymous callers are
+ * allowed for PUBLIC forms; a bearer token, if sent, is verified and required
+ * for sign-in-only forms. `org` is the subdomain (or org uuid) the form was
+ * opened under. Every route is rate-limited.
+ */
+@Public()
+@Controller('public')
+@UseGuards(FormThrottlerGuard)
+@UseFilters(FormFieldErrorsFilter)
+export class FormPublicController {
+  constructor(
+    private readonly context: FormContextService,
+    private readonly submissions: FormSubmissionService,
+    private readonly uploads: FormUploadService,
+    private readonly master: DataSourceQueryService,
+    private readonly definitions: FormDefinitionService,
+    private readonly plans: PlansService,
+    private readonly drafts: DraftsService,
+  ) {}
+
+  // Static routes first.
+  @Post('data-sources/query')
+  @HttpCode(200)
+  @Throttle({ default: THROTTLE.read })
+  async queryDataSource(@Query('org') org: string, @Body() body: Record<string, unknown>, @Headers('authorization') auth?: string) {
+    const orgId = await this.context.resolveOrgId(org);
+    const user = await this.context.optionalUser(auth);
+    // A public caller may only read a source that a published form binds, with that field's own parameters.
+    const code = typeof body?.formCode === 'string' ? body.formCode : '';
+    const def = /^[A-Z0-9_]{1,100}$/.test(code) ? await this.definitions.findPublished(orgId, code) : null;
+    const key = typeof body?.key === 'string' ? body.key.split('?')[0] : '';
+    const bound = def && [...def.fields, ...(def.workflow?.workFields ?? [])].find((f) => f.dataSource?.type === 'API' && f.dataSource.api?.url.split('?')[0] === key);
+    if (!def || !bound) throw new NotFoundException('No data source is available here');
+    if (def.access === 'AUTHENTICATED' && user?.orgId !== orgId) throw new UnauthorizedException('Sign in to see these options');
+    const declared = Object.keys(bound.dataSource!.api!.params ?? {});
+    const params = body?.params && typeof body.params === 'object' ? (body.params as Record<string, unknown>) : {};
+    if (Object.keys(params).some((k) => !declared.includes(k))) throw new NotFoundException('No data source is available here');
+    const rows = await this.master.queryDataSource(orgId, key, params, user, `form:${code}`);
+    return apiResponse(true, 200, 'Rows fetched', rows);
+  }
+
+  @Post('uploads/:uploadId/verify')
+  @HttpCode(200)
+  @Throttle({ default: THROTTLE.upload })
+  async verifyUpload(@Query('org') org: string, @Param('uploadId') uploadId: string) {
+    const orgId = await this.context.resolveOrgId(org);
+    return apiResponse(true, 200, 'File verified', await this.uploads.verify(orgId, uploadId));
+  }
+
+  @Get('forms/:code')
+  @Throttle({ default: THROTTLE.read })
+  async getForm(@Query('org') org: string, @Param('code') code: string, @Headers('authorization') auth?: string) {
+    const orgId = await this.context.resolveOrgId(org);
+    const user = await this.context.optionalUser(auth);
+    return apiResponse(true, 200, 'Form fetched', await this.submissions.publishedFor(orgId, code, user));
+  }
+
+  @Post('forms/:code/submissions')
+  @Throttle({ default: THROTTLE.submit })
+  async submit(
+    @Query('org') org: string,
+    @Param('code') code: string,
+    @Body() body: SubmitBody,
+    @Ip() ip: string,
+    @Headers('authorization') auth?: string,
+  ) {
+    const orgId = await this.context.resolveOrgId(org);
+    const user = await this.context.optionalUser(auth);
+    const reserved = await this.plans.reserveSubmission(orgId);
+    try {
+      const result = await this.submissions.submit(orgId, code, isPlainObject(body) ? body : {}, user, ip);
+      await this.plans.recordSubmission(orgId, code);
+      return result;
+    } catch (e) {
+      await this.plans.releaseSubmission(orgId, reserved);
+      throw e;
+    }
+  }
+
+  /** Funnel analytics from the form page: opened / started. Counts only, for published forms. */
+  @Post('forms/:code/events')
+  @HttpCode(204)
+  @Throttle({ default: THROTTLE.read })
+  async event(@Query('org') org: string, @Param('code') code: string, @Body() body: Record<string, unknown>) {
+    const orgId = await this.context.resolveOrgId(org);
+    const type = body?.type;
+    if ((type !== 'view' && type !== 'start') || !/^[A-Z0-9_]{1,100}$/.test(code)) return;
+    if (!(await this.definitions.findPublished(orgId, code))) throw new NotFoundException('Form not found');
+    await this.plans.recordEvent(orgId, code, type);
+  }
+
+  /** Save and continue later: returns a token the respondent keeps (it's the only way back in). */
+  @Post('forms/:code/drafts')
+  @Throttle({ default: THROTTLE.submit })
+  async saveDraft(@Query('org') org: string, @Param('code') code: string, @Body() body: Record<string, unknown>, @Headers('authorization') auth?: string) {
+    const orgId = await this.context.resolveOrgId(org);
+    const user = await this.context.optionalUser(auth);
+    const def = await this.submissions.publishedFor(orgId, code, user);
+    const token = typeof body?.token === 'string' ? body.token : undefined;
+    return this.drafts.save(orgId, def, body?.values, token, user);
+  }
+
+  /** The token travels in the body, not the path, so it stays out of access logs. */
+  @Post('forms/:code/drafts/load')
+  @HttpCode(200)
+  @Throttle({ default: THROTTLE.submit })
+  async loadDraft(@Query('org') org: string, @Param('code') code: string, @Body() body: Record<string, unknown>, @Headers('authorization') auth?: string) {
+    const orgId = await this.context.resolveOrgId(org);
+    const user = await this.context.optionalUser(auth);
+    return this.drafts.load(orgId, await this.submissions.publishedFor(orgId, code, user), typeof body?.token === 'string' ? body.token : '', user);
+  }
+
+  @Post('forms/:code/drafts/discard')
+  @HttpCode(204)
+  @Throttle({ default: THROTTLE.submit })
+  async discardDraft(@Query('org') org: string, @Param('code') code: string, @Body() body: Record<string, unknown>) {
+    await this.drafts.discard(await this.context.resolveOrgId(org), code, typeof body?.token === 'string' ? body.token : '');
+  }
+
+  @Post('forms/:code/uploads')
+  @Throttle({ default: THROTTLE.upload })
+  async presignUpload(
+    @Query('org') org: string,
+    @Param('code') code: string,
+    @Body() body: Record<string, unknown>,
+    @Headers('authorization') auth?: string,
+  ) {
+    const orgId = await this.context.resolveOrgId(org);
+    const user = await this.context.optionalUser(auth);
+    const def = await this.submissions.publishedFor(orgId, code, user);
+    return apiResponse(true, 201, 'Upload ready', await this.uploads.presign(orgId, def, isPlainObject(body) ? body : {}));
+  }
+}

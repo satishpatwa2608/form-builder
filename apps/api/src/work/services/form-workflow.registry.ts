@@ -1,0 +1,108 @@
+import { Injectable, Logger, OnApplicationBootstrap, SetMetadata } from '@nestjs/common';
+import { DiscoveryService, MetadataScanner } from '@nestjs/core';
+import { ACTION_KEY, ConnectorsService } from '../../connectors/connectors.service';
+import type { AutomationTrigger, FormDefinition, FormValues } from '@fb/engine';
+import type { FormSubmission } from '../schemas/form-submission.schema';
+
+/**
+ * What a custom workflow method receives - like an AEM work item: the
+ * payload (answers + record) and the data earlier steps produced. Everything
+ * here comes from the server, never the browser.
+ */
+export interface FormHandlerContext {
+  orgId: string;
+  trigger: AutomationTrigger;
+  definition: FormDefinition;
+  record: FormSubmission & { createdAt?: Date };
+  /** Answers by field name (the payload). */
+  values: FormValues;
+  /** Outputs of the steps that already ran in this flow, by step key (read-only). */
+  steps: Readonly<Record<string, unknown>>;
+  /** This step's key - its output lands at steps[key] for the steps below. */
+  stepKey: string;
+}
+
+/**
+ * Return a timeline summary, or `{ summary, data }` - `data` becomes this
+ * step's output ({{$steps.<key>.<field>}} for later steps). Throw to fail the step.
+ */
+export type FormHandlerResult = string | void | { summary?: string; data?: Record<string, unknown> };
+export type FormHandler = (ctx: FormHandlerContext) => Promise<FormHandlerResult>;
+
+export interface FormWorkflowInfo {
+  /** Stored on the form: lower-case letters, digits and "-". Never rename a key forms already use. */
+  key: string;
+  /** What designers see in the builder's dropdown. */
+  label: string;
+  description?: string;
+  /** Output fields it returns in `data`, so the builder can offer {{$steps.<key>.<field>}} and conditions on them. */
+  outputs?: string[];
+}
+
+const FORM_WORKFLOW = 'form-platform:workflow';
+
+/**
+ * Marks a provider method as a custom form workflow. It shows up in the
+ * form builder's "Run custom API" dropdown and runs when a form's automation
+ * calls it. The method's module just has to be part of the app - no other wiring:
+ *
+ *   @FormWorkflow({ key: 'complaint-create-capa', label: 'Create CAPA', description: '...' })
+ *   async createCapa(ctx: FormHandlerContext) { ... return 'CAPA 42 created'; }
+ */
+export const FormWorkflow = (info: FormWorkflowInfo) => SetMetadata(FORM_WORKFLOW, info);
+
+const KEY = /^[a-z0-9-]{1,60}$/;
+
+/** Every @FormWorkflow method in the app, found once at startup. */
+@Injectable()
+export class FormHandlerRegistry implements OnApplicationBootstrap {
+  private readonly logger = new Logger(FormHandlerRegistry.name);
+  private readonly handlers = new Map<string, FormWorkflowInfo & { run: FormHandler }>();
+
+  constructor(
+    private readonly discovery: DiscoveryService,
+    private readonly scanner: MetadataScanner,
+    private readonly connectors: ConnectorsService,
+  ) {}
+
+  onApplicationBootstrap() {
+    for (const wrapper of this.discovery.getProviders()) {
+      const instance = wrapper.instance;
+      if (!instance || typeof instance !== 'object') continue;
+      const proto = Object.getPrototypeOf(instance);
+      for (const name of this.scanner.getAllMethodNames(proto)) {
+        const info = Reflect.getMetadata(FORM_WORKFLOW, proto[name]) as FormWorkflowInfo | undefined;
+        if (info) this.register(info, (ctx) => proto[name].call(instance, ctx));
+      }
+    }
+    this.logger.log(`${this.handlers.size} custom form workflow(s): ${[...this.handlers.keys()].join(', ') || 'none'}`);
+  }
+
+  register(info: FormWorkflowInfo, run: FormHandler) {
+    if (!KEY.test(info.key)) throw new Error(`Form workflow key "${info.key}" must be lower-case letters, digits and -`);
+    if (this.handlers.has(info.key)) throw new Error(`Form workflow key "${info.key}" is registered twice`);
+    this.handlers.set(info.key, { ...info, run });
+  }
+
+  get(key: string): FormHandler | undefined {
+    // Connector write steps are configuration, resolved per org when they run.
+    if (ACTION_KEY.test(key)) return (ctx) => this.connectors.runAction(ctx.orgId, key, { ...ctx.values, ...((ctx.record.work as Record<string, unknown>) ?? {}) }, ctx.definition.code);
+    return this.handlers.get(key)?.run;
+  }
+
+  /** Code handlers plus this org's connector write steps (for the builder's step picker). */
+  async listFor(orgId: string): Promise<FormWorkflowInfo[]> {
+    return [...this.list(), ...(await this.connectors.actions(orgId))].sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  /** Is this step key runnable for the org (a code handler, or an existing connector write)? */
+  async exists(orgId: string, key: string): Promise<boolean> {
+    return this.handlers.has(key) || (ACTION_KEY.test(key) && (await this.connectors.actionExists(orgId, key)));
+  }
+
+  list(): FormWorkflowInfo[] {
+    return [...this.handlers.values()]
+      .map(({ key, label, description, outputs }) => ({ key, label, description, ...(outputs?.length ? { outputs } : {}) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "id": "complaint-form-001",
+  "orgId": "ORG001",
+  "businessId": "BUSINESS001",
+  "name": "Customer Complaint Form",
+  "code": "CUSTOMER_COMPLAINT",
+  "description": "Tell us what went wrong. Product complaints ask which product it was.",
+  "version": 1,
+  "status": "PUBLISHED",
+  "access": "PUBLIC",
+  "fields": [
+    {
+      "id": "f1",
+      "type": "HIDDEN",
+      "name": "orgId",
+      "systemSource": "ORG_ID"
+    },
+    {
+      "id": "f2",
+      "type": "HIDDEN",
+      "name": "businessId",
+      "systemSource": "BUSINESS_ID"
+    },
+    {
+      "id": "f3",
+      "type": "TEXT",
+      "name": "name",
+      "label": "Name",
+      "required": true
+    },
+    {
+      "id": "f4",
+      "type": "EMAIL",
+      "name": "email",
+      "label": "Email",
+      "required": true
+    },
+    {
+      "id": "f5",
+      "type": "DROPDOWN",
+      "name": "category",
+      "label": "Complaint Category",
+      "required": true,
+      "dataSource": {
+        "type": "STATIC",
+        "options": [
+          {
+            "label": "Product",
+            "value": "PRODUCT"
+          },
+          {
+            "label": "Delivery",
+            "value": "DELIVERY"
+          },
+          {
+            "label": "Billing",
+            "value": "BILLING"
+          }
+        ]
+      }
+    },
+    {
+      "id": "f6",
+      "type": "DROPDOWN",
+      "name": "product",
+      "label": "Product",
+      "required": true,
+      "visibility": {
+        "when": {
+          "field": "category",
+          "operator": "equals",
+          "value": "PRODUCT"
+        }
+      },
+      "dependency": {
+        "dependsOn": [
+          "category"
+        ],
+        "resetOnChange": true
+      },
+      "dataSource": {
+        "type": "API",
+        "api": {
+          "url": "/api/products",
+          "method": "GET",
+          "valueField": "id",
+          "labelField": "name",
+          "params": {
+            "category": "{{category}}"
+          }
+        }
+      }
+    },
+    {
+      "id": "f7",
+      "type": "TEXTAREA",
+      "name": "description",
+      "label": "Complaint Description",
+      "required": true,
+      "validation": {
+        "minLength": 30,
+        "maxLength": 5000
+      }
+    },
+    {
+      "id": "f8",
+      "type": "CAPTCHA",
+      "name": "captchaToken"
+    }
+  ],
+  "actions": {
+    "submit": {
+      "enabled": true,
+      "label": "Submit Complaint"
+    },
+    "cancel": {
+      "enabled": true,
+      "label": "Cancel",
+      "behavior": "RESET"
+    }
+  },
+  "submission": {
+    "method": "POST",
+    "endpointId": "complaint-submit",
+    "success": {
+      "type": "MESSAGE",
+      "message": "Thank you. Your complaint has been registered."
+    }
+  },
+  "captcha": {
+    "enabled": true,
+    "provider": "RECAPTCHA",
+    "siteKey": "",
+    "mode": "CHECKBOX"
+  },
+  "createdBy": "system",
+  "updatedBy": "system"
+}

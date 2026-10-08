@@ -1,0 +1,619 @@
+import { useMemo, useState } from 'react';
+import { CheckCircle2, Database, KeyRound, Network, Plug, Plus, RefreshCw, ScanSearch, Trash2, X, XCircle } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { API_URL, api, errorMessage } from '../lib/api';
+import { useAuth } from '../lib/auth';
+import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
+
+type ConnectorType = 'mongodb' | 'postgres' | 'mysql' | 'supabase' | 'rest' | 'aws-s3' | 'aws-cloudwatch';
+type Op = 'list' | 'get' | 'lookup' | 'insert' | 'update' | 'upload' | 'log';
+
+interface ExposedEntity {
+  key: string;
+  label: string;
+  fields: string[];
+  keyField: string;
+  operations: Op[];
+  valueField: string;
+  labelField: string;
+}
+interface ConnectorView {
+  id: string;
+  ref: string;
+  type: ConnectorType;
+  name: string;
+  settings: Record<string, string | number | boolean>;
+  credentialsSet: boolean;
+  writable: boolean;
+  allowedHosts: string[];
+  entities: ExposedEntity[];
+  lastTest: { at: string; ok: boolean; message: string; latencyMs: number } | null;
+  permissions: { use: boolean; manage: boolean };
+  gatewayId?: string;
+  gatewayConnected?: boolean;
+}
+interface GatewayView {
+  id: string;
+  name: string;
+  registered: boolean;
+  connected: boolean;
+  lastSeenAt?: string;
+  version?: string;
+}
+interface Discovered {
+  key: string;
+  label: string;
+  fields: { name: string; type: string }[];
+}
+interface Call {
+  entity: string;
+  kind: string;
+  actor: string;
+  ok: boolean;
+  durationMs: number;
+  rows: number;
+  error: string;
+  at: string;
+}
+
+/** What each type asks for. `secret` fields are sent once and never shown again. */
+interface FieldSpec {
+  name: string;
+  label: string;
+  secret?: boolean;
+  hint?: string;
+  kind?: 'text' | 'number' | 'bool' | 'select' | 'textarea' | 'password';
+  options?: string[];
+  optional?: boolean;
+}
+const ROLE: FieldSpec[] = [
+  { name: 'region', label: 'AWS region', hint: 'e.g. ap-south-1' },
+  { name: 'roleArn', label: 'Role ARN', hint: 'A role in your account that trusts Form Builder' },
+  { name: 'externalId', label: 'External ID', hint: 'Put this in the role trust policy (sts:ExternalId)' },
+];
+const SPECS: Record<ConnectorType, { label: string; blurb: string; fields: FieldSpec[] }> = {
+  mongodb: { label: 'MongoDB', blurb: 'Collections for dropdowns, prefill and saving answers.', fields: [{ name: 'database', label: 'Database' }, { name: 'uri', label: 'Connection string', secret: true, kind: 'password', hint: 'mongodb+srv://user:password@host/ - use a user with only the rights forms need' }] },
+  postgres: {
+    label: 'PostgreSQL',
+    blurb: 'Tables and views, with parameterised queries only.',
+    fields: [
+      { name: 'host', label: 'Host' },
+      { name: 'port', label: 'Port', kind: 'number', optional: true },
+      { name: 'database', label: 'Database' },
+      { name: 'schema', label: 'Schema', optional: true, hint: 'Default: public' },
+      { name: 'ssl', label: 'Use TLS', kind: 'bool' },
+      { name: 'user', label: 'User', secret: true },
+      { name: 'password', label: 'Password', secret: true, kind: 'password' },
+    ],
+  },
+  mysql: {
+    label: 'MySQL',
+    blurb: 'Tables and views, with parameterised queries only.',
+    fields: [
+      { name: 'host', label: 'Host' },
+      { name: 'port', label: 'Port', kind: 'number', optional: true },
+      { name: 'database', label: 'Database' },
+      { name: 'ssl', label: 'Use TLS', kind: 'bool' },
+      { name: 'user', label: 'User', secret: true },
+      { name: 'password', label: 'Password', secret: true, kind: 'password' },
+    ],
+  },
+  supabase: { label: 'Supabase', blurb: 'Your project through its REST API (row level security applies).', fields: [{ name: 'url', label: 'Project URL', hint: 'https://xyz.supabase.co' }, { name: 'apiKey', label: 'API key', secret: true, kind: 'password', hint: 'A restricted key, not service_role' }] },
+  rest: {
+    label: 'REST API',
+    blurb: 'Your own API: define resources as path + fields.',
+    fields: [
+      { name: 'baseUrl', label: 'Base URL', hint: 'https only' },
+      { name: 'auth', label: 'Authentication', kind: 'select', options: ['none', 'bearer', 'apiKey', 'basic'] },
+      { name: 'apiKeyHeader', label: 'API key header', optional: true, hint: 'For apiKey auth, e.g. X-API-Key' },
+      { name: 'resources', label: 'Resources (JSON)', kind: 'textarea', hint: '[{"key":"customers","path":"/customers","fields":["id","name"],"dataPath":"data"}]' },
+      { name: 'token', label: 'Token / API key', secret: true, kind: 'password', optional: true },
+      { name: 'username', label: 'Username (basic)', secret: true, optional: true },
+      { name: 'password', label: 'Password (basic)', secret: true, kind: 'password', optional: true },
+    ],
+  },
+  'aws-s3': { label: 'Amazon S3', blurb: "Save answers as JSON files in your bucket (your account, your role).", fields: [...ROLE, { name: 'bucket', label: 'Bucket' }, { name: 'prefix', label: 'Key prefix', optional: true, hint: 'e.g. forms/' }] },
+  'aws-cloudwatch': { label: 'CloudWatch Logs', blurb: 'Send form events to your log group.', fields: [...ROLE, { name: 'logGroup', label: 'Log group', hint: 'e.g. /acme/forms' }] },
+};
+const READS: Op[] = ['list', 'get', 'lookup'];
+const WRITES: Op[] = ['insert', 'update', 'upload', 'log'];
+const OPS_BY_TYPE: Record<ConnectorType, Op[]> = {
+  mongodb: ['list', 'get', 'lookup', 'insert', 'update'],
+  postgres: ['list', 'get', 'lookup', 'insert', 'update'],
+  mysql: ['list', 'get', 'lookup', 'insert', 'update'],
+  supabase: ['list', 'get', 'lookup', 'insert', 'update'],
+  rest: ['list', 'get', 'lookup', 'insert', 'update'],
+  'aws-s3': ['list', 'upload'],
+  'aws-cloudwatch': ['log'],
+};
+
+const newExternalId = () => `fb-${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+
+function NewConnector({ onDone, onCancel }: { onDone: (c: ConnectorView) => void; onCancel: () => void }) {
+  const [type, setType] = useState<ConnectorType>('postgres');
+  const [name, setName] = useState('');
+  const [values, setValues] = useState<Record<string, string | boolean>>({ ssl: true, auth: 'none', externalId: newExternalId() });
+  const [writable, setWritable] = useState(false);
+  const [gatewayId, setGatewayId] = useState('');
+  const gateways = useQuery({ queryKey: ['gateways'], queryFn: () => api<GatewayView[]>('/gateways') });
+  const spec = SPECS[type];
+  const viaGateway = !!gatewayId;
+  const shownFields = viaGateway ? spec.fields.filter((f) => !f.secret) : spec.fields;
+  const create = useSubmit(async () => {
+    const settings: Record<string, unknown> = {};
+    const secrets: Record<string, unknown> = {};
+    for (const f of spec.fields) {
+      const v = values[f.name];
+      if (v === undefined || v === '' || (f.secret && viaGateway)) continue;
+      (f.secret ? secrets : settings)[f.name] = f.kind === 'number' ? Number(v) : v;
+    }
+    onDone(await api<ConnectorView>('/connectors', { method: 'POST', body: viaGateway ? { type, name, settings, writable, gatewayId } : { type, name, settings, secrets, writable } }));
+  });
+  const set = (k: string, v: string | boolean) => setValues((x) => ({ ...x, [k]: v }));
+  const fieldError = (n: string) => create.fields[`settings.${n}`] ?? create.fields[`secrets.${n}`];
+
+  return (
+    <Card title="New connector" subtitle="Credentials are encrypted with their own key and never shown again." actions={<Button variant="ghost" size="sm" aria-label="Close" onClick={onCancel}><X size={16} /></Button>}>
+      <form className="st-stack" onSubmit={create.submit} noValidate>
+        {create.error && !Object.keys(create.fields).length && <Alert tone="error">{create.error}</Alert>}
+        <div className="st-row" role="radiogroup" aria-label="Type" style={{ alignItems: 'stretch' }}>
+          {(Object.keys(SPECS) as ConnectorType[]).map((t) => (
+            <label key={t} className="st-card" style={{ flex: '1 1 160px', padding: 12, cursor: 'pointer', borderColor: type === t ? 'var(--fb-accent)' : undefined, boxShadow: type === t ? 'var(--fb-ring)' : undefined }}>
+              <input type="radio" name="type" value={t} checked={type === t} onChange={() => setType(t)} style={{ position: 'absolute', opacity: 0 }} />
+              <strong>{SPECS[t].label}</strong>
+              <div className="st-muted" style={{ fontSize: 12 }}>
+                {SPECS[t].blurb}
+              </div>
+            </label>
+          ))}
+        </div>
+        <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sales database" error={create.fields.name} />
+        {!!gateways.data?.length && !type.startsWith('aws-') && (
+          <SelectField label="Where it runs" value={gatewayId} onChange={(e) => setGatewayId(e.target.value)} hint="A gateway reaches databases on your private network; credentials then stay on the gateway machine.">
+            <option value="">From Form Builder's cloud (credentials encrypted here)</option>
+            {gateways.data.map((g) => (
+              <option key={g.id} value={g.id}>
+                Through gateway: {g.name}
+                {g.connected ? '' : ' (offline)'}
+              </option>
+            ))}
+          </SelectField>
+        )}
+        {viaGateway && <Alert tone="info">After creating, add this connector's host/URL and credentials to the gateway's connectors.json under its reference (shown on the card). Where it connects is decided on the gateway, and the credentials never leave that machine.</Alert>}
+        <div className="st-grid-2">
+          {shownFields.map((f) =>
+            f.kind === 'bool' ? (
+              <label key={f.name} className="st-check" style={{ alignSelf: 'end', paddingBottom: 10 }}>
+                <input type="checkbox" checked={!!values[f.name]} onChange={(e) => set(f.name, e.target.checked)} />
+                {f.label}
+              </label>
+            ) : f.kind === 'select' ? (
+              <SelectField key={f.name} label={f.label} value={String(values[f.name] ?? '')} onChange={(e) => set(f.name, e.target.value)} error={fieldError(f.name)}>
+                {f.options!.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </SelectField>
+            ) : f.kind === 'textarea' ? (
+              <div key={f.name} className="st-field" style={{ gridColumn: '1 / -1' }}>
+                <label htmlFor={`cx-${f.name}`}>{f.label}</label>
+                <textarea id={`cx-${f.name}`} className="st-input st-mono" style={{ height: 90, padding: 10 }} value={String(values[f.name] ?? '')} onChange={(e) => set(f.name, e.target.value)} />
+                <span className={fieldError(f.name) ? 'st-field__error' : 'st-field__hint'}>{fieldError(f.name) ?? f.hint}</span>
+              </div>
+            ) : (
+              <TextField
+                key={f.name}
+                label={`${f.label}${f.optional ? ' (optional)' : ''}`}
+                type={f.kind === 'password' ? 'password' : f.kind === 'number' ? 'number' : 'text'}
+                autoComplete={f.secret ? 'new-password' : 'off'}
+                value={String(values[f.name] ?? '')}
+                onChange={(e) => set(f.name, e.target.value)}
+                hint={f.hint}
+                error={fieldError(f.name)}
+                readOnly={f.name === 'externalId'}
+              />
+            ),
+          )}
+        </div>
+        {(type === 'aws-s3' || type === 'aws-cloudwatch') && (
+          <Alert tone="info">
+            In your AWS account, create a role that trusts Form Builder's account with the condition <code className="st-mono">"sts:ExternalId": "{String(values.externalId)}"</code>, and give it only {type === 'aws-s3' ? 's3:PutObject / s3:ListBucket on this bucket' : 'logs:CreateLogStream / logs:PutLogEvents on this log group'}.
+          </Alert>
+        )}
+        <label className="st-check">
+          <input type="checkbox" checked={writable} onChange={(e) => setWritable(e.target.checked)} />
+          <span>
+            <strong>Allow writes</strong>
+            <span className="st-field__hint" style={{ display: 'block' }}>
+              Off = forms can only read. You can change this later.
+            </span>
+          </span>
+        </label>
+        <div className="st-row">
+          <Button type="submit" busy={create.busy} disabled={!name.trim()}>
+            <Plug size={16} /> Create connector
+          </Button>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+function ExposeEditor({ c, onSaved }: { c: ConnectorView; onSaved: (msg: string) => void }) {
+  const qc = useQueryClient();
+  const [found, setFound] = useState<Discovered[]>();
+  const [draft, setDraft] = useState<Record<string, ExposedEntity>>(() => Object.fromEntries(c.entities.map((e) => [e.key, e])));
+  const discover = useSubmit(async () => setFound(await api<Discovered[]>(`/connectors/${c.id}/discover`, { method: 'POST' })));
+  const save = useSubmit(async () => {
+    await api(`/connectors/${c.id}/entities`, { method: 'PUT', body: { entities: Object.values(draft) } });
+    await qc.invalidateQueries({ queryKey: ['connectors'] });
+    onSaved(`What ${c.name} exposes was saved.`);
+  });
+  const ops = OPS_BY_TYPE[c.type];
+  const entities = found ?? c.entities.map((e) => ({ key: e.key, label: e.label, fields: e.fields.map((f) => ({ name: f, type: '' })) }));
+  const toggle = (e: Discovered, on: boolean) =>
+    setDraft((d) => {
+      const next = { ...d };
+      if (on) next[e.key] = d[e.key] ?? { key: e.key, label: e.label, fields: e.fields.slice(0, 20).map((f) => f.name), keyField: '', operations: ['list'], valueField: '', labelField: '' };
+      else delete next[e.key];
+      return next;
+    });
+  const patch = (key: string, p: Partial<ExposedEntity>) => setDraft((d) => ({ ...d, [key]: { ...d[key]!, ...p } }));
+
+  return (
+    <div className="st-stack">
+      <div className="st-row">
+        <Button variant="secondary" size="sm" busy={discover.busy} onClick={() => void discover.submit()}>
+          <ScanSearch size={14} /> Discover tables / collections
+        </Button>
+        <span className="st-muted" style={{ fontSize: 12 }}>
+          Nothing is visible to forms until you tick it here.
+        </span>
+      </div>
+      {discover.error && <Alert tone="error">{discover.error}</Alert>}
+      {entities.length === 0 ? (
+        <p className="st-muted" style={{ margin: 0 }}>
+          Discover first to see what's there.
+        </p>
+      ) : (
+        entities.map((e) => {
+          const d = draft[e.key];
+          return (
+            <div key={e.key} className="st-card" style={{ padding: 12, animation: 'none' }}>
+              <label className="st-check">
+                <input type="checkbox" checked={!!d} onChange={(ev) => toggle(e, ev.target.checked)} aria-label={`Expose ${e.key}`} />
+                <strong>{e.label}</strong>
+              </label>
+              {d && (
+                <div className="st-stack" style={{ gap: 10, marginTop: 10 }}>
+                  <div className="st-row" style={{ gap: 6 }}>
+                    <span className="st-muted" style={{ fontSize: 12 }}>
+                      Fields:
+                    </span>
+                    {e.fields.map((f) => (
+                      <label key={f.name} className="st-badge" style={{ cursor: 'pointer', background: d.fields.includes(f.name) ? 'var(--fb-accent-soft)' : undefined }}>
+                        <input
+                          type="checkbox"
+                          checked={d.fields.includes(f.name)}
+                          onChange={(ev) => patch(e.key, { fields: ev.target.checked ? [...d.fields, f.name] : d.fields.filter((x) => x !== f.name) })}
+                          style={{ margin: 0 }}
+                        />
+                        {f.name}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="st-row" style={{ gap: 6 }}>
+                    <span className="st-muted" style={{ fontSize: 12 }}>
+                      Forms may:
+                    </span>
+                    {ops.map((op) => (
+                      <label key={op} className="st-badge" style={{ cursor: 'pointer', background: d.operations.includes(op) ? (WRITES.includes(op) ? 'var(--fb-warn-soft)' : 'var(--fb-accent-soft)') : undefined }}>
+                        <input type="checkbox" checked={d.operations.includes(op)} onChange={(ev) => patch(e.key, { operations: ev.target.checked ? [...d.operations, op] : d.operations.filter((x) => x !== op) })} style={{ margin: 0 }} />
+                        {op}
+                      </label>
+                    ))}
+                    {d.operations.some((o) => WRITES.includes(o)) && !c.writable && <Badge tone="warn">Writes are off for this connector</Badge>}
+                  </div>
+                  <div className="st-row">
+                    {(['keyField', 'valueField', 'labelField'] as const).map((k) => (
+                      <select key={k} className="st-select" style={{ width: 180, height: 32 }} aria-label={`${k} of ${e.key}`} value={d[k]} onChange={(ev) => patch(e.key, { [k]: ev.target.value })}>
+                        <option value="">{k === 'keyField' ? 'Key field (get/update)' : k === 'valueField' ? 'Dropdown value' : 'Dropdown label'}</option>
+                        {d.fields.map((f) => (
+                          <option key={f} value={f}>
+                            {f}
+                          </option>
+                        ))}
+                      </select>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+      {save.error && <Alert tone="error">{save.error}</Alert>}
+      <div>
+        <Button size="sm" busy={save.busy} onClick={() => void save.submit()}>
+          Save what's exposed
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ConnectorCard({ c, onMessage }: { c: ConnectorView; onMessage: (tone: 'success' | 'error', text: string) => void }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState<'expose' | 'calls' | 'secrets' | null>(null);
+  const [secret, setSecret] = useState<Record<string, string>>({});
+  const refresh = () => qc.invalidateQueries({ queryKey: ['connectors'] });
+  const calls = useQuery({ queryKey: ['connector-calls', c.id], queryFn: () => api<Call[]>(`/connectors/${c.id}/calls`), enabled: open === 'calls' });
+  const run = async (fn: () => Promise<unknown>, ok: string) => {
+    try {
+      await fn();
+      await refresh();
+      onMessage('success', ok);
+    } catch (e) {
+      onMessage('error', errorMessage(e));
+    }
+  };
+  const test = () =>
+    run(async () => {
+      const r = await api<{ ok: boolean; message: string }>(`/connectors/${c.id}/test`, { method: 'POST' });
+      if (!r.ok) throw new Error(r.message);
+    }, `${c.name}: connected.`);
+  const secretFields = SPECS[c.type].fields.filter((f) => f.secret);
+
+  return (
+    <Card
+      title={c.name}
+      subtitle={
+        <span className="st-row" style={{ gap: 6 }}>
+          <Badge>{SPECS[c.type].label}</Badge>
+          {c.gatewayId && (
+            <Badge tone={c.gatewayConnected ? 'success' : 'danger'}>
+              <Network size={12} /> Gateway {c.gatewayConnected ? 'online' : 'offline'}
+            </Badge>
+          )}
+          {c.writable ? <Badge tone="warn">Read & write</Badge> : <Badge>Read only</Badge>}
+          {c.lastTest ? (
+            c.lastTest.ok ? (
+              <Badge tone="success">
+                <CheckCircle2 size={12} /> OK · {c.lastTest.latencyMs} ms
+              </Badge>
+            ) : (
+              <Badge tone="danger">
+                <XCircle size={12} /> {c.lastTest.message}
+              </Badge>
+            )
+          ) : (
+            <Badge>Not tested</Badge>
+          )}
+          <span className="st-muted">{c.entities.length} exposed</span>
+        </span>
+      }
+      actions={
+        c.permissions.manage && (
+          <div className="st-row">
+            <Button variant="secondary" size="sm" onClick={() => void test()}>
+              <RefreshCw size={14} /> Test
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setOpen(open === 'expose' ? null : 'expose')}>
+              <Database size={14} /> Expose
+            </Button>
+            {!c.gatewayId && (
+              <Button variant="secondary" size="sm" onClick={() => setOpen(open === 'secrets' ? null : 'secrets')}>
+                <KeyRound size={14} /> Credentials
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setOpen(open === 'calls' ? null : 'calls')}>
+              Calls
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void run(() => api(`/connectors/${c.id}`, { method: 'PATCH', body: { writable: !c.writable } }), c.writable ? `${c.name} is now read only.` : `${c.name} now allows writes.`)}
+            >
+              {c.writable ? 'Make read only' : 'Allow writes'}
+            </Button>
+            <Button variant="danger" size="sm" aria-label={`Delete ${c.name}`} onClick={() => window.confirm(`Delete ${c.name}? Forms using it stop getting data.`) && void run(() => api(`/connectors/${c.id}`, { method: 'DELETE' }), `${c.name} was deleted.`)}>
+              <Trash2 size={14} />
+            </Button>
+          </div>
+        )
+      }
+    >
+      {open === 'expose' && <ExposeEditor c={c} onSaved={(m) => onMessage('success', m)} />}
+      {open === 'secrets' && (
+        <form
+          className="st-stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(() => api(`/connectors/${c.id}/secrets`, { method: 'PUT', body: { secrets: secret } }), 'New credentials saved (and encrypted with a new key).').then(() => setSecret({}));
+          }}
+        >
+          <Alert tone="info">Replaces the current credentials. They're never shown back.</Alert>
+          <div className="st-grid-2">
+            {secretFields.map((f) => (
+              <TextField key={f.name} label={f.label} type={f.kind === 'password' ? 'password' : 'text'} autoComplete="new-password" value={secret[f.name] ?? ''} onChange={(e) => setSecret({ ...secret, [f.name]: e.target.value })} />
+            ))}
+          </div>
+          <div>
+            <Button type="submit" size="sm">
+              Replace credentials
+            </Button>
+          </div>
+        </form>
+      )}
+      {open === 'calls' && (
+        <div className="st-table-wrap">
+          <table className="st-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>What</th>
+                <th>By</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(calls.data ?? []).map((x, i) => (
+                <tr key={i}>
+                  <td className="st-muted">{new Date(x.at).toLocaleString()}</td>
+                  <td>
+                    {x.kind} <span className="st-mono">{x.entity}</span>
+                  </td>
+                  <td className="st-mono st-muted">{x.actor}</td>
+                  <td>{x.ok ? <Badge tone="success">{x.rows} row(s) · {x.durationMs} ms</Badge> : <Badge tone="danger">{x.error}</Badge>}</td>
+                </tr>
+              ))}
+              {!calls.data?.length && (
+                <tr>
+                  <td colSpan={4} className="st-empty">
+                    No calls yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!open && (
+        <div className="st-row" style={{ gap: 6 }}>
+          {c.entities.length ? (
+            c.entities.map((e) => (
+              <Badge key={e.key} tone="accent">
+                {e.label}: {e.operations.join(', ')}
+              </Badge>
+            ))
+          ) : (
+            <span className="st-muted">Nothing exposed yet{c.permissions.manage ? ' - use Expose.' : '.'}</span>
+          )}
+          {c.gatewayId && c.permissions.manage && (
+            <span className="st-muted" style={{ fontSize: 12 }}>
+              Gateway credentials key: <code className="st-mono">{c.ref}</code>
+            </span>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Gateway agents: create (token shown once), see status, revoke. */
+function GatewaysPanel({ onMessage }: { onMessage: (tone: 'success' | 'error', text: string) => void }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['gateways'], queryFn: () => api<GatewayView[]>('/gateways'), refetchInterval: 15_000 });
+  const [name, setName] = useState('');
+  const [issued, setIssued] = useState<{ name: string; registrationToken: string; expiresAt: string }>();
+  const create = useSubmit(async () => {
+    setIssued(await api<{ name: string; registrationToken: string; expiresAt: string }>('/gateways', { method: 'POST', body: { name } }));
+    setName('');
+    await qc.invalidateQueries({ queryKey: ['gateways'] });
+  });
+  const revoke = async (g: GatewayView) => {
+    if (!window.confirm(`Revoke ${g.name}? It disconnects now and its connectors stop working.`)) return;
+    try {
+      await api(`/gateways/${g.id}`, { method: 'DELETE' });
+      await qc.invalidateQueries({ queryKey: ['gateways'] });
+      await qc.invalidateQueries({ queryKey: ['connectors'] });
+      onMessage('success', `${g.name} was revoked.`);
+    } catch (e) {
+      onMessage('error', errorMessage(e));
+    }
+  };
+  return (
+    <Card title="Gateways" subtitle="For databases on your private network: a small agent runs next to them and connects out to Form Builder. No inbound firewall rules; credentials stay on your machine.">
+      <div className="st-stack">
+        {issued && (
+          <Alert tone="success">
+            <strong>{issued.name}</strong>: copy this now - it is shown only once and expires {new Date(issued.expiresAt).toLocaleString()}.
+            <pre className="st-mono" style={{ whiteSpace: 'pre-wrap', margin: '8px 0 0', fontSize: 12 }}>
+              {`FB_API_URL=${API_URL} FB_GATEWAY_TOKEN=${issued.registrationToken} fb-gateway`}
+            </pre>
+          </Alert>
+        )}
+        {(data ?? []).map((g) => (
+          <div key={g.id} className="st-row" style={{ justifyContent: 'space-between' }}>
+            <span className="st-row" style={{ gap: 8 }}>
+              <Network size={16} />
+              <strong>{g.name}</strong>
+              {!g.registered ? <Badge tone="warn">Waiting for agent</Badge> : g.connected ? <Badge tone="success">Online</Badge> : <Badge tone="danger">Offline</Badge>}
+              {g.lastSeenAt && <span className="st-muted" style={{ fontSize: 12 }}>last seen {new Date(g.lastSeenAt).toLocaleString()}</span>}
+              {g.version && <span className="st-muted st-mono" style={{ fontSize: 12 }}>v{g.version}</span>}
+            </span>
+            <Button variant="danger" size="sm" aria-label={`Revoke ${g.name}`} onClick={() => void revoke(g)}>
+              <Trash2 size={14} />
+            </Button>
+          </div>
+        ))}
+        <form className="st-row" onSubmit={create.submit} noValidate>
+          <TextField label="New gateway" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Pune plant LAN" error={create.fields.name ?? create.error} />
+          <Button type="submit" size="sm" busy={create.busy} disabled={!name.trim()} style={{ alignSelf: 'end', marginBottom: 4 }}>
+            <Plus size={14} /> Create gateway
+          </Button>
+        </form>
+      </div>
+    </Card>
+  );
+}
+
+export default function ConnectorsPage() {
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ['connectors'], queryFn: () => api<ConnectorView[]>('/connectors') });
+  const [creating, setCreating] = useState(false);
+  const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string }>();
+  const list = useMemo(() => data ?? [], [data]);
+
+  return (
+    <>
+      <PageHead
+        title="Connectors"
+        subtitle="Your databases and APIs, for dropdowns, prefill and saving answers. Credentials are encrypted; forms only see what you expose."
+        actions={
+          can('connector.manage') &&
+          !creating && (
+            <Button onClick={() => setCreating(true)}>
+              <Plus size={16} /> New connector
+            </Button>
+          )
+        }
+      />
+      <div className="st-stack">
+        {message && <Alert tone={message.tone}>{message.text}</Alert>}
+        {creating && (
+          <NewConnector
+            onCancel={() => setCreating(false)}
+            onDone={(c) => {
+              setCreating(false);
+              setMessage({ tone: 'success', text: `${c.name} was created. Test it, then choose what to expose.` });
+              void qc.invalidateQueries({ queryKey: ['connectors'] });
+            }}
+          />
+        )}
+        {isLoading ? (
+          <p className="st-empty">Loading…</p>
+        ) : list.length ? (
+          list.map((c) => <ConnectorCard key={c.id} c={c} onMessage={(tone, text) => setMessage({ tone, text })} />)
+        ) : (
+          !creating && (
+            <Card>
+              <p className="st-empty" style={{ padding: 24 }}>
+                No connectors yet. {can('connector.manage') ? 'Add one to fill dropdowns from your data or save answers into it.' : 'Ask an admin to add one.'}
+              </p>
+            </Card>
+          )
+        )}
+        {can('connector.manage') && <GatewaysPanel onMessage={(tone, text) => setMessage({ tone, text })} />}
+        <p className="st-muted" style={{ margin: 0, fontSize: 12 }}>
+          Reads: {READS.join(', ')} · Writes: {WRITES.join(', ')} (writes also need "Allow writes"). Databases on a private network need the gateway agent.
+        </p>
+      </div>
+    </>
+  );
+}

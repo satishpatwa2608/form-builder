@@ -1,0 +1,112 @@
+{
+  "id": "plant-issue-report-001",
+  "orgId": "ORG001",
+  "businessId": "BUSINESS001",
+  "name": "Plant Issue Report",
+  "code": "PLANT_ISSUE_REPORT",
+  "description": "Report a problem on the shop floor. Pick where it happened and attach photos if you can.",
+  "version": 1,
+  "status": "PUBLISHED",
+  "access": "AUTHENTICATED",
+  "fields": [
+    { "id": "p1", "type": "HIDDEN", "name": "reportedBy", "systemSource": "USER_EMAIL" },
+    { "id": "p2", "type": "HIDDEN", "name": "source", "systemSource": "URL_PARAMETER", "systemParam": "source" },
+    {
+      "id": "p3",
+      "type": "HTML",
+      "name": "whereHeading",
+      "label": "Where did it happen?",
+      "props": { "content": "Choose the business first - sections and sub-sections load for that business." }
+    },
+    {
+      "id": "p4",
+      "type": "DROPDOWN",
+      "name": "business",
+      "label": "Business",
+      "required": true,
+      "dataSource": {
+        "type": "API",
+        "api": { "url": "/api/businesses", "method": "GET", "valueField": "id", "labelField": "name" }
+      }
+    },
+    {
+      "id": "p5",
+      "type": "DROPDOWN",
+      "name": "section",
+      "label": "Section",
+      "required": true,
+      "dependency": { "dependsOn": ["business"], "resetOnChange": true },
+      "dataSource": {
+        "type": "API",
+        "api": {
+          "url": "/api/sections",
+          "method": "GET",
+          "valueField": "id",
+          "labelField": "name",
+          "params": { "businessId": "{{business}}" }
+        }
+      }
+    },
+    {
+      "id": "p6",
+      "type": "DROPDOWN",
+      "name": "subSection",
+      "label": "Sub-section",
+      "dependency": { "dependsOn": ["section"], "resetOnChange": true },
+      "dataSource": {
+        "type": "API",
+        "api": {
+          "url": "/api/subsections",
+          "method": "GET",
+          "valueField": "id",
+          "labelField": "name",
+          "params": { "sectionId": "{{section}}" }
+        }
+      }
+    },
+    {
+      "id": "p7",
+      "type": "MULTI_SELECT",
+      "name": "issueTypes",
+      "label": "Type of issue",
+      "required": true,
+      "dataSource": {
+        "type": "STATIC",
+        "options": [
+          { "label": "Safety", "value": "SAFETY" },
+          { "label": "Quality", "value": "QUALITY" },
+          { "label": "Machine breakdown", "value": "MACHINE" },
+          { "label": "Housekeeping", "value": "HOUSEKEEPING" }
+        ]
+      }
+    },
+    {
+      "id": "p8",
+      "type": "TEXTAREA",
+      "name": "description",
+      "label": "What happened?",
+      "required": true,
+      "validation": { "minLength": 20, "maxLength": 2000 }
+    },
+    {
+      "id": "p9",
+      "type": "FILE",
+      "name": "photos",
+      "label": "Photos",
+      "helpText": "Up to 3 images or PDFs, 5 MB each.",
+      "validation": { "max": 3 },
+      "props": { "accept": ["image/*", "application/pdf"], "maxSizeMB": 5 }
+    }
+  ],
+  "actions": {
+    "submit": { "enabled": true, "label": "Submit report" },
+    "cancel": { "enabled": true, "label": "Clear", "behavior": "RESET" }
+  },
+  "submission": {
+    "method": "POST",
+    "endpointId": "plant-issue-submit",
+    "success": { "type": "MESSAGE", "message": "Thanks - the plant team has your report." }
+  },
+  "createdBy": "system",
+  "updatedBy": "system"
+}

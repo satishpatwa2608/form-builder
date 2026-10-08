@@ -1,0 +1,51 @@
+/*
+ * Public form page (/app2/f/:code). Plain CSS: responsive rules must be real
+ * @media queries because the frozen Tailwind snapshot has no breakpoints.
+ */
+.fp-public {
+  min-height: 100vh;
+  padding: 32px 16px 24px;
+  background: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.fp-public__card {
+  width: 100%;
+  max-width: 720px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+}
+.fp-public__notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fp-public__footer {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.fp-public--embed {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+.fp-public--embed .fp-public__card {
+  max-width: none;
+  border: 0;
+  padding: 4px;
+}
+@media (max-width: 640px) {
+  .fp-public {
+    padding: 0;
+  }
+  .fp-public__card {
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    padding: 20px 16px;
+  }
+}

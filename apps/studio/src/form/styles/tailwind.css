@@ -1,0 +1,111 @@
+/*
+ * Tailwind for the ported builder/runtime and the shadcn UI kit (src/ui).
+ * No preflight: the studio's own pages are plain CSS and shouldn't change.
+ * Utilities sit in a layer, so unlayered CSS (studio, form-builder.css) wins
+ * over them - the same arrangement the builder had in Sangam.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@source '../../';
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Named spacing steps the kit uses (they were inert in Sangam's frozen snapshot; defined here explicitly). */
+@utility px-sm {
+  padding-inline: 0.5rem;
+}
+@utility px-md {
+  padding-inline: 0.75rem;
+}
+@utility px-lg {
+  padding-inline: 1rem;
+}
+@utility px-xl {
+  padding-inline: 1.5rem;
+}
+@utility py-md {
+  padding-block: 0.5rem;
+}
+@utility p-sm {
+  padding: 0.5rem;
+}
+@utility gap-md {
+  gap: 0.5rem;
+}
+
+/* shadcn tokens, on the studio palette (@fb/ui tokens.css). */
+:root {
+  --background: #ffffff;
+  --foreground: var(--fb-text);
+  --card: #ffffff;
+  --card-foreground: var(--fb-text);
+  --popover: #ffffff;
+  --popover-foreground: var(--fb-text);
+  --primary: var(--fb-accent);
+  --primary-foreground: #ffffff;
+  --secondary: #eef0f6;
+  --secondary-foreground: var(--fb-text);
+  --muted: #eef0f5;
+  --muted-foreground: var(--fb-soft);
+  --accent: var(--fb-accent-soft);
+  --accent-foreground: var(--fb-accent);
+  --destructive: var(--fb-danger);
+  --destructive-foreground: #ffffff;
+  --border: var(--fb-line);
+  --input: transparent;
+  --input-background: #f5f6fa;
+  --switch-background: #cbced4;
+  --ring: var(--fb-accent);
+  --radius: 0.625rem;
+}
+
+/* The small part of preflight the kit relies on: bare buttons and form controls. */
+@layer base {
+  button {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+  }
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+  :where(input, textarea, select, button):focus-visible {
+    outline: none;
+  }
+}

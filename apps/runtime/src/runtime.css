@@ -1,0 +1,62 @@
+.rt-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+}
+.rt-soft {
+  color: var(--fb-soft);
+  font-size: 14px;
+}
+
+/* Org logo above the form */
+.rt-brand {
+  width: 100%;
+  max-width: 720px;
+  margin-bottom: 16px;
+}
+.rt-brand img {
+  max-height: 48px;
+  max-width: 240px;
+  object-fit: contain;
+}
+
+.rt-banner {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--foreground);
+  font-size: 14px;
+}
+.rt-banner--error {
+  background: var(--fb-danger-soft, #fdecec);
+}
+
+/* Save and continue later */
+.rt-save {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.rt-save__btn {
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+.rt-save__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.rt-save__link {
+  display: grid;
+  gap: 8px;
+}
+.rt-save__link input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  background: var(--input-background);
+}

@@ -1,0 +1,143 @@
+import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import type { Model } from 'mongoose';
+import type { AuthContext } from '../auth/auth-context';
+import { APP_CONFIG, type AppConfig } from '../config';
+import { Invitation, Membership, Organization, type InvitationDocument, type MembershipDocument, type OrganizationDocument } from '../orgs/org.schemas';
+import { PLANS, PLAN_IDS, type CountedResource, type PlanId, type PlanLimits } from './plans';
+import { FormStat, UsageMonth, type FormStatDocument, type UsageMonthDocument } from './usage.schema';
+
+/** 402 with a message the studio shows as-is. */
+export class PlanLimitException extends HttpException {
+  constructor(message: string) {
+    super({ statusCode: HttpStatus.PAYMENT_REQUIRED, message, code: 'PLAN_LIMIT' }, HttpStatus.PAYMENT_REQUIRED);
+  }
+}
+
+const LABEL: Record<CountedResource, string> = { forms: 'forms', members: 'members', connectors: 'connectors', gateways: 'gateways', customDomains: 'custom domains' };
+const month = (d = new Date()) => d.toISOString().slice(0, 7);
+const day = (d = new Date()) => d.toISOString().slice(0, 10);
+
+/**
+ * Plans, quotas and usage. The org's plan is set by billing (or an operator);
+ * every limited action asks here first. Counting reads the live collections,
+ * so a limit can never drift from reality.
+ */
+@Injectable()
+export class PlansService {
+  private readonly cache = new Map<string, { plan: PlanId; at: number }>();
+
+  constructor(
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
+    @InjectModel(Membership.name) private readonly memberships: Model<MembershipDocument>,
+    @InjectModel(Invitation.name) private readonly invitations: Model<InvitationDocument>,
+    @InjectModel(UsageMonth.name) private readonly months: Model<UsageMonthDocument>,
+    @InjectModel(FormStat.name) private readonly stats: Model<FormStatDocument>,
+  ) {}
+
+  async planOf(orgId: string): Promise<PlanId> {
+    const hit = this.cache.get(orgId);
+    if (hit && Date.now() - hit.at < 60_000) return hit.plan;
+    const org = await this.orgs.findOne({ id: orgId }).select('plan').lean();
+    const stored = (org as { plan?: string } | null)?.plan;
+    const plan = (PLAN_IDS as readonly string[]).includes(stored ?? '') ? (stored as PlanId) : this.config.DEFAULT_PLAN;
+    this.cache.set(orgId, { plan, at: Date.now() });
+    return plan;
+  }
+
+  async limitsOf(orgId: string): Promise<PlanLimits> {
+    return PLANS[await this.planOf(orgId)].limits;
+  }
+
+  /** Operators / billing webhooks only (never a user-facing route). */
+  async setPlan(orgId: string, plan: PlanId) {
+    await this.orgs.updateOne({ id: orgId }, { $set: { plan, planChangedAt: new Date() } });
+    this.cache.delete(orgId);
+  }
+
+  private async count(orgId: string, what: CountedResource): Promise<number> {
+    const db = this.orgs.db;
+    switch (what) {
+      case 'forms':
+        return (await db.collection('forms').distinct('code', { orgId, isDeleted: false })).length;
+      case 'members':
+        return (await this.memberships.countDocuments({ orgId, status: { $ne: 'REMOVED' } })) + (await this.invitations.countDocuments({ orgId, acceptedAt: null, revokedAt: null, expiresAt: { $gt: new Date() } }));
+      case 'connectors':
+        return db.collection('connectors').countDocuments({ orgId, isDeleted: false });
+      case 'gateways':
+        return db.collection('gateways').countDocuments({ orgId, revokedAt: null });
+      case 'customDomains': {
+        const org = await this.orgs.findOne({ id: orgId }).select('domains').lean();
+        return ((org as { domains?: unknown[] } | null)?.domains ?? []).length;
+      }
+    }
+  }
+
+  /** Before adding one more of something. */
+  async assertCanAdd(orgId: string, what: CountedResource) {
+    const plan = await this.planOf(orgId);
+    const limit = PLANS[plan].limits[what];
+    if (limit === null) return;
+    if ((await this.count(orgId, what)) >= limit) {
+      throw new PlanLimitException(limit === 0 ? `The ${PLANS[plan].name} plan doesn't include ${LABEL[what]}. Upgrade to add them.` : `The ${PLANS[plan].name} plan allows ${limit} ${LABEL[what]}. Upgrade or remove one first.`);
+    }
+  }
+
+  async assertFeature(orgId: string, feature: 'removeBranding' | 'sso') {
+    const plan = await this.planOf(orgId);
+    if (!PLANS[plan].limits[feature]) throw new PlanLimitException(`The ${PLANS[plan].name} plan doesn't include ${feature === 'sso' ? 'single sign-on' : 'removing Form Builder branding'}.`);
+  }
+
+  /**
+   * Take one response from the monthly quota, atomically (parallel submissions
+   * can't overshoot). The respondent sees a neutral message; the org sees why
+   * on its usage page. Give it back with releaseSubmission if the submit fails.
+   */
+  async reserveSubmission(orgId: string): Promise<string> {
+    const m = month();
+    const limit = (await this.limitsOf(orgId)).submissionsPerMonth;
+    await this.months.updateOne({ orgId, month: m }, { $setOnInsert: { submissions: 0 } }, { upsert: true }).catch(() => undefined); // a racing insert is fine
+    const res = await this.months.updateOne({ orgId, month: m, ...(limit === null ? {} : { submissions: { $lt: limit } }) }, { $inc: { submissions: 1 } });
+    if (!res.modifiedCount) throw new HttpException({ statusCode: 429, message: "This form isn't accepting responses right now. Please try again later.", code: 'QUOTA' }, 429);
+    return m;
+  }
+
+  async releaseSubmission(orgId: string, reservedMonth: string) {
+    await this.months.updateOne({ orgId, month: reservedMonth, submissions: { $gt: 0 } }, { $inc: { submissions: -1 } });
+  }
+
+  /** The form's own daily count, after a successful submit. */
+  async recordSubmission(orgId: string, code: string) {
+    // Analytics only: never fail (or undo) a stored submission over it.
+    await this.stats.updateOne({ orgId, code, day: day() }, { $inc: { submissions: 1 } }, { upsert: true }).catch(() => undefined);
+  }
+
+  async recordEvent(orgId: string, code: string, type: 'view' | 'start') {
+    await this.stats.updateOne({ orgId, code, day: day() }, { $inc: { [type === 'view' ? 'views' : 'starts']: 1 } }, { upsert: true });
+  }
+
+  /** Plan, limits and what is used now, for the organisation's settings page. */
+  async usage(auth: AuthContext) {
+    const plan = await this.planOf(auth.orgId);
+    const counted: CountedResource[] = ['forms', 'members', 'connectors', 'gateways', 'customDomains'];
+    const counts = Object.fromEntries(await Promise.all(counted.map(async (k) => [k, await this.count(auth.orgId, k)] as const)));
+    const submissions = (await this.months.findOne({ orgId: auth.orgId, month: month() }).lean())?.submissions ?? 0;
+    return { plan, planName: PLANS[plan].name, limits: PLANS[plan].limits, usage: { ...counts, submissionsThisMonth: submissions }, month: month(), plans: PLANS };
+  }
+
+  /** Daily funnel for one form over the last `days` days (zero-filled). */
+  async formStats(orgId: string, code: string, days: number) {
+    const from = new Date(Date.now() - (days - 1) * 86_400_000);
+    const rows = await this.stats.find({ orgId, code, day: { $gte: day(from) } }).lean();
+    const byDay = new Map(rows.map((r) => [r.day, r]));
+    const series = Array.from({ length: days }, (_, i) => {
+      const d = day(new Date(from.getTime() + i * 86_400_000));
+      const r = byDay.get(d);
+      return { day: d, views: r?.views ?? 0, starts: r?.starts ?? 0, submissions: r?.submissions ?? 0 };
+    });
+    const totals = series.reduce((t, r) => ({ views: t.views + r.views, starts: t.starts + r.starts, submissions: t.submissions + r.submissions }), { views: 0, starts: 0, submissions: 0 });
+    const rate = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : null);
+    return { days, series, totals, startRate: rate(totals.starts, totals.views), completionRate: rate(totals.submissions, totals.starts || totals.views) };
+  }
+}

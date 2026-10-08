@@ -1,0 +1,48 @@
+import { createHmac } from 'crypto';
+import { WORKFLOW } from '../constants';
+
+/** Hosts webhooks may call (https only). */
+export function webhookAllowed(url: string): { ok: true; target: URL } | { ok: false; error: string } {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    return { ok: false, error: 'invalid URL' };
+  }
+  const allow = (process.env.FORM_WEBHOOK_ALLOWLIST ?? '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  if (target.protocol !== 'https:') return { ok: false, error: 'webhooks must use https' };
+  if (!allow.includes(target.hostname.toLowerCase())) return { ok: false, error: `${target.hostname} is not in FORM_WEBHOOK_ALLOWLIST` };
+  return { ok: true, target };
+}
+
+/**
+ * POST JSON to an allow-listed https URL. No redirects (they could point
+ * anywhere), a short timeout, and an HMAC signature (`x-fb-signature:
+ * sha256=...`) when a secret is given, so the receiver can trust the body.
+ * Returns the reply as an object when it is a JSON object.
+ */
+export async function postWebhook(url: string, payload: unknown, secret?: string): Promise<{ host: string; status: number; reply: Record<string, unknown> }> {
+  const allowed = webhookAllowed(url);
+  // `in` narrows under the API's non-strict config too.
+  if ('error' in allowed) throw new Error(allowed.error);
+  const body = JSON.stringify(payload);
+  const headers: Record<string, string> = { 'content-type': 'application/json', 'user-agent': 'form-builder-webhook' };
+  if (secret) headers['x-fb-signature'] = `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
+  const res = await fetch(allowed.target, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(WORKFLOW.webhookTimeoutMs) });
+  if (!res.ok) throw new Error(`${allowed.target.hostname} answered ${res.status}`);
+  const text = (await res.text()).slice(0, 64 * 1024);
+  let reply: unknown;
+  try {
+    reply = text ? JSON.parse(text) : undefined;
+  } catch {
+    reply = undefined;
+  }
+  return {
+    host: allowed.target.hostname,
+    status: res.status,
+    reply: reply && typeof reply === 'object' && !Array.isArray(reply) ? (reply as Record<string, unknown>) : {},
+  };
+}

@@ -1,0 +1,20 @@
+{
+  "name": "form-builder",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Hosted form builder: forms, connectors, work items with SLAs and approvals.",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @fb/api dev",
+    "dev:worker": "pnpm --filter @fb/worker dev",
+    "dev:studio": "pnpm --filter @fb/studio dev",
+    "dev:runtime": "pnpm --filter @fb/runtime dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "dev:gateway": "pnpm --filter @fb/gateway build && node apps/gateway/dist/main.js"
+  }
+}
