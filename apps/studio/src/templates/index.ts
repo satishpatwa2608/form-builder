@@ -47,3 +47,53 @@ export const codeFromName = (name: string) =>
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 50);
+
+interface TemplateStyle {
+  id: string;
+  name: string;
+  description?: string;
+  props: Record<string, unknown>;
+}
+
+/**
+ * A template can bring its own styles (the supplier form's "Highlight box").
+ * A new organisation's style library does not have them, and a form that
+ * names a style the library lacks cannot be published. So before the form is
+ * created, each style it uses and the library lacks is added to the library;
+ * where that is refused (only admins manage styles) the form is created
+ * without that style rather than left unpublishable.
+ *
+ * Returns the definition to create and the names of any styles left out.
+ */
+export async function prepareTemplate(
+  definition: Record<string, unknown>,
+  library: { existing: () => Promise<string[]>; add: (style: TemplateStyle) => Promise<unknown> },
+): Promise<{ definition: Record<string, unknown>; leftOut: string[] }> {
+  const { styles, ...rest } = definition as { styles?: TemplateStyle[]; fields?: { styleId?: string }[]; theme?: { styleId?: string } };
+  const fields = rest.fields ?? [];
+  const used = new Set([rest.theme?.styleId, ...fields.map((f) => f.styleId)].filter((id): id is string => !!id));
+  if (!used.size) return { definition: rest, leftOut: [] };
+
+  const have = new Set(await library.existing());
+  const missing = new Set<string>();
+  const leftOut: string[] = [];
+  for (const id of used) {
+    if (have.has(id)) continue;
+    const style = (styles ?? []).find((s) => s.id === id);
+    try {
+      if (!style) throw new Error('The template does not carry this style');
+      await library.add(style);
+    } catch {
+      missing.add(id);
+      leftOut.push(style?.name ?? id);
+    }
+  }
+  if (!missing.size) return { definition: rest, leftOut };
+
+  const without = <T extends { styleId?: string }>(item: T): T => {
+    if (!item.styleId || !missing.has(item.styleId)) return item;
+    const { styleId: _styleId, ...kept } = item;
+    return kept as T;
+  };
+  return { definition: { ...rest, fields: fields.map(without), ...(rest.theme ? { theme: without(rest.theme) } : {}) }, leftOut };
+}

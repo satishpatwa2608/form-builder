@@ -4,7 +4,7 @@ import { Archive, Download, FilePlus2, FolderInput, GitBranchPlus, History, Inbo
 import { api, errorMessage } from '../lib/api';
 import { useAction, useFolders, useForms, useFormVersions } from '../lib/queries';
 import type { Folder, FormStatus, FormSummary } from '../lib/types';
-import { codeFromName, FORM_TEMPLATES } from '../templates';
+import { codeFromName, FORM_TEMPLATES, prepareTemplate } from '../templates';
 import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 
 const STATUS: Record<FormStatus, { label: string; tone?: 'success' | 'warn' | 'accent' }> = {
@@ -28,8 +28,17 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   const shownCode = codeTouched ? code : codeFromName(name);
   const create = useSubmit(async () => {
     const tpl = FORM_TEMPLATES.find((t) => t.key === template)!;
-    await api('/forms', { method: 'POST', body: { folderId, definition: { ...tpl.definition, name: name.trim(), code: shownCode } } });
-    onDone(`"${name.trim()}" was created as a draft.${tpl.setup?.length ? ` Before publishing: ${tpl.setup.join(' ')}` : ''}`);
+    // A template's own styles go into the library first, so the form can be published as it comes.
+    const { definition, leftOut } = await prepareTemplate(tpl.definition, {
+      existing: async () => (await api<{ id: string }[]>('/styles')).map((s) => s.id),
+      add: (style) => api(`/styles/${style.id}`, { method: 'PUT', body: style }),
+    });
+    await api('/forms', { method: 'POST', body: { folderId, definition: { ...definition, name: name.trim(), code: shownCode } } });
+    onDone(
+      `"${name.trim()}" was created as a draft.${tpl.setup?.length ? ` Before publishing: ${tpl.setup.join(' ')}` : ''}${
+        leftOut.length ? ` It was created without the style ${leftOut.map((n) => `"${n}"`).join(', ')}: only an admin can add styles to the library.` : ''
+      }`,
+    );
   });
 
   return (

@@ -38,9 +38,17 @@ A phase is not done until its tests are written and pass. Testing is part of eac
 
 - New engine logic gets unit tests; new endpoints get e2e tests on in-memory MongoDB; new screens get component tests.
 - Anything a browser sends is tested from the API side as hostile input.
-- The full suite, typecheck and lint pass in CI before a phase is closed. Baseline on 8 October 2026: 219 tests (engine 68, connectors 15, API 60, studio 74, runtime 2). On 9 October 2026: 415 (engine 155, connectors 15, API 101, studio 142, runtime 2) plus 43 browser scenarios.
+- The full suite, typecheck and lint pass in CI before a phase is closed. Baseline on 8 October 2026: 219 tests (engine 68, connectors 15, API 60, studio 74, runtime 2). On 9 October 2026: 420 (engine 155, connectors 15, API 101, studio 147, runtime 2) plus 49 browser scenarios.
 - Each phase ends with one end-to-end scenario (its "Done when") run against the real apps.
-- `pnpm e2e` runs the whole product in a real browser: MongoDB, the API, the builder, the public form app and the gateway agent as real processes. 43 scenarios on 9 October 2026, all passing; the table in README.md lists what each file covers. New screens get a scenario there.
+- `pnpm e2e` runs the whole product in a real browser: MongoDB, the API, the builder, the public form app and the gateway agent as real processes. 49 scenarios on 9 October 2026, all passing; the table in README.md lists what each file covers. New screens get a scenario there.
+
+Not covered in the browser, and why:
+
+- Single sign-on and custom domains: they need an identity provider and DNS. Covered by API tests with stand-ins.
+- A live hCaptcha, reCAPTCHA or Turnstile widget: needs real keys. The verification call is covered by API tests; the browser run uses the built-in test mode.
+- A real ClamAV daemon: not installed here. The client and the upload flow are tested against a stand-in that speaks its protocol.
+- Webhook delivery to a real receiver: only public https addresses are allowed, so nothing local can receive one. Delivery and retries are covered by API tests.
+- The API and the worker as two processes: checked by hand on 8 October, not part of the suite (it runs one process with rate limits off).
 
 What the first browser run found that the other tests had not (all fixed):
 
@@ -51,6 +59,7 @@ What the first browser run found that the other tests had not (all fixed):
 | "Next" on a stepped form flagged a closed accordion panel or another tab but did not open it. | Not covered. |
 | A revoked gateway agent stopped reconnecting but its process stayed alive. | The agent was tested inside the test process, not as its own. |
 | A dialog component logged a React warning on every confirm. | Warnings are not failures in the component tests. |
+| The supplier registration template made a form that could never be published in a new organisation: it used a style the organisation's library did not have. | No test created a form from a template and published it. |
 
 ## 4. Phases
 
