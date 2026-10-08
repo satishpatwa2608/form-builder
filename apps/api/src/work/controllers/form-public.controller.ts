@@ -1,3 +1,4 @@
+import { eventSources } from '@fb/engine';
 import { Body, Controller, UseFilters, Get, Headers, HttpCode, Ip, NotFoundException, Param, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { FormDefinitionService } from '../services/form-definition.service';
 import { Public } from '../../auth/auth.guard';
@@ -46,12 +47,19 @@ export class FormPublicController {
     const code = typeof body?.formCode === 'string' ? body.formCode : '';
     const def = /^[A-Z0-9_]{1,100}$/.test(code) ? await this.definitions.findPublished(orgId, code) : null;
     const key = typeof body?.key === 'string' ? body.key.split('?')[0] : '';
-    const bound = def && [...def.fields, ...(def.workflow?.workFields ?? [])].find((f) => f.dataSource?.type === 'API' && f.dataSource.api?.url.split('?')[0] === key);
-    if (!def || !bound) throw new NotFoundException('No data source is available here');
+    // Each binding: a field's option list, or a "look up" event. Every one names the parameters it may send.
+    const bindings = !def
+      ? []
+      : [
+          ...[...def.fields, ...(def.workflow?.workFields ?? [])].flatMap((f) =>
+            f.dataSource?.type === 'API' && f.dataSource.api ? [{ key: f.dataSource.api.url.split('?')[0], params: Object.keys(f.dataSource.api.params ?? {}) }] : [],
+          ),
+          ...eventSources(def),
+        ].filter((b) => b.key === key);
+    if (!def || !bindings.length) throw new NotFoundException('No data source is available here');
     if (def.access === 'AUTHENTICATED' && user?.orgId !== orgId) throw new UnauthorizedException('Sign in to see these options');
-    const declared = Object.keys(bound.dataSource!.api!.params ?? {});
     const params = body?.params && typeof body.params === 'object' ? (body.params as Record<string, unknown>) : {};
-    if (Object.keys(params).some((k) => !declared.includes(k))) throw new NotFoundException('No data source is available here');
+    if (!bindings.some((b) => Object.keys(params).every((k) => b.params.includes(k)))) throw new NotFoundException('No data source is available here');
     const rows = await this.master.queryDataSource(orgId, key, params, user, `form:${code}`);
     return apiResponse(true, 200, 'Rows fetched', rows);
   }

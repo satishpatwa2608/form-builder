@@ -58,6 +58,8 @@ export function systemContextFor(def: FormDefinition, host: SystemContext = {}):
     formId: def.id,
     formVersion: def.version,
     ...host,
+    // A zone set on the form wins, so every person and the server agree on what "today" is.
+    ...(def.timeZone ? { timeZone: def.timeZone } : {}),
   };
 }
 

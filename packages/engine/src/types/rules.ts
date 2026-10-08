@@ -85,3 +85,45 @@ export interface FormRule {
   /** Applied while `when` does not hold. Needs a `when`. */
   else?: RuleAction[];
 }
+
+/**
+ * Form events: things that happen once, at a moment (the form opens, a
+ * button is clicked, a submit succeeds or fails), unlike rules, which hold
+ * for as long as their condition does. They run in the browser only: nothing
+ * they do is trusted by the server, which still applies every rule on submit.
+ */
+export type FormEventTrigger =
+  | { type: 'LOAD' }
+  /** `field` is the name of a BUTTON field. */
+  | { type: 'CLICK'; field: string }
+  | { type: 'SUBMIT_SUCCESS' }
+  | { type: 'SUBMIT_ERROR' };
+
+/** A data source to read one row from; `params` may use `{{fieldName}}` like a dropdown's. */
+export interface FetchSource {
+  url: string;
+  method: 'GET' | 'POST';
+  params?: Record<string, string>;
+}
+
+export type FormEventAction =
+  /** Fills the target once; the person can change it afterwards. */
+  | { type: 'SET_VALUE'; target: string; value: string }
+  /** Steps mode: `step` is the name of the top-level section to open. */
+  | { type: 'GO_TO_STEP'; step: string }
+  /** Reads the first row of a data source and copies its properties into fields: `{ fieldName: 'row.property' }`. */
+  | { type: 'FETCH'; source: FetchSource; set: Record<string, string> }
+  /** After a submit: the text shown instead of the standard success or error message. */
+  | { type: 'SHOW_MESSAGE'; message: string }
+  /** After a successful submit: go to this address instead of showing a message. */
+  | { type: 'REDIRECT'; url: string };
+
+export interface FormEvent {
+  id: string;
+  name?: string;
+  disabled?: boolean;
+  on: FormEventTrigger;
+  /** Left out, the actions always run when the event happens. */
+  when?: RuleCondition;
+  do: FormEventAction[];
+}

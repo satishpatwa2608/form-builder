@@ -108,6 +108,30 @@ describe('Form rules are enforced by the server (e2e)', () => {
     expect(fieldErrors(res.body)).toEqual({ total: 'Must be at most 100000' });
   });
 
+  it("today() is taken in the form's time zone when it has one, whatever the browser claims", async () => {
+    // A zone 14 hours ahead of UTC and one 12 behind never share a date with each other.
+    const ahead = 'Pacific/Kiritimati';
+    const behind = 'Etc/GMT+12';
+    const dateIn = (timeZone: string) => new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const send = (code: string, spentOn: string, timeZone?: string) =>
+      h.api().post(`/public/forms/${code}/submissions?org=${orgId}`).send({ values: { quantity: 1, unitPrice: 1, spentOn }, timeZone });
+
+    // No zone on the form: the person's own zone decides what "the future" is.
+    await send('EXPENSE', dateIn(ahead), ahead).expect(201);
+    await send('EXPENSE', dateIn(ahead), behind).expect(422);
+    await send('EXPENSE', dateIn(ahead), 'Not/AZone').expect(422); // unknown zone: UTC
+
+    const fixed = { ...claim(rules), code: 'EXPENSE_FIXED', timeZone: behind };
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: fixed }).expect(201)).body.definition.id;
+    await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+    await send('EXPENSE_FIXED', dateIn(ahead), ahead).expect(422); // claiming a zone further ahead no longer helps
+    await send('EXPENSE_FIXED', dateIn(behind), ahead).expect(201);
+
+    const bad = await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: { ...claim(rules), code: 'EXPENSE_BAD', timeZone: 'Mars/Olympus' } }).expect(201);
+    const refused = await h.api().post(`/forms/${bad.body.definition.id}/publish`).set(h.bearer(owner)).expect(400);
+    expect(refused.body.errors.map((e: { field: string }) => e.field)).toContain('timeZone');
+  });
+
   it('rule errors and narrowed options are checked without a browser', async () => {
     const future = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
     const res = await submit({ quantity: 1, unitPrice: 1, spentOn: future, kids: true, size: 'L' }).expect(422);

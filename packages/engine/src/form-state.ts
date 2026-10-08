@@ -44,12 +44,13 @@ export const isStateAction = (action: RuleAction): action is { type: RuleStateAc
 
 export const isExpressionCondition = (when: RuleCondition): when is { expr: string } => 'expr' in when;
 
-function holds(rule: FormRule, values: FormValues, ctx: SystemContext): boolean {
-  if (!rule.when) return true;
-  return isExpressionCondition(rule.when)
-    ? truthy(evaluateExpression(rule.when.expr, values, ctx).value)
-    : evaluateCondition(rule.when, values);
+/** Whether a rule's or an event's condition holds. No condition always does. */
+export function conditionHolds(when: RuleCondition | undefined, values: FormValues, ctx: SystemContext = {}): boolean {
+  if (!when) return true;
+  return isExpressionCondition(when) ? truthy(evaluateExpression(when.expr, values, ctx).value) : evaluateCondition(when, values);
 }
+
+const holds = (rule: FormRule, values: FormValues, ctx: SystemContext) => conditionHolds(rule.when, values, ctx);
 
 /**
  * Every action of every rule with whether it applies: `then` actions while
@@ -62,8 +63,8 @@ function* applied(rules: FormRule[], active: boolean[]): Generator<{ action: Rul
   }
 }
 
-/** A calculated result in the shape the target field's type stores. */
-function coerce(value: unknown, field: FormField): unknown {
+/** A calculated or fetched value in the shape the target field's type stores. */
+export function coerceToField(value: unknown, field: FormField): unknown {
   if (isEmptyValue(value) && field.type !== 'CHECKBOX') return emptyValueFor(field.type);
   switch (field.type) {
     case 'NUMBER': {
@@ -129,7 +130,7 @@ export function computeFormState(def: RuleSource, input: FormValues, ctx: System
     for (const { action, on } of applied(rules, active)) {
       const target = action.type === 'SET_VALUE' && on ? byName.get(action.target) : undefined;
       if (!target || action.type !== 'SET_VALUE') continue;
-      next[target.name] = coerce(evaluateExpression(action.value, effective, ctx).value, target);
+      next[target.name] = coerceToField(evaluateExpression(action.value, effective, ctx).value, target);
       calculated.add(target.name);
     }
 

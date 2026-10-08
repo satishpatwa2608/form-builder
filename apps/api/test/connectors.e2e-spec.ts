@@ -81,6 +81,45 @@ describe('Connectors: a customer database behind forms (e2e)', () => {
     expect(rows).toEqual([{ code: 'P1', name: 'Pune plant', region: 'WEST' }]); // budget isn't exposed
   });
 
+  it('a "look up" event binds a source too, with its own parameters', async () => {
+    const folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Lookups' }).expect(201)).body[0].id;
+    const lookup = (disabled: boolean) => ({
+      name: 'Plant lookup',
+      code: 'PLANT_LOOKUP',
+      businessId: '',
+      access: 'PUBLIC',
+      submission: { method: 'POST', endpointId: 'default-submit' },
+      fields: [
+        { id: 'f1', type: 'TEXT', name: 'region', label: 'Region' },
+        { id: 'f2', type: 'TEXT', name: 'plantName', label: 'Plant' },
+        { id: 'f3', type: 'BUTTON', name: 'find', label: 'Find plant' },
+      ],
+      events: [
+        {
+          id: 'e1',
+          disabled,
+          on: { type: 'CLICK', field: 'find' },
+          do: [{ type: 'FETCH', source: { url: `/connectors/${ref}/plants`, method: 'GET', params: { region: '{{region}}' } }, set: { plantName: 'name' } }],
+        },
+      ],
+    });
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: lookup(false) }).expect(201)).body.definition.id;
+    const query = (body: object) => h.api().post(`/public/data-sources/query?org=${orgId}`).send(body);
+    const key = `/connectors/${ref}/plants`;
+    await query({ formCode: 'PLANT_LOOKUP', key, params: { region: 'WEST' } }).expect(404); // not published yet
+    await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+
+    expect((await query({ formCode: 'PLANT_LOOKUP', key, params: { region: 'WEST' } }).expect(200)).body).toEqual([{ code: 'P1', name: 'Pune plant', region: 'WEST' }]);
+    await query({ formCode: 'PLANT_LOOKUP', key, params: { code: 'P1' } }).expect(404); // a parameter the event doesn't declare
+    await query({ formCode: 'PLANT_LOOKUP', key: `/connectors/${ref}/complaints`, params: {} }).expect(404); // a source it doesn't use
+
+    // Switched off, the event no longer opens the source.
+    const v2 = (await h.api().post(`/forms/${id}/new-version`).set(h.bearer(owner)).expect(200)).body.definition.id;
+    await h.api().put(`/forms/${v2}`).set(h.bearer(owner)).send(lookup(true)).expect(200);
+    await h.api().post(`/forms/${v2}/publish`).set(h.bearer(owner)).expect(200);
+    await query({ formCode: 'PLANT_LOOKUP', key, params: { region: 'WEST' } }).expect(404);
+  });
+
   it('a form bound to it: public reads only through the binding, options checked on submit, answers written by a step', async () => {
     const actions = (await h.api().get('/custom-workflows').set(h.bearer(owner)).expect(200)).body;
     const insert = actions.find((a: { label: string }) => a.label === 'Plant CRM: insert Complaints');

@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import type { Condition, FormDefinition, FormField, RuleAction } from './types';
+import type { Condition, FormDefinition, FormEventAction, FormField, RuleAction } from './types';
 import { conditionFields } from './evaluate-condition';
 import { checkExpression, expressionFields, MAX_EXPRESSION_LENGTH } from './expression';
 import { isExpressionCondition } from './form-state';
+import { isTimeZone, safeLinkUrl } from './form-events';
 import { isContainerField, isOptionField, isValueField } from './field-kinds';
 import { columnCount } from './layout';
 import { isHexColor, safeImageUrl, usedStyleIds } from './style-css';
@@ -74,6 +75,34 @@ const ruleSchema = z.object({
   when: z.union([z.object({ expr: expressionText }), conditionSchema]).optional(),
   then: z.array(ruleActionSchema).min(1).max(MAX_RULE_ACTIONS),
   else: z.array(ruleActionSchema).max(MAX_RULE_ACTIONS).optional(),
+});
+
+const fetchSourceSchema = z.object({
+  url: z.string().min(1).max(300),
+  method: z.enum(['GET', 'POST']),
+  params: z.record(z.string(), z.string().max(200)).optional(),
+});
+
+const eventActionSchema: z.ZodType<FormEventAction> = z.union([
+  z.object({ type: z.literal('SET_VALUE'), target: z.string().min(1), value: expressionText }),
+  z.object({ type: z.literal('GO_TO_STEP'), step: z.string().min(1) }),
+  z.object({ type: z.literal('FETCH'), source: fetchSourceSchema, set: z.record(z.string(), z.string().min(1).max(100)) }),
+  z.object({ type: z.literal('SHOW_MESSAGE'), message: z.string().min(1).max(500) }),
+  z.object({ type: z.literal('REDIRECT'), url: z.string().min(1).max(500) }),
+]);
+
+export const MAX_EVENTS = 50;
+
+const eventSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().max(120).optional(),
+  disabled: z.boolean().optional(),
+  on: z.union([
+    z.object({ type: z.enum(['LOAD', 'SUBMIT_SUCCESS', 'SUBMIT_ERROR']) }),
+    z.object({ type: z.literal('CLICK'), field: z.string().min(1) }),
+  ]),
+  when: z.union([z.object({ expr: expressionText }), conditionSchema]).optional(),
+  do: z.array(eventActionSchema).min(1).max(10),
 });
 
 const FIELD_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -713,6 +742,73 @@ function checkRules(def: FormDefinition, ctx: z.RefinementCtx) {
   }
 }
 
+/** Which actions make sense for which trigger. */
+const EVENT_ACTIONS: Record<string, ReadonlySet<FormEventAction['type']>> = {
+  LOAD: new Set(['SET_VALUE', 'FETCH']),
+  CLICK: new Set(['SET_VALUE', 'FETCH', 'GO_TO_STEP']),
+  SUBMIT_SUCCESS: new Set(['SHOW_MESSAGE', 'REDIRECT']),
+  SUBMIT_ERROR: new Set(['SHOW_MESSAGE']),
+};
+
+function checkEvents(def: FormDefinition, ctx: z.RefinementCtx) {
+  const byName = new Map(def.fields.map((f) => [f.name, f]));
+  const names = new Set(byName.keys());
+  const ids = new Set<string>();
+  (def.events ?? []).forEach((event, e) => {
+    const issue = (path: (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path: ['events', e, ...path], message });
+    if (ids.has(event.id)) issue(['id'], `Duplicate event id "${event.id}"`);
+    ids.add(event.id);
+
+    if (event.on.type === 'CLICK') {
+      const button = byName.get(event.on.field);
+      if (!button) issue(['on'], `Unknown button "${event.on.field}"`);
+      else if (button.type !== 'BUTTON') issue(['on'], `"${button.name}" is not a button`);
+    }
+    if (event.when && isExpressionCondition(event.when)) {
+      const problem = checkExpression(event.when.expr, names);
+      if (problem) issue(['when'], problem);
+    } else if (event.when) {
+      for (const ref of conditionFields(event.when)) if (!names.has(ref)) issue(['when'], `Refers to unknown field "${ref}"`);
+    }
+
+    const calculable = (name: string, at: (message: string) => void) => {
+      const target = byName.get(name);
+      if (!target) at(`Acts on unknown field "${name}"`);
+      else if (!CALCULABLE_TYPES.has(target.type)) at(`A ${target.type} field cannot be filled in this way`);
+      else if (target.systemSource || target.prefill?.lock) at(`"${target.name}" already takes its value from the system`);
+    };
+    event.do.forEach((action, a) => {
+      const at = (message: string) => issue(['do', a], message);
+      if (!EVENT_ACTIONS[event.on.type].has(action.type)) return at('This action does not fit when the event happens');
+      switch (action.type) {
+        case 'SET_VALUE': {
+          calculable(action.target, at);
+          const problem = checkExpression(action.value, names);
+          if (problem) at(problem);
+          break;
+        }
+        case 'GO_TO_STEP': {
+          const section = byName.get(action.step);
+          if (def.layout?.mode !== 'steps') at('The form is not laid out in steps');
+          else if (!section || section.type !== 'SECTION' || section.parentId !== undefined) at(`"${action.step}" is not one of the form's steps`);
+          break;
+        }
+        case 'FETCH': {
+          for (const ref of paramReferences(action.source.params).fields) if (!names.has(ref)) at(`Parameter refers to unknown field "${ref}"`);
+          if (!Object.keys(action.set).length) at('Choose at least one field to fill in');
+          for (const name of Object.keys(action.set)) calculable(name, at);
+          break;
+        }
+        case 'REDIRECT':
+          if (!safeLinkUrl(action.url)) at('The address must start with https:// or be a path on this site (/…)');
+          break;
+        case 'SHOW_MESSAGE':
+          break;
+      }
+    });
+  });
+}
+
 /**
  * Structure only: right types, right enums. Enough to store a DRAFT - a
  * half-built form may still have a rule pointing at a field not yet added.
@@ -729,6 +825,8 @@ const formDefinitionShapeObject = z.object({
   access: z.enum(['PUBLIC', 'AUTHENTICATED']),
   fields: z.array(fieldSchema),
   rules: z.array(ruleSchema).max(MAX_RULES).optional(),
+  events: z.array(eventSchema).max(MAX_EVENTS).optional(),
+  timeZone: z.string().max(64).optional(),
   actions: z
     .object({
       submit: z.object({ enabled: z.boolean(), label: z.string() }).optional(),
@@ -794,6 +892,10 @@ export const formDefinitionShape: z.ZodType<FormDefinition> = formDefinitionShap
 export const formDefinitionSchema: z.ZodType<FormDefinition> = formDefinitionShapeObject.superRefine((def, ctx) => {
   checkFields(def.fields, ctx);
   checkRules(def, ctx);
+  checkEvents(def, ctx);
+  if (def.timeZone !== undefined && !isTimeZone(def.timeZone)) {
+    ctx.addIssue({ code: 'custom', path: ['timeZone'], message: `"${def.timeZone}" is not a time zone. Use a name such as Asia/Kolkata` });
+  }
   checkWorkflow(def, ctx);
 
   const names = new Set(def.fields.map((f) => f.name));

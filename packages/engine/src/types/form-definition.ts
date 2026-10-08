@@ -1,5 +1,5 @@
 import type { FormField } from './field';
-import type { FormRule } from './rules';
+import type { FormEvent, FormRule } from './rules';
 import type { FormActionConfig, SubmissionConfig } from './submission';
 import type { CaptchaConfig } from './captcha';
 import type { FormLayout, FormStyle, FormTheme } from './style';
@@ -27,6 +27,13 @@ export interface FormDefinition {
   fields: FormField[];
   /** Calculations, conditional states and cross-field validation. */
   rules?: FormRule[];
+  /** What happens when the form opens, a button is clicked or a submit finishes. Browser only. */
+  events?: FormEvent[];
+  /**
+   * IANA zone (e.g. Asia/Kolkata) that dates in rules are taken in. Left out,
+   * each person's own zone is used.
+   */
+  timeZone?: string;
   actions?: FormActionConfig;
   submission: SubmissionConfig;
   captcha?: CaptchaConfig;
