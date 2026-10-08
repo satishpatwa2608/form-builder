@@ -200,6 +200,9 @@ function FormRuntime({
     mode: 'onTouched',
   });
 
+  // Read on every render, so the form library keeps this component up to date with errors
+  // however they came about (a failed submit, or the check before the review page).
+  const formErrors = form.formState.errors;
   const values = useWatch({ control: form.control }) as FormValues;
   const formState = useMemo(() => computeFormState(definition, values, context), [definition, values, context]);
   const { states } = formState;
@@ -231,9 +234,26 @@ function FormRuntime({
   const skipDependencyReset = useRef(false);
   useDependencyReset(form, definition, values, skipDependencyReset);
 
+  /**
+   * "Next" and the check before the review page validate without submitting,
+   * and the form library only re-checks as you type after a real submit. So
+   * once one of those checks has failed, fields with an error are re-checked on
+   * every change: the message goes as soon as the answer is right, instead of
+   * when the person clicks elsewhere - which would move the page under their
+   * cursor and swallow that click.
+   */
+  const [recheck, setRecheck] = useState(false);
+
   useEffect(() => {
     onValuesChange?.(values);
   }, [values, onValuesChange]);
+
+  useEffect(() => {
+    const failing = Object.keys(form.formState.errors);
+    if (recheck && failing.length) void form.trigger(failing);
+    // Only when an answer changes: re-checking on every error change would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, recheck]);
 
   const [result, setResult] = useState<SubmissionResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -307,6 +327,7 @@ function FormRuntime({
     setSuccessMessage(null);
     setNotice(null);
     setReviewing(false);
+    setRecheck(false);
     setResetKey((k) => k + 1);
     setStepIndex(0);
   };
@@ -373,7 +394,7 @@ function FormRuntime({
     if (await form.trigger(names, { shouldFocus: true })) {
       setStepIndex((i) => Math.min(i + 1, steps.length - 1));
       containerRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    }
+    } else setRecheck(true);
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -390,7 +411,10 @@ function FormRuntime({
         setSubmitError(null);
         setReviewing(true);
         containerRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-      } else setShowSummary(true);
+      } else {
+        setRecheck(true);
+        setShowSummary(true);
+      }
       return;
     }
     const mode = definition.captcha?.mode;
@@ -506,7 +530,7 @@ function FormRuntime({
             </div>
           )}
           {showSummary && (
-            <FormErrorSummary definition={definition} errors={form.formState.errors} onSelect={focusField} />
+            <FormErrorSummary definition={definition} errors={formErrors} onSelect={focusField} />
           )}
           {reviewing && <FormReview definition={definition} state={formState} values={values} onEdit={focusField} />}
           {/* Kept mounted while reviewing, so a CAPTCHA that was solved stays solved. */}

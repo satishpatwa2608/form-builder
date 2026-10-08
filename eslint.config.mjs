@@ -6,7 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
  * broken hook usage, unsafe constructs), not for formatting.
  */
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/*.config.{js,mjs,cjs,ts}', 'apps/api/test/node-environment.js'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/*.config.{js,mjs,cjs,ts}', 'apps/api/test/node-environment.js', 'e2e/test-results/**', 'e2e/playwright-report/**'] },
   ...tseslint.configs.recommended,
   {
     files: ['**/*.{ts,tsx}'],

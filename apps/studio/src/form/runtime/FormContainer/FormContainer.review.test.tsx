@@ -95,6 +95,18 @@ describe('review before sending', () => {
     await submit();
     expect((await screen.findAllByText('Your name is required')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('region', { name: 'Check your answers' })).not.toBeInTheDocument();
+    // The list of what to fix shows, as it does on a form without a review step.
+    expect(await screen.findByText(/Please fix this field/)).toBeInTheDocument();
+  });
+
+  it('an error from the check goes as soon as the answer is right, without clicking away', async () => {
+    const { user, submit } = renderForm();
+    await submit();
+    expect((await screen.findAllByText('Your name is required')).length).toBeGreaterThan(0);
+    // Still typing in the field: no blur has happened.
+    await user.type(screen.getByLabelText(/^Your name/), 'A');
+    await waitFor(() => expect(screen.queryByText('Your name is required')).not.toBeInTheDocument());
+    expect(screen.getByLabelText(/^Your name/)).toHaveFocus();
   });
 
   it('goes back to change one answer, then submits from the review', async () => {
