@@ -319,3 +319,57 @@ export function fieldsFromEntity(entity: { fields: (string | { name: string; typ
   return { fields, notes };
 }
 
+/** One fillable field of a PDF, as read from the file. */
+export interface PdfFormField {
+  name: string;
+  kind: 'text' | 'checkbox' | 'radio' | 'dropdown' | 'list' | 'signature' | 'button' | 'other';
+  /** For radio groups, dropdowns and lists. */
+  options?: string[];
+  multiline?: boolean;
+  required?: boolean;
+  maxLength?: number;
+  /** A list that takes several choices. */
+  multiple?: boolean;
+}
+
+/**
+ * One field for each fillable field of a PDF form. A PDF names its fields for
+ * machines ("applicant.first_name", "Text12"), so the label is that name made
+ * readable; the kind, choices, length and whether it is required come from
+ * the PDF. Buttons are skipped.
+ */
+export function fieldsFromPdfFields(pdfFields: PdfFormField[]): ImportedFields {
+  const names = new Names();
+  const notes: string[] = [];
+  const fields: FormField[] = [];
+  if (pdfFields.length > MAX_IMPORTED_FIELDS) notes.push(`Only the first ${MAX_IMPORTED_FIELDS} fields were added.`);
+  let unnamed = 0;
+  for (const f of pdfFields.slice(0, MAX_IMPORTED_FIELDS)) {
+    if (f.kind === 'button') continue;
+    const readable = humanise((f.name.split('.').pop() ?? f.name).replace(/\[\d+\]/g, ''));
+    // "Text12", "Check Box3": a name the PDF tool made up, which says nothing to a person.
+    const madeUp = /^(text|check ?box|radio ?button|dropdown|combo ?box|list ?box|field|untitled)\s*\d*$/i.test(readable);
+    if (madeUp) unnamed++;
+    const base = { id: names.id(), name: names.key(madeUp ? `field ${fields.length + 1}` : readable), label: (madeUp ? `Field ${fields.length + 1}` : readable).slice(0, 120), ...(f.required ? { required: true } : {}) };
+    const options = optionsFrom([...new Set((f.options ?? []).map((o) => o.trim()).filter(Boolean))].slice(0, 200));
+    if (f.kind === 'checkbox') fields.push({ ...base, type: 'CHECKBOX' });
+    else if (f.kind === 'signature') fields.push({ ...base, type: 'SIGNATURE' });
+    else if (f.kind === 'radio' || f.kind === 'dropdown' || f.kind === 'list') {
+      if (!options.length) {
+        notes.push(`"${base.label}" is a choice with no choices in the PDF, so it became a text field.`);
+        fields.push({ ...base, type: 'TEXT' });
+      } else fields.push({ ...base, type: f.kind === 'radio' ? 'RADIO' : f.kind === 'list' && f.multiple ? 'MULTI_SELECT' : 'DROPDOWN', dataSource: { type: 'STATIC', options } });
+    } else if (f.kind === 'other') {
+      notes.push(`"${base.label}" is a kind of field this cannot read, so it became a text field.`);
+      fields.push({ ...base, type: 'TEXT' });
+    } else {
+      const type = f.multiline ? 'TEXTAREA' : typeFromName(f.name.split('.').pop() ?? f.name);
+      const max = f.maxLength && f.maxLength > 0 && (type === 'TEXT' || type === 'TEXTAREA') ? { validation: { maxLength: f.maxLength } } : {};
+      fields.push({ ...base, type: type === 'CHECKBOX' ? 'TEXT' : type, ...max });
+    }
+  }
+  if (!pdfFields.length) notes.push('This PDF has no fillable fields. A scanned or flat PDF cannot be read this way.');
+  if (unnamed) notes.push(`${unnamed} field${unnamed === 1 ? ' has' : 's have'} no meaningful name in the PDF and ${unnamed === 1 ? 'is' : 'are'} called "Field n". Give ${unnamed === 1 ? 'it a label' : 'them labels'} in the builder.`);
+  return { fields, notes };
+}
+

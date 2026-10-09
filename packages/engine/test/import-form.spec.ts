@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, MAX_IMPORTED_FIELDS, parseCsv, validateFormDefinition } from '../src';
+import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, fieldsFromPdfFields, MAX_IMPORTED_FIELDS, parseCsv, validateFormDefinition } from '../src';
 import type { FormField } from '../src/types';
 import base from './fixtures/customer-complaint-basic.json';
 
@@ -192,6 +192,61 @@ describe('a form from a table a connector exposes', () => {
     expect(fields.map((f) => f.name)).toEqual(['orderNo', 'addressCity', 'field2ndLine', 'order_no']);
     expect(notes[0]).toBe('"order-no" cannot be a field key as it is, so its field is called "orderNo". Rename it, or map it when saving to the table.');
     expect(fieldsFromEntity({ fields: [] }).notes).toEqual(['This table exposes no fields.']);
+  });
+});
+
+describe('a form from a fillable PDF', () => {
+  it('reads kinds, choices, lengths and what is required; names made for machines become labels for people', () => {
+    const { fields, notes } = fieldsFromPdfFields([
+      { name: 'applicant.first_name', kind: 'text', required: true, maxLength: 40 },
+      { name: 'applicant.email', kind: 'text' },
+      { name: 'applicant.dob', kind: 'text' },
+      { name: 'remarks', kind: 'text', multiline: true },
+      { name: 'gender', kind: 'radio', options: ['Male', 'Female', 'Other'] },
+      { name: 'state', kind: 'dropdown', options: ['Kerala', 'Punjab', 'Kerala', ' '] },
+      { name: 'languages', kind: 'list', multiple: true, options: ['Hindi', 'Tamil'] },
+      { name: 'agree', kind: 'checkbox', required: true },
+      { name: 'sign_here', kind: 'signature' },
+      { name: 'Submit', kind: 'button' },
+    ]);
+    expect(fields.map((f) => [f.name, f.label, f.type])).toEqual([
+      ['firstName', 'First name', 'TEXT'],
+      ['email', 'Email', 'EMAIL'],
+      ['dob', 'Dob', 'DATE'],
+      ['remarks', 'Remarks', 'TEXTAREA'],
+      ['gender', 'Gender', 'RADIO'],
+      ['state', 'State', 'DROPDOWN'],
+      ['languages', 'Languages', 'MULTI_SELECT'],
+      ['agree', 'Agree', 'CHECKBOX'],
+      ['signHere', 'Sign here', 'SIGNATURE'],
+    ]);
+    expect(fields[0]).toMatchObject({ required: true, validation: { maxLength: 40 } });
+    expect(fields[5].dataSource?.options?.map((o) => o.label)).toEqual(['Kerala', 'Punjab']);
+    expect(notes).toEqual([]);
+    publishable(fields);
+  });
+
+  it('says what it could not make sense of, instead of guessing silently', () => {
+    const { fields, notes } = fieldsFromPdfFields([
+      { name: 'Text12', kind: 'text' },
+      { name: 'Check Box3', kind: 'checkbox' },
+      { name: 'topmostSubform[0].Page1[0].city[0]', kind: 'text' },
+      { name: 'plan', kind: 'dropdown', options: [] },
+      { name: 'barcode', kind: 'other' },
+    ]);
+    expect(fields.map((f) => [f.name, f.label, f.type])).toEqual([
+      ['field1', 'Field 1', 'TEXT'],
+      ['field2', 'Field 2', 'CHECKBOX'],
+      ['city', 'City', 'TEXT'],
+      ['plan', 'Plan', 'TEXT'],
+      ['barcode', 'Barcode', 'TEXT'],
+    ]);
+    expect(notes).toEqual([
+      '"Plan" is a choice with no choices in the PDF, so it became a text field.',
+      '"Barcode" is a kind of field this cannot read, so it became a text field.',
+      '2 fields have no meaningful name in the PDF and are called "Field n". Give them labels in the builder.',
+    ]);
+    expect(fieldsFromPdfFields([]).notes).toEqual(['This PDF has no fillable fields. A scanned or flat PDF cannot be read this way.']);
   });
 });
 

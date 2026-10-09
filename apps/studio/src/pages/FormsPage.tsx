@@ -1,4 +1,4 @@
-import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, type ImportedFields } from '@fb/engine';
+import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, fieldsFromPdfFields, type ImportedFields } from '@fb/engine';
 import { FormVersions } from '../components/FormVersions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -25,6 +25,7 @@ function folderLabel(folders: Folder[], id: string) {
 const IMPORT_SOURCES = [
   { key: 'schema', label: 'A JSON Schema', description: 'One field for each property of a schema file.', fileLabel: 'Schema file (.json)', accept: 'application/json,.json' },
   { key: 'csv', label: 'A spreadsheet', description: 'One field for each column of a CSV file; example rows set the types.', fileLabel: 'Spreadsheet file (.csv)', accept: 'text/csv,.csv' },
+  { key: 'pdf', label: 'A fillable PDF', description: 'One field for each fillable field of a PDF form. The file stays on your computer.', fileLabel: 'PDF form (.pdf)', accept: 'application/pdf,.pdf' },
 ] as const;
 
 function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone: (msg: string) => void; onCancel: () => void }) {
@@ -54,7 +55,18 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   };
   const readFile = async (file: File | undefined) => {
     if (!file || !source) return;
-    if (file.size > 1024 * 1024) return setImported({ file: file.name, result: { fields: [], notes: [] }, error: 'The file is larger than 1 MB.' });
+    const limitMb = source.key === 'pdf' ? 10 : 1;
+    if (file.size > limitMb * 1024 * 1024) return setImported({ file: file.name, result: { fields: [], notes: [] }, error: `The file is larger than ${limitMb} MB.` });
+    if (source.key === 'pdf') {
+      try {
+        const { readPdfFields } = await import('../lib/pdf-fields');
+        setImported({ file: file.name, result: fieldsFromPdfFields(await readPdfFields(await file.arrayBuffer())) });
+        if (!name) setName(file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim());
+      } catch {
+        setImported({ file: file.name, result: { fields: [], notes: [] }, error: 'This file could not be read as a PDF form. If it is protected with a password, remove the protection first.' });
+      }
+      return;
+    }
     const text = await file.text();
     try {
       const result = source.key === 'schema' ? fieldsFromJsonSchema(JSON.parse(text)) : fieldsFromCsv(text);
