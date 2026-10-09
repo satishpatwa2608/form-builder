@@ -5,7 +5,7 @@ import { API_URL, api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 
-type ConnectorType = 'mongodb' | 'postgres' | 'mysql' | 'mssql' | 'supabase' | 'rest' | 'odata' | 'salesforce' | 'aws-s3' | 'aws-cloudwatch';
+type ConnectorType = 'mongodb' | 'postgres' | 'mysql' | 'mssql' | 'supabase' | 'rest' | 'odata' | 'salesforce' | 'google-sheets' | 'excel' | 'microsoft-files' | 'azure-blob' | 'aws-s3' | 'aws-cloudwatch';
 type Op = 'list' | 'get' | 'lookup' | 'insert' | 'update' | 'upload' | 'log';
 
 interface ExposedEntity {
@@ -76,6 +76,11 @@ interface FieldSpec {
 /** The boxes to show: a way of signing in brings its own, and hides the others'. */
 export const fieldsFor = (fields: FieldSpec[], values: Record<string, string | boolean>) => fields.filter((f) => !f.showFor || f.showFor.includes(String(values.auth ?? 'none')));
 const AUTH_LABELS = { none: 'None', bearer: 'A token (Bearer)', apiKey: 'An API key in a header', basic: 'User name and password', oauth: 'As an application (OAuth client credentials)' };
+/** An application registered in the customer's Microsoft Entra directory, with Files.ReadWrite.All (or Sites.ReadWrite.All) and admin consent. */
+const MICROSOFT_APP: FieldSpec[] = [
+  { name: 'tenantId', label: 'Directory (tenant) ID', hint: 'From the app registration in Microsoft Entra' },
+  { name: 'clientId', label: 'Application (client) ID' },
+];
 const ROLE: FieldSpec[] = [
   { name: 'region', label: 'AWS region', hint: 'e.g. ap-south-1' },
   { name: 'roleArn', label: 'Role ARN', hint: 'A role in your account that trusts Form Builder' },
@@ -160,6 +165,33 @@ export const SPECS: Record<ConnectorType, { label: string; blurb: string; fields
       { name: 'clientSecret', label: 'Consumer secret', secret: true, kind: 'password' },
     ],
   },
+  'google-sheets': {
+    label: 'Google Sheets',
+    blurb: 'Every response a row of a sheet; a sheet can also fill a dropdown.',
+    fields: [
+      { name: 'spreadsheet', label: "The sheet's address", hint: 'Copy it from the browser while the sheet is open. Its first row must hold the column headings.' },
+      { name: 'serviceAccount', label: 'Service account key (JSON)', secret: true, kind: 'textarea', hint: 'In Google Cloud: create a service account, add a JSON key, switch on the Sheets API. Then share the sheet with the account\'s email address as an editor. Paste the whole key file here.' },
+    ],
+  },
+  excel: {
+    label: 'Excel (Microsoft 365)',
+    blurb: 'Every response a row of a table in a workbook kept in OneDrive or SharePoint.',
+    fields: [...MICROSOFT_APP, { name: 'link', label: "The workbook's link", hint: 'In Excel or OneDrive choose Share → Copy link. The workbook needs a table (Insert → Table) whose headings name the columns.' }, { name: 'clientSecret', label: 'Client secret', secret: true, kind: 'password' }],
+  },
+  'microsoft-files': {
+    label: 'SharePoint or OneDrive folder',
+    blurb: 'Every response saved in a folder as a file, with its PDF.',
+    fields: [...MICROSOFT_APP, { name: 'link', label: "The folder's link", hint: 'In SharePoint or OneDrive choose Share → Copy link on the folder.' }, { name: 'clientSecret', label: 'Client secret', secret: true, kind: 'password' }],
+  },
+  'azure-blob': {
+    label: 'Azure Blob Storage',
+    blurb: 'Every response saved in a container as a file, with its PDF.',
+    fields: [
+      { name: 'containerUrl', label: 'Container address', hint: 'e.g. https://youraccount.blob.core.windows.net/responses' },
+      { name: 'prefix', label: 'Folder inside it', optional: true, hint: 'e.g. forms' },
+      { name: 'sasToken', label: 'Shared access signature (SAS token)', secret: true, kind: 'password', hint: 'Made for this container, allowing Create, Write and List' },
+    ],
+  },
   'aws-s3': { label: 'Amazon S3', blurb: "Save answers as JSON files in your bucket (your account, your role).", fields: [...ROLE, { name: 'bucket', label: 'Bucket' }, { name: 'prefix', label: 'Key prefix', optional: true, hint: 'e.g. forms/' }] },
   'aws-cloudwatch': { label: 'CloudWatch Logs', blurb: 'Send form events to your log group.', fields: [...ROLE, { name: 'logGroup', label: 'Log group', hint: 'e.g. /acme/forms' }] },
 };
@@ -174,6 +206,10 @@ const OPS_BY_TYPE: Record<ConnectorType, Op[]> = {
   rest: ['list', 'get', 'lookup', 'insert', 'update'],
   odata: ['list', 'get', 'lookup', 'insert', 'update'],
   salesforce: ['list', 'get', 'lookup', 'insert', 'update'],
+  'google-sheets': ['list', 'get', 'lookup', 'insert'],
+  excel: ['list', 'get', 'lookup', 'insert'],
+  'microsoft-files': ['upload'],
+  'azure-blob': ['upload'],
   'aws-s3': ['list', 'upload'],
   'aws-cloudwatch': ['log'],
 };

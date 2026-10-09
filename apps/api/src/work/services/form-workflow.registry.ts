@@ -1,3 +1,4 @@
+import { ModuleRef } from '@nestjs/core';
 import { Injectable, Logger, OnApplicationBootstrap, SetMetadata } from '@nestjs/common';
 import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 import { ACTION_KEY, ConnectorsService } from '../../connectors/connectors.service';
@@ -69,6 +70,8 @@ export class FormHandlerRegistry implements OnApplicationBootstrap {
     private readonly scanner: MetadataScanner,
     private readonly connectors: ConnectorsService,
     private readonly extensions: ExtensionsService,
+    // Looked up when a step runs: the document service is built after this one.
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   onApplicationBootstrap() {
@@ -92,7 +95,16 @@ export class FormHandlerRegistry implements OnApplicationBootstrap {
 
   get(key: string): FormHandler | undefined {
     // Connector write steps are configuration, resolved per org when they run.
-    if (ACTION_KEY.test(key)) return (ctx) => this.connectors.runAction(ctx.orgId, key, { ...ctx.values, ...((ctx.record.work as Record<string, unknown>) ?? {}) }, ctx.definition.code, ctx.map);
+    if (ACTION_KEY.test(key)) return (ctx) =>
+        this.connectors.runAction(ctx.orgId, key, { ...ctx.values, ...((ctx.record.work as Record<string, unknown>) ?? {}) }, ctx.definition.code, ctx.map, {
+          // Where a response is saved as a file: under its form and its reference, with the PDF made only if it is wanted.
+          name: `${ctx.definition.code}/${ctx.record.ref || ctx.record.uuid}`,
+          pdf: async () => {
+            // Loaded when first needed: the document service's own file leads back to this one.
+            const { DocumentsService } = await import('../../documents/documents.service');
+            return (await this.moduleRef.get(DocumentsService, { strict: false }).forRecord(ctx.orgId, ctx.record.uuid)).pdf;
+          },
+        });
     const own = this.handlers.get(key)?.run;
     // The organisation's own code, in its extension: found per org when the step runs.
     if (!own && EXT_STEP_KEY.test(key)) {

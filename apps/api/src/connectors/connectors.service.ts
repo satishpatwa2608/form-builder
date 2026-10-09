@@ -396,7 +396,7 @@ export class ConnectorsService implements OnModuleDestroy {
   }
 
   /** Run a write step: the form's answers (and work fields) go to the exposed fields with the same names. */
-  async runAction(orgId: string, key: string, values: Record<string, unknown>, formCode: string, map?: Record<string, string>) {
+  async runAction(orgId: string, key: string, values: Record<string, unknown>, formCode: string, map?: Record<string, string>, file?: { name: string; pdf: () => Promise<Buffer | null> }) {
     const m = ACTION_KEY.exec(key);
     const c = m ? await this.byRef(orgId, m[1]!) : null;
     if (!c || !c.writable) throw new Error('This connector step is not available any more');
@@ -404,7 +404,10 @@ export class ConnectorsService implements OnModuleDestroy {
       for (const op of e.operations) {
         if (WRITE_OPERATIONS.includes(op) && actionHash(e.key, op) === m![2]) {
           // Each exposed field takes the answer the designer chose for it, or the one whose name matches.
-          const res = await this.run(c, e, op, op === 'upload' || op === 'log' ? { data: values } : mappedValues(e.fields, values, map), `automation:${formCode}`);
+          // A file store other than S3 gets the response under its reference, with its PDF beside it. (S3 keeps the
+          // dated names it has always used.)
+          const named = op === 'upload' && file && c.type !== 'aws-s3' ? { name: file.name, pdf: (await file.pdf().catch(() => null))?.toString('base64') } : {};
+          const res = await this.run(c, e, op, op === 'upload' || op === 'log' ? { data: values, ...named } : mappedValues(e.fields, values, map), `automation:${formCode}`);
           // The new row's identifier, whatever that system calls it.
           const row = res.rows[0] ?? {};
           const id = row.id ?? row.Id ?? (e.keyField ? row[e.keyField] : undefined);
