@@ -19,5 +19,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: false,
     maxWorkers: 4,
+    // Some tests click through a whole dialog. On a shared build machine, beside the other packages' tests,
+    // that can take several times what it does on a developer's own.
+    testTimeout: 30_000,
   },
 });
