@@ -66,6 +66,13 @@ With more than one API instance, a gateway is connected to one of them: until
 routing between instances is added, run a single API instance or pin
 `/gateway/connect` and connector calls with sticky routing.
 
+**Several API servers.** An agent holds one connection, to whichever API server
+it reached. A request that lands on another server, or a job in the worker, is
+passed to that server through the database (`gateway_calls`, emptied as calls
+are answered) and adds about a tenth of a second. No sticky routing is needed
+at the load balancer. A gateway shows as connected on every server while its
+agent has been heard from in the last 75 seconds.
+
 ## Extensions (a customer's own code)
 
 A customer's custom code never runs inside the API. It is a container of its

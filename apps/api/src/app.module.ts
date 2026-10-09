@@ -35,7 +35,7 @@ import { HealthController } from './health.controller';
 import { Connector, ConnectorCall, ConnectorCallSchema, ConnectorSchema } from './connectors/connector.schema';
 import { ConnectorsController } from './connectors/connectors.controller';
 import { ConnectorsService } from './connectors/connectors.service';
-import { Gateway, GatewaySchema } from './gateways/gateway.schema';
+import { Gateway, GatewayCall, GatewayCallSchema, GatewaySchema } from './gateways/gateway.schema';
 import { GatewaysController } from './gateways/gateways.controller';
 import { GatewaysService } from './gateways/gateways.service';
 import { KEY_PROVIDER, KmsKeyProvider, LocalKeyProvider } from './common/key-provider';
@@ -148,6 +148,7 @@ export class AppModule {
           { name: Connector.name, schema: ConnectorSchema },
           { name: ConnectorCall.name, schema: ConnectorCallSchema },
           { name: Gateway.name, schema: GatewaySchema },
+          { name: GatewayCall.name, schema: GatewayCallSchema },
           { name: UsageMonth.name, schema: UsageMonthSchema },
           { name: FormStat.name, schema: FormStatSchema },
           { name: FormDraft.name, schema: FormDraftSchema },

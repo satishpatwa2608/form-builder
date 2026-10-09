@@ -86,7 +86,6 @@ See the figures in the last hand-over message for the run of 9 October. Suites: 
 ### Engineering work remaining
 - **AEM parity:** e-signature (Phase 7), languages and accessibility (Phase 9), portal, headless API and deeper analytics (Phase 10), more connectors (Phase 11). In Phase 6: designed document templates, attaching the PDF to an email, PDF operations, more scripts. In Phase 8: a form from a connector entity or a fillable PDF.
 - **Production hosting:** apply and correct the Terraform; a registry for the SDK and customers' images; a build service for customers' repositories; a secrets manager in place of `infra/.state/`.
-- **Gateways with several API servers:** sticky routing or routing between instances.
 - SAML sign-in (only OpenID Connect today).
 - Email for review requests; per-field drop-off analytics; onboarding tour.
 - Minor hardening: unique index on SSO domains; DNS-rebinding protection in the outbound fetch helper.

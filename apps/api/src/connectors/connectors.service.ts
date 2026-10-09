@@ -120,7 +120,7 @@ export class ConnectorsService implements OnModuleDestroy {
       settings: c.settings,
       credentialsSet: !!c.sealedSecrets || !!c.gatewayId,
       gatewayId: c.gatewayId,
-      gatewayConnected: !!c.gatewayId && this.gateways.isConnected(c.orgId, c.gatewayId),
+      gatewayConnected: !!c.gatewayId && (await this.gateways.isConnected(c.orgId, c.gatewayId)),
       writable: c.writable,
       allowedHosts: c.allowedHosts,
       entities: c.entities,
