@@ -18,7 +18,8 @@ A hosted form platform: build forms, connect them to your own data (MongoDB, Pos
 | `packages/engine` | Form + workflow rules shared by all apps (ported from Sangam form-platform) |
 | `packages/connectors` | Connector contract, registry, plugins, gateway protocol |
 | `packages/sdk` | What a customer's extension is written against: custom workflow steps, dropdown lists and submission checks ([guide](docs/extensions.md)) |
-| `examples/extension-starter` | A complete extension to start from, with its Dockerfile |
+| `examples/extension-starter` | A complete extension to start from |
+| `infra/` | Docker images, one compose file for an installation, and `stack.mjs`: bring installations up and deliver customers' extensions into them ([hosting](docs/hosting.md)) |
 | `packages/ui` | Design tokens |
 | `infra` | AWS plan (nothing provisioned) |
 

@@ -1,0 +1,83 @@
+# One installation of Form Builder. The same file serves both ways of hosting:
+#   shared     one installation for every customer; each customer's code is a container beside it
+#   dedicated  an installation of its own for one customer (own database, addresses and keys)
+# Run through infra/stack.mjs, which supplies the variables and attaches extension containers.
+name: ${FB_PROJECT}
+
+x-api-env: &api-env
+  NODE_ENV: ${FB_NODE_ENV}
+  PORT: "4100"
+  MONGODB_URL: mongodb://mongo:27017/form-builder
+  JWT_SECRET: ${FB_JWT_SECRET}
+  SECRET_KEY: ${FB_SECRET_KEY}
+  APP_URL: http://localhost:${FB_STUDIO_PORT}
+  API_URL: http://localhost:${FB_API_PORT}
+  FORM_APP_URL: http://localhost:${FB_RUNTIME_PORT}
+  CORS_ORIGINS: http://localhost:${FB_STUDIO_PORT},http://localhost:${FB_RUNTIME_PORT}
+  COOKIE_SECURE: "false"
+  MAIL_PROVIDER: console
+  STORAGE_PROVIDER: local
+  LOCAL_STORAGE_DIR: /data/uploads
+  DEFAULT_PLAN: ${FB_DEFAULT_PLAN}
+  FILE_SCANNER: none
+  FORM_ALLOW_MOCK_CAPTCHA: "true"
+  # Jobs due later (retries, scheduled publishing) run by themselves whatever NODE_ENV is.
+  JOBS_POLL: "true"
+
+services:
+  mongo:
+    image: mongo:7
+    command: ["--bind_ip_all", "--quiet"]
+    volumes: [mongo:/data/db]
+    # Only the API and the worker can reach the database: it is on no other network.
+    networks: [data]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  api:
+    image: fb-api:${FB_TAG}
+    environment:
+      <<: *api-env
+      JOBS_ROLE: enqueue
+    volumes: [uploads:/data/uploads]
+    ports: ["127.0.0.1:${FB_API_PORT}:4100"]
+    networks: [data, edge]
+    depends_on:
+      mongo: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  worker:
+    image: fb-api:${FB_TAG}
+    command: ["node", "dist/worker.js"]
+    environment:
+      <<: *api-env
+    volumes: [uploads:/data/uploads]
+    networks: [data, edge]
+    depends_on:
+      mongo: { condition: service_healthy }
+
+  studio:
+    image: ${FB_PROJECT}-studio:${FB_TAG}
+    ports: ["127.0.0.1:${FB_STUDIO_PORT}:80"]
+    networks: [edge]
+
+  runtime:
+    image: ${FB_PROJECT}-runtime:${FB_TAG}
+    ports: ["127.0.0.1:${FB_RUNTIME_PORT}:80"]
+    networks: [edge]
+
+networks:
+  data:
+    internal: true
+  edge: {}
+
+volumes:
+  mongo: {}
+  uploads: {}

@@ -17,16 +17,18 @@ export interface PlanLimits {
   connectors: number | null;
   gateways: number | null;
   customDomains: number | null;
+  /** The organisation's own code, each in a container we run (docs/extensions.md). */
+  extensions: number | null;
   /** Hide "Powered by Form Builder" on public forms. */
   removeBranding: boolean;
   sso: boolean;
 }
 
 export const PLANS: Record<PlanId, { name: string; limits: PlanLimits }> = {
-  FREE: { name: 'Free', limits: { forms: 3, submissionsPerMonth: 100, members: 2, connectors: 0, gateways: 0, customDomains: 0, removeBranding: false, sso: false } },
-  TEAM: { name: 'Team', limits: { forms: 25, submissionsPerMonth: 2_000, members: 10, connectors: 3, gateways: 1, customDomains: 1, removeBranding: true, sso: false } },
-  BUSINESS: { name: 'Business', limits: { forms: 200, submissionsPerMonth: 25_000, members: 50, connectors: 20, gateways: 5, customDomains: 5, removeBranding: true, sso: true } },
-  ENTERPRISE: { name: 'Enterprise', limits: { forms: null, submissionsPerMonth: null, members: null, connectors: null, gateways: null, customDomains: null, removeBranding: true, sso: true } },
+  FREE: { name: 'Free', limits: { forms: 3, submissionsPerMonth: 100, members: 2, connectors: 0, gateways: 0, customDomains: 0, extensions: 0, removeBranding: false, sso: false } },
+  TEAM: { name: 'Team', limits: { forms: 25, submissionsPerMonth: 2_000, members: 10, connectors: 3, gateways: 1, customDomains: 1, extensions: 0, removeBranding: true, sso: false } },
+  BUSINESS: { name: 'Business', limits: { forms: 200, submissionsPerMonth: 25_000, members: 50, connectors: 20, gateways: 5, customDomains: 5, extensions: 1, removeBranding: true, sso: true } },
+  ENTERPRISE: { name: 'Enterprise', limits: { forms: null, submissionsPerMonth: null, members: null, connectors: null, gateways: null, customDomains: null, extensions: null, removeBranding: true, sso: true } },
 };
 
-export type CountedResource = 'forms' | 'members' | 'connectors' | 'gateways' | 'customDomains';
+export type CountedResource = 'forms' | 'members' | 'connectors' | 'gateways' | 'customDomains' | 'extensions';

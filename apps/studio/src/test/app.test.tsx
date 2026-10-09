@@ -210,8 +210,8 @@ describe('studio', () => {
           plan: 'FREE',
           planName: 'Free',
           month: '2026-10',
-          limits: { forms: 3, submissionsPerMonth: 100, members: 2, connectors: 0, gateways: 0, customDomains: 0, removeBranding: false, sso: false },
-          usage: { forms: 3, members: 1, connectors: 0, gateways: 0, customDomains: 0, submissionsThisMonth: 42 },
+          limits: { forms: 3, submissionsPerMonth: 100, members: 2, connectors: 0, gateways: 0, customDomains: 0, extensions: 0, removeBranding: false, sso: false },
+          usage: { forms: 3, members: 1, connectors: 0, gateways: 0, customDomains: 0, extensions: 0, submissionsThisMonth: 42 },
         },
       }),
     });

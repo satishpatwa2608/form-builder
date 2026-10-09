@@ -2,6 +2,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createExtension, type CheckContext, type CheckResult, type StepContext } from '@fb/sdk';
 import { ExtensionsService } from '../src/extensions/extensions.service';
+import { PlansService } from '../src/plans/plans.service';
 import { startApp, type Harness } from './harness';
 
 /** An organisation's own code, written with the SDK and run as its own service, as it will be in its container. */
@@ -289,6 +290,19 @@ describe('Extensions: an organisation\'s own code, beside the product (e2e)', ()
     expect((await h.api().get('/extensions').set(h.bearer(owner))).body[0].steps).toEqual([expect.objectContaining({ key: 'credit-check' })]);
     await stop(odd);
     server = (await serve(acme(secret, orgId, seen), port)).server;
+  });
+
+  it('running a customer\'s code is something a plan includes or does not', async () => {
+    const plans = h.app.get(PlansService);
+    await plans.setPlan(orgId, 'TEAM');
+    await expect(extensions.install(orgId, 'http://10.0.0.9:8080', 'op')).rejects.toThrow("The Team plan doesn't include extensions (your own code). Upgrade to add them.");
+    await plans.setPlan(orgId, 'BUSINESS');
+    await expect(extensions.install(orgId, 'http://10.0.0.9:8080', 'op')).rejects.toThrow('The Business plan allows 1 extensions (your own code). Upgrade or remove one first.');
+    // What is already installed keeps working on a smaller plan; only adding is refused.
+    await submit('CLAIM', { customer: 'Ravi', invoice: 'INV-20' }).expect(201);
+    const usage = (await h.api().get('/org/usage').set(h.bearer(owner))).body;
+    expect(usage.usage?.extensions ?? usage.extensions).toBe(1);
+    await plans.setPlan(orgId, 'ENTERPRISE');
   });
 
   it('once removed, its steps stop being offered and forms that name them cannot be published', async () => {

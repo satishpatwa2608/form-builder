@@ -95,10 +95,13 @@ API calls over the private network.
   it on their Extensions page.
 - **Limits:** 15 s for a workflow step (retried by the job queue like any
   step), 5 s for a list or a check, 1 MB per request and reply.
-- **Not built yet:** the pipeline that builds a customer's repository into an
-  image and runs it. Until then an image is built from the starter's
-  Dockerfile and run by hand. This waits on the hosting decisions in
-  status.md (AWS account, infrastructure as code).
+- **Docker:** `pnpm stack ext deploy <project> <orgId> <repository>` builds a
+  customer's repository, runs it locked down on a private network, installs it
+  and reads what it offers, for a shared or a dedicated installation. See
+  [hosting.md](hosting.md). A production orchestrator, registry and build
+  service are still to do and wait on the hosting decisions in status.md.
+- **Plans:** `extensions` in `apps/api/src/plans/plans.ts` says how many an
+  organisation may have. Installing one past the limit is refused.
 
 ## Uploads and malware scanning
 

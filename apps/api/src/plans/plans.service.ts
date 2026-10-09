@@ -14,7 +14,7 @@ export class PlanLimitException extends HttpException {
   }
 }
 
-const LABEL: Record<CountedResource, string> = { forms: 'forms', members: 'members', connectors: 'connectors', gateways: 'gateways', customDomains: 'custom domains' };
+const LABEL: Record<CountedResource, string> = { forms: 'forms', members: 'members', connectors: 'connectors', gateways: 'gateways', customDomains: 'custom domains', extensions: 'extensions (your own code)' };
 const month = (d = new Date()) => d.toISOString().slice(0, 7);
 const day = (d = new Date()) => d.toISOString().slice(0, 10);
 
@@ -67,6 +67,8 @@ export class PlansService {
         return db.collection('connectors').countDocuments({ orgId, isDeleted: false });
       case 'gateways':
         return db.collection('gateways').countDocuments({ orgId, revokedAt: null });
+      case 'extensions':
+        return db.collection('extensions').countDocuments({ orgId, isDeleted: false });
       case 'customDomains': {
         const org = await this.orgs.findOne({ id: orgId }).select('domains').lean();
         return ((org as { domains?: unknown[] } | null)?.domains ?? []).length;
@@ -120,7 +122,7 @@ export class PlansService {
   /** Plan, limits and what is used now, for the organisation's settings page. */
   async usage(auth: AuthContext) {
     const plan = await this.planOf(auth.orgId);
-    const counted: CountedResource[] = ['forms', 'members', 'connectors', 'gateways', 'customDomains'];
+    const counted: CountedResource[] = ['forms', 'members', 'connectors', 'gateways', 'customDomains', 'extensions'];
     const counts = Object.fromEntries(await Promise.all(counted.map(async (k) => [k, await this.count(auth.orgId, k)] as const)));
     const submissions = (await this.months.findOne({ orgId: auth.orgId, month: month() }).lean())?.submissions ?? 0;
     return { plan, planName: PLANS[plan].name, limits: PLANS[plan].limits, usage: { ...counts, submissionsThisMonth: submissions }, month: month(), plans: PLANS };

@@ -63,6 +63,28 @@ jobs:
           path: e2e/test-results
           retention-days: 7
 
+  docker:
+    # Both ways of hosting a customer, in Docker: shared and dedicated, with customers'
+    # extensions delivered by the pipeline (docs/hosting.md).
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @fb/e2e exec playwright install --with-deps chromium
+      - run: pnpm e2e:docker
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-test-results
+          path: e2e/test-results
+          retention-days: 7
+
   dependencies:
     runs-on: ubuntu-latest
     steps:

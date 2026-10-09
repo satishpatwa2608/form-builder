@@ -24,8 +24,9 @@ Custom field types in the browser are not part of extensions.
 
 ## Writing one
 
-Start from `examples/extension-starter`. It is a complete project: one step,
-one list, one check, a Dockerfile.
+Start from `examples/extension-starter` (`pnpm stack ext init <directory>`
+makes a copy that stands on its own). It is a complete project: one step,
+one list, one check.
 
 ```ts
 import { createExtension } from '@fb/sdk';
@@ -91,18 +92,22 @@ new one and move forms over.
 
 ## How it is deployed
 
-1. You build your extension into a container image (the starter's Dockerfile
-   does this) and hand it to us through the delivery pipeline.
-2. We run it on our private network. It is reachable only by Form Builder, not
-   from the internet, and it gets no access to Form Builder's database.
-3. We install it for your organisation, which issues its **secret**. The
-   container is started with `FB_EXTENSION_SECRET` and `FB_ORG_ID`.
-4. An admin opens **Administration → Extensions** and chooses **Read again**.
-   What you declared appears there and in the builder.
-5. For each new version: deploy, then **Read again**.
+1. You keep your extension in a repository of your own. It contains only your
+   code: `package.json`, `tsconfig.json` and `src/`.
+2. We build it and run it beside Form Builder, in a container that only Form
+   Builder can reach: not the internet, not other customers. It cannot reach
+   Form Builder's database, and by default cannot make outbound calls; access
+   to your own systems is agreed with us.
+3. The first delivery installs it for your organisation and issues its
+   secret, which the container is started with. You never handle it.
+4. What you declared appears under **Administration → Extensions** and in the
+   builder. Each later delivery replaces the running version and updates what
+   is offered. If a new version does not start, the previous one keeps
+   running.
 
-To reach your own systems from an extension, call them as you would from any
-service of yours. Outbound access from the container is agreed per customer.
+Your plan must include extensions. The same repository works whether you are
+on the shared installation or one of your own. For how we run this, see
+[hosting.md](hosting.md).
 
 ## Security
 

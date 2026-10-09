@@ -8,6 +8,7 @@ interface Limits {
   members: number | null;
   connectors: number | null;
   gateways: number | null;
+  extensions: number | null;
   customDomains: number | null;
   removeBranding: boolean;
   sso: boolean;
@@ -17,7 +18,7 @@ export interface Usage {
   planName: string;
   month: string;
   limits: Limits;
-  usage: { forms: number; members: number; connectors: number; gateways: number; customDomains: number; submissionsThisMonth: number };
+  usage: { forms: number; members: number; connectors: number; gateways: number; customDomains: number; extensions: number; submissionsThisMonth: number };
 }
 
 export const useUsage = () => useQuery({ queryKey: ['org-usage'], queryFn: () => api<Usage>('/org/usage') });
@@ -29,6 +30,7 @@ const ROWS: { key: keyof Usage['usage']; limit: keyof Limits; label: string }[] 
   { key: 'connectors', limit: 'connectors', label: 'Connectors' },
   { key: 'gateways', limit: 'gateways', label: 'Gateways' },
   { key: 'customDomains', limit: 'customDomains', label: 'Custom domains' },
+  { key: 'extensions', limit: 'extensions', label: 'Extensions (your own code)' },
 ];
 
 /** The plan and how much of it is used, with a bar per limit. */
@@ -40,7 +42,9 @@ export function PlanUsageCard() {
       <div className="st-usage">
         {ROWS.map((r) => {
           const used = data.usage[r.key];
-          const limit = data.limits[r.limit] as number | null;
+          const limit = data.limits[r.limit] as number | null | undefined;
+          // A server one release behind does not report a newer limit yet: leave the row out rather than guess.
+          if (used === undefined || limit === undefined) return null;
           const pct = limit === null ? 0 : limit === 0 ? 100 : Math.min(100, Math.round((used / limit) * 100));
           const tone = limit !== null && used >= limit ? 'full' : pct >= 80 ? 'high' : '';
           return (

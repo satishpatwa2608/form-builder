@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
  */
 
 export const ROOT = resolve(__dirname, '..');
-export const PORTS = { mongo: 27098, api: 4198, studio: 5183, runtime: 5184, extension: 4197 } as const;
+export const PORTS = { mongo: 27098, api: 4198, studio: 5183, runtime: 5184, extension: 4196 } as const;
 export const API = `http://127.0.0.1:${PORTS.api}`;
 export const STUDIO = `http://127.0.0.1:${PORTS.studio}`;
 export const RUNTIME = `http://127.0.0.1:${PORTS.runtime}`;

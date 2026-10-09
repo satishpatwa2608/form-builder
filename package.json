@@ -17,7 +17,9 @@
     "test": "pnpm -r test",
     "dev:gateway": "pnpm --filter @fb/gateway build && node apps/gateway/dist/main.js",
     "lint": "eslint .",
-    "e2e": "pnpm --filter @fb/e2e e2e"
+    "e2e": "pnpm --filter @fb/e2e e2e",
+    "e2e:docker": "pnpm --filter @fb/e2e e2e:docker",
+    "stack": "node infra/stack.mjs"
   },
   "pnpm": {
     "overrides": {

@@ -8,6 +8,7 @@ import { actorOf, AuditService } from '../audit/audit.service';
 import type { AuthContext } from '../auth/auth-context';
 import { newId, randomToken } from '../common/crypto';
 import { KEY_PROVIDER, openWith, sealWith, type KeyProvider } from '../common/key-provider';
+import { PlansService } from '../plans/plans.service';
 import { ExtensionRow, type ExtensionDocument } from './extension.schema';
 
 /** A workflow step an extension offers, as a form stores it: x-<ref>-<step>. A submission check has the same shape. */
@@ -95,6 +96,7 @@ export class ExtensionsService {
 
   constructor(
     private readonly audit: AuditService,
+    private readonly plans: PlansService,
     @Inject(KEY_PROVIDER) private readonly keys: KeyProvider,
     @InjectModel(ExtensionRow.name) private readonly rows: Model<ExtensionDocument>,
   ) {}
@@ -194,6 +196,8 @@ export class ExtensionsService {
     } catch {
       throw new BadRequestException('Give the address as http(s)://host:port, with nothing after it');
     }
+    // Running a customer's container is part of what a plan includes.
+    await this.plans.assertCanAdd(orgId, 'extensions');
     const id = newId();
     const ref = [...randomBytes(8)].map((b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
     const secret = randomToken();

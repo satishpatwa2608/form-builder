@@ -6,7 +6,8 @@
   "scripts": {
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "e2e:docker": "playwright test -c playwright.docker.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",
