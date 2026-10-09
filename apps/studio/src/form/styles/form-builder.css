@@ -1036,3 +1036,32 @@
   align-items: flex-start;
   gap: 8px;
 }
+
+/* ── Review and comments ────────────────────────────────────────────────── */
+.fb-comments {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.fb-comments li {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.fb-comments li[data-resolved='true'] {
+  opacity: 0.65;
+}
+.fb-comments__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 2px;
+}
+.fb-comments__actions {
+  margin-top: 4px;
+}

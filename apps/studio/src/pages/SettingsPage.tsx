@@ -22,6 +22,11 @@ export default function SettingsPage() {
     await reload();
     setSaved(me?.org.require2fa ? 'Two-factor is no longer required.' : 'Everyone must now use two-factor sign-in.');
   });
+  const toggleReview = useSubmit(async () => {
+    await api('/org', { method: 'PATCH', body: { security: { requireReview: !me?.org.requireReview } } });
+    await reload();
+    setSaved(me?.org.requireReview ? 'Forms can be published without a review again.' : 'Forms must now be approved by someone else before they are published.');
+  });
   if (!me) return null;
 
   return (
@@ -55,6 +60,16 @@ export default function SettingsPage() {
             </div>
             {!me.org.require2fa && !me.session.mfa && <Alert tone="info">Turn on two-factor for yourself first (Account & security), then sign in again with it.</Alert>}
             {toggle2fa.error && <Alert tone="error">{toggle2fa.error}</Alert>}
+            <div className="st-row" style={{ justifyContent: 'space-between' }}>
+              <div>
+                <strong>Review before publishing</strong>
+                <div className="st-muted">A form goes live only once someone other than its author has approved it. Needs at least two people who can publish.</div>
+              </div>
+              <Button variant={me.org.requireReview ? 'danger' : 'primary'} busy={toggleReview.busy} onClick={() => void toggleReview.submit()}>
+                {me.org.requireReview ? 'Stop requiring' : 'Require it'}
+              </Button>
+            </div>
+            {toggleReview.error && <Alert tone="error">{toggleReview.error}</Alert>}
           </div>
         </Card>
         <SsoCard />

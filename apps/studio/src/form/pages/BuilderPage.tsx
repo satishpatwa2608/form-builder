@@ -33,6 +33,8 @@ import { addFragmentSection } from '../builder/components/FragmentSettings';
 import { createField } from '../builder/field-catalog';
 import { fragmentUse, syncFragments } from '../engine';
 import { RulesDialog } from '../builder/rules/RulesDialog';
+import { ReviewDialog } from '../builder/components/ReviewDialog';
+import { useFormReview } from '../adapters/review';
 import { IssuesList } from '../builder/components/IssuesList';
 import { ConfirmDialog, type ConfirmRequest } from '../builder/components/ConfirmDialog';
 import { copyPublicFormLink } from '../links';
@@ -62,11 +64,23 @@ const innermostFirst: CollisionDetection = (args) => {
   return [...hits].sort((a, b) => area(a.id) - area(b.id));
 };
 
+/** A word on the Review button: what is waiting, or how many comments are open. */
+function reviewChip(state: ReturnType<typeof useFormReview>['data']): string | undefined {
+  if (!state) return undefined;
+  const open = state.comments.filter((c) => !c.resolvedAt).length;
+  const { status, stale } = state.review;
+  if (status === 'REQUESTED') return 'Waiting';
+  if (status === 'CHANGES_REQUESTED') return 'Changes asked';
+  if (status === 'APPROVED') return stale ? 'Changed since' : 'Approved';
+  return open ? String(open) : undefined;
+}
+
 function errorMessage(e: unknown): string {
   if (e instanceof FormDefinitionError) {
     return e.issues
       .slice(0, 3)
-      .map((i) => `${i.path}: ${i.message}`)
+      // What stands in the way of publishing because of its review is a sentence already.
+      .map((i) => (i.path === 'review' ? i.message : `${i.path}: ${i.message}`))
       .join('\n');
   }
   return e instanceof Error ? e.message : 'Something went wrong';
@@ -97,6 +111,8 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
   const [previewOpen, setPreviewOpen] = useState(false);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const { data: reviewState } = useFormReview(formId);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [showIssues, setShowIssues] = useState(false);
   const [dragging, setDragging] = useState<DragData | null>(null);
@@ -302,6 +318,8 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
         onPreview={() => setPreviewOpen(true)}
         onRules={() => setRulesOpen(true)}
         onWorkflow={() => setWorkflowOpen(true)}
+        onReview={() => setReviewOpen(true)}
+        reviewLabel={reviewChip(reviewState)}
         onSave={onSave}
         onPublish={onPublish}
         onSchedule={form.status === 'DRAFT' && permissions.canPublish ? onScheduleClick : undefined}
@@ -381,6 +399,7 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
 
       <PreviewDialog form={form} open={previewOpen} onOpenChange={setPreviewOpen} />
       <RulesDialog form={form} readOnly={readOnly} open={rulesOpen} onOpenChange={setRulesOpen} onChange={store.updateForm} />
+      <ReviewDialog form={form} selectedFieldId={selectedFieldId} unsaved={isDirty} open={reviewOpen} onOpenChange={setReviewOpen} onSelectField={store.selectField} />
       <WorkflowDialog
         form={form}
         versions={family}

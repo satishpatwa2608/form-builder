@@ -115,6 +115,27 @@ form.
   live. If the draft cannot be published when the time comes, the reason is
   shown on the form and nothing changes.
 
+### Review before publishing
+
+- In the builder, **Review** shows where a draft stands and holds its
+  comments.
+- **Anyone who designs the form** can *Ask for a review*, with a note for the
+  reviewer. Save the draft first, so the reviewer sees your changes.
+- **Anyone who may publish it** can *Approve* or *Ask for changes* (with a
+  reason). The Forms list shows which drafts are waiting.
+- **Comments** can be about the whole form or about a field: select the field
+  first. A comment links back to its field. Either side resolves or reopens
+  a comment.
+- By default review is advice: a form can be published without it.
+- **Organisation → Security → Review before publishing** makes it a rule:
+  - a form is published (or scheduled) only once it is approved;
+  - the person who approves must be someone other than the one who asked for
+    the review or last changed the form, so you need at least two people who
+    can publish;
+  - an approval covers exactly what was approved. Any change afterwards needs
+    a new review.
+- A new version starts with no review of its own.
+
 ### Versions
 
 On the Forms list, the clock icon opens a form's versions. **What changed

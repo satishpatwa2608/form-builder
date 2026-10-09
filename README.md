@@ -65,6 +65,7 @@ on the PATH, or `E2E_MONGODB_URL` pointing at a server that is already running.
 | `10-every-screen-and-templates` | Every builder screen opens cleanly; a webhook; each built-in template publishes and opens |
 | `11-lifecycle` | Opening and closing times, the save-for-later switch, scheduled publishing, comparing and restoring versions |
 | `12-start-from-a-file` | A new form from a spreadsheet and from a JSON Schema |
+| `16-review` | Review before publish made a rule: asked for, commented on, changes asked, fixed, approved, published |
 | `15-fragments` | A section saved to the library, used on three forms (twice on one), changed once and followed by all when next published |
 | `14-extensions` | A customer's own code as a separate process: installed by the operator command, used from the builder, met on a public form, and what happens while it is down |
 | `13-shared-workflows` | A workflow built once in the library and used by two forms; matching its answers to a form's fields; saving a form's own workflow to the library |

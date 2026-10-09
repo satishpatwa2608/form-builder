@@ -18,7 +18,7 @@ export type Permission =
 
 export interface Me {
   user: { id: string; name: string; email: string; twoFactorEnabled: boolean };
-  org: { id: string; name: string; role: OrgRole; permissions: Permission[]; require2fa: boolean };
+  org: { id: string; name: string; role: OrgRole; permissions: Permission[]; require2fa: boolean; requireReview?: boolean };
   session: { mfa: boolean };
   orgs: { id: string; name: string; role: OrgRole }[];
 }
@@ -107,6 +107,8 @@ export interface FormSummary {
   permissions: Permission[];
   publishAt?: string | null;
   scheduleError?: string;
+  /** Where a draft stands with its reviewers. */
+  review?: 'NONE' | 'REQUESTED' | 'CHANGES_REQUESTED' | 'APPROVED';
 }
 
 export interface FormVersionRow {

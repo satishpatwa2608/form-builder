@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarClock, Eye, GitBranch, Link2, Redo2, Save, Send, Sigma, Undo2, Workflow } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Eye, GitBranch, Link2, Redo2, Save, Send, Sigma, Undo2, Workflow, MessageSquare } from 'lucide-react';
 import { Button } from '@ui/button';
 import type { FormDefinition } from '../../types';
 import { FormStatusBadge } from './FormStatusBadge';
@@ -18,6 +18,9 @@ interface BuilderHeaderProps {
   onPreview: () => void;
   onRules: () => void;
   onWorkflow: () => void;
+  onReview: () => void;
+  /** A word for where the draft stands with its reviewers; left out when there is nothing to say. */
+  reviewLabel?: string;
   onSave: () => void;
   onPublish: () => void;
   /** Opens the schedule dialog. Left out when the caller cannot publish or this is not a draft. */
@@ -72,6 +75,10 @@ export function BuilderHeader(props: BuilderHeaderProps) {
         <Button type="button" variant="outline" onClick={props.onWorkflow} title="What happens after a submission">
           <Workflow /> Workflow
           {(form.workflow?.enabled || !!form.automations?.length) && <span className="fb-chip">On</span>}
+        </Button>
+        <Button type="button" variant="outline" onClick={props.onReview} title="Ask for a review, approve, and comment">
+          <MessageSquare /> Review
+          {props.reviewLabel && <span className="fb-chip">{props.reviewLabel}</span>}
         </Button>
         <Button type="button" variant="outline" onClick={props.onPreview}>
           <Eye /> Preview

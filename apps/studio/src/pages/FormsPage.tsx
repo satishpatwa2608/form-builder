@@ -321,6 +321,9 @@ export default function FormsPage() {
                             {f.status === 'DRAFT' && f.publishedVersion && <Badge tone="success">Live v{f.publishedVersion}</Badge>}
                             {f.status === 'DRAFT' && f.publishAt && <Badge tone="accent">Publishes {new Date(f.publishAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</Badge>}
                             {f.status === 'DRAFT' && f.scheduleError && <Badge tone="danger">Scheduled publish failed</Badge>}
+                            {f.status === 'DRAFT' && f.review === 'REQUESTED' && <Badge tone="warn">Waiting for review</Badge>}
+                            {f.status === 'DRAFT' && f.review === 'CHANGES_REQUESTED' && <Badge tone="danger">Changes asked</Badge>}
+                            {f.status === 'DRAFT' && f.review === 'APPROVED' && <Badge tone="success">Approved</Badge>}
                           </div>
                         </td>
                         <td className="st-muted" style={{ whiteSpace: 'nowrap' }}>
