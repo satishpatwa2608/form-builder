@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, Library, LogOut, Menu, Puzzle, ScrollText, Settings, Terminal, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
+import { BarChart3, Building2, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, Library, LogOut, Menu, Puzzle, ScrollText, Settings, Terminal, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { useAuth } from '../lib/auth';
 import type { Permission } from '../lib/types';
@@ -74,6 +74,15 @@ export function AppShell() {
           <Nav items={WORK} onPick={() => setOpen(false)} />
           <div className="st-side__label">Administration</div>
           <Nav items={ADMIN} onPick={() => setOpen(false)} />
+          {me?.operator && (
+            <>
+              <div className="st-side__label">This installation</div>
+              <NavLink to="/customers" className="st-nav" onClick={() => setOpen(false)}>
+                <Building2 size={17} />
+                Customers
+              </NavLink>
+            </>
+          )}
         </nav>
         <div className="st-side__foot">
           <NavLink to="/account" className="st-nav" onClick={() => setOpen(false)}>

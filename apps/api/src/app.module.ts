@@ -83,6 +83,8 @@ import { SignaturesService } from './signatures/signatures.service';
 import { PortalService } from './portal/portal.service';
 import { OrgMailService } from './mail/org-mail.service';
 import { OrgLogService } from './logs/org-log.service';
+import { OperatorService } from './operator/operator.service';
+import { OperatorController } from './operator/operator.controller';
 import { OrgLogController } from './logs/org-log.controller';
 import { OrgLog, OrgLogSchema } from './logs/log.schema';
 import { OrgMailController } from './mail/org-mail.controller';
@@ -209,6 +211,7 @@ export class AppModule {
         PortalController,
         OrgMailController,
         OrgLogController,
+        OperatorController,
         SignaturesController,
         DocumentsController,
         FormReviewController,
@@ -273,6 +276,7 @@ export class AppModule {
         PortalService,
         OrgMailService,
         OrgLogService,
+        OperatorService,
         DocumentsService,
         FormReviewService,
         FormAutomationService,

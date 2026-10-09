@@ -82,12 +82,24 @@ through the person's browser. Three things to know when hosting it:
 
 - Nobody can sign up, except the addresses in `OPERATOR_EMAILS` (comma-separated), who are the people
   running the installation. The sign-in page then offers no account to create.
-- An operator adds each customer under **Account → Add a customer**, choosing the plan bought, invites the
-  customer's person under Members, makes them an owner, and leaves the organisation.
+- An operator adds each customer on the **Customers** page (see below): the customer's name, the plan bought
+  and their owner's email. The owner gets an invitation; the operator is never a member of the customer.
 - Everyone else joins an organisation by invitation or through its single sign-on, as before.
 - A customer cannot add organisations or choose a plan.
 
 An operator is otherwise an ordinary user: being one gives no sight of any customer's organisation.
+
+### The Customers page
+
+Operators have **Customers** in the menu (`/customers`). It lists every organisation on the installation with
+its plan, its owners (and anyone invited to own it who has not accepted), how many people, forms and
+responses this month it has, and when something was last done in it. From it an operator adds a customer,
+changes a customer's plan (recorded in the customer's own audit trail as changed by the operator), and sends
+an owner invitation again or to someone else.
+
+It shows size and activity only. It does not open a customer's forms, responses, members or settings, and to
+anyone who is not an operator the page and its routes (`/operator/customers`) answer "not found".
+Suspending or deleting a customer is not on the page yet.
 
 ## Each organisation's log
 

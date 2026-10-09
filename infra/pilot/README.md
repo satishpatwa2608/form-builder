@@ -50,8 +50,8 @@ Changed `compose.yml`, `Caddyfile` or a script: copy it to `s3://fb-pilot-547878
 ## Customers
 
 Sign-up is closed on the pilot (`/fb-pilot/SIGNUP=closed`) and new organisations start on the Free plan.
-The addresses in `/fb-pilot/OPERATOR_EMAILS` add each customer from **Account → Add a customer** with the
-plan bought. See "Who may start an organisation" in `docs/operations.md`.
+The addresses in `/fb-pilot/OPERATOR_EMAILS` see the **Customers** page, where each customer is added with the
+plan bought and its owner invited. See "Who may start an organisation" in `docs/operations.md`.
 
 ## Changing a setting
 

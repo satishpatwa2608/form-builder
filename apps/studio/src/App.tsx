@@ -6,6 +6,7 @@ import AccessPage from './pages/AccessPage';
 import AccountPage from './pages/AccountPage';
 import AuditPage from './pages/AuditPage';
 import LogsPage from './pages/LogsPage';
+import CustomersPage from './pages/CustomersPage';
 import ConnectorsPage from './pages/ConnectorsPage';
 import FormsPage from './pages/FormsPage';
 import MembersPage from './pages/MembersPage';
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="access" element={<AccessPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="logs" element={<LogsPage />} />
+        <Route path="customers" element={<CustomersPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route path="work" element={lazyPage(<InboxRoute />)} />

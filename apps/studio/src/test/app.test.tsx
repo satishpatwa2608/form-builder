@@ -208,21 +208,42 @@ describe('studio', () => {
     expect(await screen.findByRole('link', { name: 'Create an account' })).toBeInTheDocument();
   });
 
-  it('an operator is offered "Add a customer" with a plan; someone who may not add organisations is offered nothing', async () => {
+  it('an operator has a Customers page: every customer with plan, owner and use; one is added and a plan changed there', async () => {
     const user = userEvent.setup();
-    const { calls } = fakeApi({ ...signedIn({ ...ME, operator: true, canCreateOrgs: true } as typeof ME), 'GET /auth/sessions': () => ({ body: [] }), 'POST /orgs': () => ({ status: 201, body: { id: 'o-new', name: 'Sangam' } }), 'POST /auth/switch-org': () => ({ body: { accessToken: 't2' } }) });
-    renderApp('/account');
-    const card = (await screen.findByRole('heading', { name: 'Add a customer' })).closest('.st-card') as HTMLElement;
-    await user.type(within(card).getByLabelText('Organisation name'), 'Sangam');
-    await user.selectOptions(within(card).getByLabelText('Plan'), 'ENTERPRISE');
-    await user.click(within(card).getByRole('button', { name: 'Create and switch' }));
-    await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.path === '/orgs')?.body).toEqual({ name: 'Sangam', plan: 'ENTERPRISE' }));
-    cleanup();
-    fakeApi({ ...signedIn({ ...ME, operator: false, canCreateOrgs: false } as typeof ME), 'GET /auth/sessions': () => ({ body: [] }) });
-    renderApp('/account');
-    expect(await screen.findByRole('heading', { name: /Account/ })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Add a customer' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Another organisation' })).toBeNull();
+    const sangam = { id: 'o2', name: 'Sangam', plan: 'ENTERPRISE', planName: 'Enterprise', createdAt: '2026-10-01T00:00:00.000Z', owners: [{ name: 'Priya', email: 'priya@sangam.test' }], invitedOwners: [], members: 12, memberLimit: null, forms: 4, responsesThisMonth: 1530, lastActiveAt: new Date().toISOString() };
+    const fresh = { id: 'o3', name: 'Newco', plan: 'TEAM', planName: 'Team', createdAt: '2026-10-09T00:00:00.000Z', owners: [], invitedOwners: ['boss@newco.test'], members: 0, memberLimit: 10, forms: 0, responsesThisMonth: 0, lastActiveAt: null };
+    const { calls } = fakeApi({
+      ...signedIn({ ...ME, operator: true, canCreateOrgs: true } as typeof ME),
+      'GET /operator/customers': () => ({ body: [sangam] }),
+      'POST /operator/customers': () => ({ status: 201, body: [fresh, sangam] }),
+      'PATCH /operator/customers/o2': () => ({ body: [fresh, { ...sangam, plan: 'BUSINESS', planName: 'Business', memberLimit: 50 }] }),
+    });
+    renderApp('/customers');
+    const table = await screen.findByRole('table', { name: 'Customers' });
+    const row = await within(table).findByRole('row', { name: /Sangam/ });
+    expect(row).toHaveTextContent('Priya');
+    expect(row).toHaveTextContent('1,530');
+    expect(row).toHaveTextContent('Today');
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Customers' })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Customer's name"), 'Newco');
+    await user.type(screen.getByLabelText("Their owner's email"), 'boss@newco.test');
+    await user.click(screen.getByRole('button', { name: 'Add and invite' }));
+    expect(await screen.findByText('Newco was added on the Team plan. An invitation to own it has gone to boss@newco.test.')).toBeInTheDocument();
+    expect(calls.find((c) => c.method === 'POST' && c.path === '/operator/customers')?.body).toEqual({ name: 'Newco', plan: 'TEAM', ownerEmail: 'boss@newco.test' });
+    expect(within(screen.getByRole('row', { name: /Newco/ })).getByText('Invited')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Plan for Sangam'), 'BUSINESS');
+    expect(await screen.findByText('Sangam is now on the Business plan.')).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /Sangam/ })).toHaveTextContent('12 of 50');
+  });
+
+  it('someone who does not run the installation has no Customers in the menu, and the address shows nothing', async () => {
+    fakeApi({ ...signedIn({ ...ME, operator: false, canCreateOrgs: false } as typeof ME), 'GET /auth/sessions': () => ({ body: [] }), 'GET /operator/customers': () => ({ status: 404, body: { message: 'Not found' } }) });
+    renderApp('/customers');
+    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('link', { name: 'Customers' })).toBeNull();
+    expect(screen.queryByRole('table', { name: 'Customers' })).toBeNull();
   });
 
   it('SSO: an SSO_REQUIRED sign-in points to single sign-on, and a returned error is shown', async () => {

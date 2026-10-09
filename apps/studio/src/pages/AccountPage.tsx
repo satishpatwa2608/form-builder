@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Copy, Download, ShieldCheck, ShieldOff } from 'lucide-react';
@@ -222,7 +223,15 @@ export default function AccountPage() {
         {!needsTwoFactor && (
           <>
             <PasswordCard />
-            {me.canCreateOrgs !== false && <NewOrgCard operator={!!me.operator} />}
+            {me.operator ? (
+              <Card title="Customers" subtitle="You run this installation: add customers and set their plans on the Customers page.">
+                <Link className="st-link" to="/customers">
+                  Open Customers
+                </Link>
+              </Card>
+            ) : (
+              me.canCreateOrgs !== false && <NewOrgCard operator={false} />
+            )}
           </>
         )}
       </div>

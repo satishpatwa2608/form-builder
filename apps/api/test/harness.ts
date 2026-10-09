@@ -23,9 +23,11 @@ export async function startApp(env: Record<string, string> = {}) {
     ...env,
   });
   const outbox: Mail[] = [];
+  /** What the app sends mail with; a test can swap `send` to make sending fail. */
+  const mailer: { send: (m: Mail) => Promise<void> } = { send: async (m: Mail) => void outbox.push(m) };
   const moduleRef = await Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
     .overrideProvider(MAILER)
-    .useValue({ send: async (m: Mail) => void outbox.push(m) })
+    .useValue(mailer)
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app, config);
@@ -71,6 +73,7 @@ export async function startApp(env: Record<string, string> = {}) {
     localUrl,
     config,
     outbox,
+    mailer,
     api,
     bearer,
     tokenFrom,
