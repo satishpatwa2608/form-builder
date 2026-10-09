@@ -6,21 +6,19 @@ noted.
 
 ## 1. Where the code lives
 
-**Not done: it needs access only the owner has.** This machine has no GitHub
-command-line tool and no key that GitHub accepts, so no remote could be
-created or pushed to.
+**Done on 9 October:** a private repository at
+`github.com/satishpatwa2608/form-builder`, with all the work on `main`.
 
-What was done instead:
-
-- `main` now holds all the work (the feature branches were stacked in a line
-  and are all contained in it).
-- A complete copy of the repository is kept outside the project folder, in
-  `~/Documents/form-builder-backup/`, as git bundles. Restore one with
-  `git clone <file>.bundle`.
-
-To finish: create an empty **private** repository, then
-`git remote add origin <url> && git push -u origin main`. CI
-(`.github/workflows/ci.yml`) runs on the first push; it has never run.
+- It is under a personal account, because that is the account this machine is
+  signed in to. `tech-prism` is a separate personal account, and only that
+  account can create repositories in it. To move it there later, use the
+  repository's Settings → Transfer.
+- CI ran for the first time on the push. Three things it found were fixed (a
+  package not built before type-checking, a test constant the secret scanner
+  mistook for a key, and a time limit too short for the build machine). All
+  five checks now pass.
+- A complete copy is also kept in `~/Documents/form-builder-backup/` as git
+  bundles.
 
 ## 2. AWS account and infrastructure tooling
 

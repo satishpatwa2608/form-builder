@@ -3,8 +3,8 @@
 _Last updated: 9 October 2026_
 
 **In one line:** the product works end to end on one machine and is well
-tested; it is not launch-ready, because the code is not in a remote
-repository, nothing runs in a real cloud, and there is no billing.
+tested, and the code is in a private repository with passing checks; it is
+not launch-ready, because nothing runs in a real cloud and there is no billing.
 
 Choices made on 9 October are recorded in [decisions.md](decisions.md).
 
@@ -65,14 +65,13 @@ An independent review of the new code found issues; all were fixed, tested and r
 - **Plans** count extensions.
 
 ### Tests
-See the figures in the last hand-over message for the run of 9 October. Suites: engine, connectors, SDK, API (unit and end-to-end on an in-memory database), studio, runtime, the outbound proxy, 17 browser scenarios files (`pnpm e2e`) and the Docker hosting suite (`pnpm e2e:docker`). CI is written and has never run, because the code has not been pushed anywhere.
+See the figures in the last hand-over message for the run of 9 October. Suites: engine, connectors, SDK, API (unit and end-to-end on an in-memory database), studio, runtime, the outbound proxy, 17 browser scenarios files (`pnpm e2e`) and the Docker hosting suite (`pnpm e2e:docker`). CI runs on every push to the private repository and passes.
 
 ## What needs to be done
 
 ### Needs you
 | Item | Why it's blocked |
 |---|---|
-| A private git repository | No GitHub access on the build machine. The work is on `main` locally, with copies in `~/Documents/form-builder-backup/`. |
 | AWS account | Separate from Sangam recommended. `infra/terraform/` is written and validated, never applied. |
 | MongoDB Atlas, domain names, certificates | Inputs the Terraform expects. |
 | Billing provider (Razorpay / Stripe) | Needs the account and prices. Until then plans are set by hand: `pnpm --filter @fb/api set-plan <orgId> <PLAN>` |
@@ -96,7 +95,6 @@ See the figures in the last hand-over message for the run of 9 October. Suites: 
 - External penetration test.
 - DPDP documents: privacy policy, data processing agreement, retention policy.
 - Backup and restore drill, incident runbook, uptime target.
-- First CI run on the pushed repository, and fixing whatever it finds.
 
 ## Running locally
 - API `http://localhost:4100` · Studio `http://localhost:5173` · Public forms `http://localhost:5174` · MongoDB on port 27029.
