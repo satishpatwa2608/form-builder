@@ -75,6 +75,9 @@ import { WorkflowsController } from './workflows/workflows.controller';
 import { FormComment, FormCommentSchema } from './forms/form-comment.schema';
 import { FormReviewService } from './forms/form-review.service';
 import { FormReviewController } from './forms/form-review.controller';
+import { DocumentBatch, DocumentBatchSchema } from './documents/document-batch.schema';
+import { DocumentsService } from './documents/documents.service';
+import { DocumentsController } from './documents/documents.controller';
 import { FragmentRow, FragmentSchema } from './fragments/fragment.schema';
 import { FragmentsService } from './fragments/fragments.service';
 import { FragmentsController } from './fragments/fragments.controller';
@@ -153,6 +156,7 @@ export class AppModule {
           { name: SharedWorkflowRow.name, schema: SharedWorkflowSchema },
           { name: ExtensionRow.name, schema: ExtensionSchema },
           { name: FragmentRow.name, schema: FragmentSchema },
+          { name: DocumentBatch.name, schema: DocumentBatchSchema },
           { name: FormComment.name, schema: FormCommentSchema },
         ]),
         JwtModule.register({ secret: config.JWT_SECRET, signOptions: { algorithm: 'HS256' }, verifyOptions: { algorithms: ['HS256'] } }),
@@ -185,6 +189,7 @@ export class AppModule {
         WorkflowsController,
         ExtensionsController,
         FragmentsController,
+        DocumentsController,
         FormReviewController,
         ExtensionPublicController,
         FormPublicController,
@@ -243,6 +248,7 @@ export class AppModule {
         WorkflowsService,
         ExtensionsService,
         FragmentsService,
+        DocumentsService,
         FormReviewService,
         FormAutomationService,
         FormHandlerRegistry,

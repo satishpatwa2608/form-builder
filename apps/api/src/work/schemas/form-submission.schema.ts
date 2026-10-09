@@ -65,6 +65,9 @@ export class FormSubmission {
   @Prop({ type: String, default: 'MEDIUM' })
   priority: string;
 
+  /** The stored PDF of this response, once one has been made: where it is and when. */
+  @Prop({ type: MongooseSchema.Types.Mixed, default: null })
+  document: { key: string; size: number; at: Date } | null;
   /** Work fields the team fills in (root cause, resolution...). The submitted `payload` never changes. */
   @Prop({ type: MongooseSchema.Types.Mixed, default: {} })
   work: Record<string, unknown>;

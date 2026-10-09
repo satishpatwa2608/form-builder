@@ -15,6 +15,10 @@ export interface ObjectStore {
   remove(key: string): Promise<void>;
   /** A short-lived download link. */
   presignGet(key: string, fileName: string): Promise<string>;
+  /** Stores bytes the server itself made (a generated document). */
+  put(key: string, data: Buffer, contentType: string): Promise<void>;
+  /** The whole object, or null when there is none. */
+  get(key: string): Promise<Buffer | null>;
 }
 export const OBJECT_STORE = Symbol('OBJECT_STORE');
 
@@ -32,6 +36,18 @@ export class S3ObjectStore implements ObjectStore {
       url,
       headers: { 'Content-Type': contentType },
     }));
+  }
+  async put(key: string, data: Buffer, contentType: string) {
+    await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: data, ContentType: contentType }));
+  }
+  async get(key: string) {
+    try {
+      const res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      return res.Body ? Buffer.from(await res.Body.transformToByteArray()) : null;
+    } catch (e) {
+      if ((e as { name?: string }).name === 'NoSuchKey') return null;
+      throw e;
+    }
   }
   async readHead(key: string, bytes: number) {
     const obj = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: `bytes=0-${bytes - 1}` }));
@@ -103,6 +119,12 @@ export class LocalObjectStore implements ObjectStore {
   async presignPut(key: string, contentType: string, size: number) {
     const token = this.sign({ op: 'put', key, contentType, size, exp: Date.now() + 300_000 });
     return { url: `${this.apiUrl}/public/local-store/${token}`, headers: { 'Content-Type': contentType } };
+  }
+  async put(key: string, data: Buffer) {
+    await this.write(key, data);
+  }
+  async get(key: string) {
+    return this.read(key).catch(() => null);
   }
   async readHead(key: string, bytes: number) {
     const fh = await open(this.path(key), 'r');

@@ -29,6 +29,11 @@ export interface FormDefinition {
    */
   saveForLater?: boolean;
   /**
+   * The PDF made of each response. `keep` stores one with every submission as it
+   * arrives; without it a PDF is still made when someone asks for it.
+   */
+  document?: { keep?: boolean; title?: string; footer?: string; showEmpty?: boolean };
+  /**
    * Checks the organisation's extension runs before a submission is accepted
    * (x-<ref>-<check>), after the form's own rules have passed.
    */

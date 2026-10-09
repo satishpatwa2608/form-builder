@@ -1,0 +1,202 @@
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import pdfParse from 'pdf-parse';
+import { OBJECT_STORE, type ObjectStore } from '../src/common/object-store';
+import { JobQueue } from '../src/jobs/job-queue.service';
+import { startApp, type Harness } from './harness';
+
+const levels = [{ label: 'Minor', value: 'LOW' }, { label: 'Serious', value: 'HIGH' }];
+const form = (code: string, extra: object = {}, label = 'Customer') => ({
+  name: `${code} form`,
+  code,
+  businessId: '',
+  access: 'PUBLIC',
+  submission: { method: 'POST', endpointId: 'default-submit' },
+  fields: [
+    { id: 'a', type: 'TEXT', name: 'customer', label, required: true },
+    { id: 'b', type: 'RADIO', name: 'severity', label: 'Severity', dataSource: { type: 'STATIC', options: levels } },
+    { id: 'r', type: 'REPEAT', name: 'items', label: 'Items' },
+    { id: 'i', type: 'TEXT', name: 'item', label: 'Item', parentId: 'r' },
+    { id: 'q', type: 'NUMBER', name: 'qty', label: 'Qty', parentId: 'r' },
+  ],
+  workflow: { enabled: true, refPrefix: code.slice(0, 3), statuses: [{ key: 'NEW', label: 'Newly arrived', category: 'OPEN' }, { key: 'CLOSED', label: 'Closed', category: 'DONE' }], assignment: { type: 'NONE' } },
+  ...extra,
+});
+
+describe('Documents of record (e2e)', () => {
+  let h: Harness;
+  let owner: string;
+  let designer: string;
+  let viewer: string;
+  let orgId: string;
+  let folder: string;
+  let dir: string;
+  let store: ObjectStore;
+  let queue: JobQueue;
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'fb-docs-'));
+    h = await startApp({ LOCAL_STORAGE_DIR: dir });
+    store = h.app.get<ObjectStore>(OBJECT_STORE);
+    queue = h.app.get(JobQueue);
+    await h.signUp('Asha', 'asha@acme.test', 'Acme Trading');
+    owner = (await h.login('asha@acme.test')).token;
+    orgId = (await h.api().get('/auth/me').set(h.bearer(owner))).body.org.id;
+    folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Service' }).expect(201)).body[0].id;
+    await h.addMember(owner, 'Dev', 'dev@acme.test', 'DESIGNER');
+    await h.addMember(owner, 'Vik', 'vik@acme.test', 'VIEWER');
+    designer = (await h.login('dev@acme.test')).token;
+    viewer = (await h.login('vik@acme.test')).token;
+    await h.api().put('/org/branding').set(h.bearer(owner)).send({ primaryColor: '#0f766e' }).expect(200);
+  });
+  afterAll(async () => {
+    await h?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const publish = async (definition: object) => {
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition }).expect(201)).body.definition.id as string;
+    await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+    return id;
+  };
+  const submit = async (code: string, values: object) => (await h.api().post(`/public/forms/${code}/submissions?org=${orgId}`).send({ values }).expect(201)).body as { submissionId: string; ref: string };
+  const pdfOf = (res: { body: Buffer }) => pdfParse(res.body).then((p) => ({ pages: p.numpages, text: p.text.replace(/\s+/g, ' ') }));
+  const download = (formId: string, sid: string, token = owner) => h.api().get(`/forms/${formId}/submissions/${sid}/document`).set(h.bearer(token)).buffer(true).parse((res, cb) => { const chunks: Buffer[] = []; res.on('data', (c: Buffer) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks))); });
+  const stored = (code: string) => { try { return readdirSync(join(dir, 'documents', orgId, code)); } catch { return []; } };
+  const waitFor = async (check: () => boolean | Promise<boolean>, what: string) => {
+    for (let i = 0; i < 200; i++) {
+      if (await check()) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error(`timed out waiting for ${what}`);
+  };
+
+  it('a form that keeps a PDF has one made and stored as each response arrives, with no browser', async () => {
+    const id = await publish(form('KEEP', { document: { keep: true, footer: 'Acme confidential' } }));
+    const sub = await submit('KEEP', { customer: 'Asha Textiles', severity: 'HIGH', items: [{ item: 'Pen', qty: 2 }, { item: 'Ink', qty: 1 }] });
+    await waitFor(() => stored('KEEP').length === 1, 'the stored document');
+    expect(stored('KEEP')).toEqual([`${sub.submissionId}.pdf`]);
+
+    const res = await download(id, sub.submissionId).expect(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['content-disposition']).toBe(`inline; filename="${sub.ref}.pdf"`);
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    const { text, pages } = await pdfOf(res);
+    expect(pages).toBe(1);
+    // Branded, with the record's own reference and status in words, the option's label, and the rows as a table.
+    for (const part of ['Acme Trading', 'KEEP form', `Reference ${sub.ref}`, 'Status Newly arrived', 'Asha Textiles', 'Serious', 'Items', 'Pen', 'Ink', 'Acme confidential']) expect(text).toContain(part);
+    expect(text).not.toContain('HIGH');
+  });
+
+  it('without that setting nothing is made until someone asks; then it is made once and kept', async () => {
+    const id = await publish(form('LAZY'));
+    const sub = await submit('LAZY', { customer: 'Ravi' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(stored('LAZY')).toEqual([]);
+    const first = await download(id, sub.submissionId).expect(200);
+    expect(stored('LAZY')).toEqual([`${sub.submissionId}.pdf`]);
+    // Asked again, the same stored document comes back, byte for byte.
+    await new Promise((r) => setTimeout(r, 1100));
+    const second = await download(id, sub.submissionId).expect(200);
+    expect(Buffer.compare(first.body, second.body)).toBe(0);
+    expect(stored('LAZY')).toHaveLength(1);
+  });
+
+  it('says what was answered at the time: a later change to the form does not rewrite an old response', async () => {
+    const id = await publish(form('VERS'));
+    const old = await submit('VERS', { customer: 'Before' });
+    const next = (await h.api().post(`/forms/${id}/new-version`).set(h.bearer(owner)).expect(200)).body.definition.id;
+    await h.api().put(`/forms/${next}`).set(h.bearer(owner)).send(form('VERS', {}, 'Company name')).expect(200);
+    await h.api().post(`/forms/${next}/publish`).set(h.bearer(owner)).expect(200);
+    const fresh = await submit('VERS', { customer: 'After' });
+    const before = (await pdfOf(await download(next, old.submissionId).expect(200))).text;
+    const after = (await pdfOf(await download(next, fresh.submissionId).expect(200))).text;
+    expect(before).toMatch(/Customer\s*Before/);
+    expect(before).not.toContain('Company name');
+    expect(after).toMatch(/Company name\s*After/);
+  });
+
+  it('only people who may read a form\'s responses get its documents, and only that form\'s', async () => {
+    const id = await publish(form('PRIV'));
+    const other = await publish(form('OTHER'));
+    const sub = await submit('PRIV', { customer: 'Secret Ltd' });
+    await download(id, sub.submissionId, designer).expect(200);
+    await download(id, sub.submissionId, viewer).expect(404);
+    await h.api().get(`/forms/${id}/submissions/${sub.submissionId}/document`).expect(401);
+    // Not through another form's address, and not a response that does not exist.
+    await download(other, sub.submissionId).expect(404);
+    await download(id, '00000000-0000-4000-8000-000000000000').expect(404);
+    await h.signUp('Zed', 'zed@other.test', 'Other');
+    const stranger = (await h.login('zed@other.test')).token;
+    await download(id, sub.submissionId, stranger).expect(404);
+  });
+
+  it('if storage fails the job is tried again and ends with exactly one document', async () => {
+    const id = await publish(form('RETRY', { document: { keep: true } }));
+    const real = store.put.bind(store);
+    let failures = 2;
+    const put = jest.spyOn(store, 'put').mockImplementation(async (key, data, type) => {
+      if (key.includes('/RETRY/') && failures-- > 0) throw new Error('storage unavailable');
+      return real(key, data, type);
+    });
+    try {
+      const sub = await submit('RETRY', { customer: 'Unlucky' });
+      await new Promise((r) => setTimeout(r, 200));
+      expect(stored('RETRY')).toEqual([]);
+      // The queue retries later; run it as if that time had come, twice over.
+      await queue.drain(new Date(Date.now() + 3_600_000));
+      await queue.drain(new Date(Date.now() + 7_200_000));
+      expect(stored('RETRY')).toEqual([`${sub.submissionId}.pdf`]);
+      expect(put.mock.calls.filter(([key]) => key.includes('/RETRY/'))).toHaveLength(3);
+      expect((await pdfOf(await download(id, sub.submissionId).expect(200))).text).toContain('Unlucky');
+      // A response is never refused or lost because its document could not be made.
+      expect((await h.api().get(`/forms/${id}/submissions`).set(h.bearer(owner)).expect(200)).body.rows).toHaveLength(1);
+    } finally {
+      put.mockRestore();
+    }
+  });
+
+  describe('the generation API', () => {
+    let id: string;
+    const generate = (body: object, token = designer) => h.api().post(`/forms/${id}/document`).set(h.bearer(token)).send(body).buffer(true).parse((res, cb) => { const chunks: Buffer[] = []; res.on('data', (c: Buffer) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks))); });
+    beforeAll(async () => {
+      id = await publish(form('GEN', { document: { title: 'Service certificate' } }));
+    });
+
+    it('answers in, the form\'s PDF out, nothing stored', async () => {
+      const res = await generate({ values: { customer: 'Meera', severity: 'LOW' }, reference: 'CERT/2026/7' }).expect(200);
+      expect(res.headers['content-disposition']).toBe('inline; filename="GEN-CERT_2026_7.pdf"');
+      const { text } = await pdfOf(res);
+      for (const part of ['Service certificate', 'Reference CERT/2026/7', 'Meera', 'Minor']) expect(text).toContain(part);
+      expect(stored('GEN')).toEqual([]);
+    });
+
+    it('refuses answers that do not fit the form, and people who do not design it', async () => {
+      expect((await h.api().post(`/forms/${id}/document`).set(h.bearer(designer)).send({ values: 'nope' }).expect(400)).body.message).toBe('Give the answers as an object: field name to value');
+      await h.api().post(`/forms/${id}/document`).set(h.bearer(designer)).send({ values: { customer: { $ne: null } } }).expect(400);
+      await h.api().post(`/forms/${id}/document`).set(h.bearer(viewer)).send({ values: { customer: 'x' } }).expect(403);
+      await h.api().post(`/forms/${id}/document`).send({ values: { customer: 'x' } }).expect(401);
+    });
+
+    it('many at once are queued, checked before anything is made, and each can be fetched when done', async () => {
+      const items = Array.from({ length: 12 }, (_, i) => ({ customer: `Customer ${i + 1}`, severity: i % 2 ? 'HIGH' : 'LOW' }));
+      expect((await h.api().post(`/forms/${id}/documents/batch`).set(h.bearer(designer)).send({ items: [] }).expect(400)).body.message).toBe('Give the answers for at least one document');
+      expect((await h.api().post(`/forms/${id}/documents/batch`).set(h.bearer(designer)).send({ items: [...items, 'bad'] }).expect(400)).body.message).toMatch(/^Item 13: /);
+      expect((await h.api().post(`/forms/${id}/documents/batch`).set(h.bearer(designer)).send({ items: Array.from({ length: 1001 }, () => ({ customer: 'x' })) }).expect(400)).body.message).toBe('A batch makes at most 1000 documents');
+      await h.api().post(`/forms/${id}/documents/batch`).set(h.bearer(viewer)).send({ items }).expect(403);
+
+      const batch = (await h.api().post(`/forms/${id}/documents/batch`).set(h.bearer(designer)).send({ items }).expect(201)).body;
+      expect(batch).toMatchObject({ total: 12, formCode: 'GEN' });
+      await waitFor(async () => (await h.api().get(`/documents/batches/${batch.id}`).set(h.bearer(designer))).body.status === 'DONE', 'the batch');
+      expect((await h.api().get(`/documents/batches/${batch.id}`).set(h.bearer(designer)).expect(200)).body).toMatchObject({ total: 12, done: 12, failed: 0, status: 'DONE' });
+      const last = await h.api().get(`/documents/batches/${batch.id}/12`).set(h.bearer(designer)).buffer(true).parse((res, cb) => { const chunks: Buffer[] = []; res.on('data', (c: Buffer) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks))); }).expect(200);
+      expect((await pdfOf(last)).text).toContain('Customer 12');
+      expect((await pdfOf(last)).text).toContain('Reference 12 of 12');
+      await h.api().get(`/documents/batches/${batch.id}/13`).set(h.bearer(designer)).expect(404);
+      await h.api().get(`/documents/batches/${batch.id}/0`).set(h.bearer(designer)).expect(404);
+      await h.api().get(`/documents/batches/${batch.id}`).set(h.bearer(viewer)).expect(403);
+      expect(readdirSync(join(dir, 'documents', orgId, 'batches', batch.id))).toHaveLength(12);
+    });
+  });
+});
