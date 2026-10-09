@@ -27,3 +27,4 @@ export * from './working-time';
 export * from './definition.schema';
 export * from './diff';
 export * from './import-form';
+export * from './shared-workflow';

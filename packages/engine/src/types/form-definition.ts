@@ -60,6 +60,12 @@ export interface FormDefinition {
   styles?: FormStyle[];
   /** What happens to submissions: statuses, assignment, SLAs. */
   workflow?: WorkflowConfig;
+  /**
+   * The shared workflow this form uses instead of one of its own (see
+   * shared-workflow.ts). On a published version `workflow` and `automations`
+   * hold the copy that was taken when it was published.
+   */
+  workflowRef?: { id: string; map?: Record<string, string>; refPrefix?: string };
   /** Who sees and works this form's records in the Inbox (default: everyone with a records module). */
   recordAccess?: RecordAccess;
   /** When X happens (and a condition holds), do Y. */

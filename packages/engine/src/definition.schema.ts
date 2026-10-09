@@ -926,6 +926,9 @@ const formDefinitionShapeObject = z.object({
     })
     .optional(),
   automations: z.array(automationSchema).max(30).optional(),
+  workflowRef: z
+    .object({ id: z.string().min(1).max(64), map: z.record(z.string(), z.string().max(100)).optional(), refPrefix: z.string().max(10).optional() })
+    .optional(),
   createdBy: z.string(),
   updatedBy: z.string(),
   createdAt: z.string().optional(),
