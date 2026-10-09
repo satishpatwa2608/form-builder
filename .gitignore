@@ -17,3 +17,8 @@ infra/terraform/.terraform/
 *.tfstate.*
 *.tfvars
 !example.tfvars
+
+# A key file must never be committed, wherever it is dropped.
+awskey
+awskey*
+*.pem
