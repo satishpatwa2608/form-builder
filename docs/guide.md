@@ -144,6 +144,34 @@ for the public until the restored draft is published.
 - Forms with a workflow create **work items**: Work inbox, Dashboard,
   statuses, actions, approvals, SLA with working time, emails and webhooks.
 
+### Fragments: one section for several forms
+
+A **fragment** is a section of fields kept once in the library and used on
+any number of forms: an address, bank details, a declaration.
+
+- **To make one** (admins): in a form, select a section and choose **Save as
+  fragment**. That section becomes a copy of it.
+- **To use one** (anyone who can design the form): pick it under **Fragments**
+  in the palette. It is added as a section at the end; move it where you want.
+- **Its fields are the library's.** On a form they are shown but cannot be
+  changed, moved or deleted. The section itself is yours: rename it, move it,
+  remove it.
+- **Twice on one form** (a billing and a shipping address): the second copy is
+  given a **prefix**, so its answers are stored apart (`shipping_city`). You
+  can change the prefix in the section's settings.
+- **To change a fragment** (admins): in any form that uses it, select the
+  section, choose **Change this fragment**, edit its fields, then **Save to
+  the library**.
+- **A change reaches each form the next time that form is published.** Live
+  forms are never altered. A draft opened in the builder is brought up to date
+  straight away, so you see what will be published.
+- **Detach from the library** keeps the fields as that form's own and stops
+  following the fragment.
+- **Fragments** in the menu lists them with the forms that use each. One in
+  use cannot be deleted.
+- A field inside a fragment may depend only on other fields of the same
+  fragment. Rules on the form may use a fragment's fields like any others.
+
 ### One workflow for several forms
 
 A workflow can belong to one form, or sit in the **Workflows** library and be

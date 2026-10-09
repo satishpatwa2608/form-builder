@@ -1,3 +1,4 @@
+import { fragmentSectionOf, fragmentUse } from '../../engine';
 import { create } from 'zustand';
 import type { FieldType, FormDefinition, FormField } from '../../types';
 import { createField, DEFAULT_CAPTCHA_CONFIG, uniqueFieldName } from '../field-catalog';
@@ -29,6 +30,12 @@ export interface FormBuilderState {
   future: FormDefinition[];
   /** Identifies the last edit so rapid edits to the same setting coalesce. */
   lastEdit?: { key: string; at: number };
+  /**
+   * The fragment section whose fields are being changed here, to be saved back to the library.
+   * Every other fragment section's fields are a copy and cannot be edited on the form.
+   */
+  unlockedFragment?: string;
+  unlockFragment: (sectionId?: string) => void;
 
   load: (form: FormDefinition) => void;
   /** Close the open form (leaving the builder). */
@@ -100,16 +107,33 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
   /** Field id -> the name rules still use for it, while its key is being retyped (see updateField). */
   const heldNames = new Map<string, string>();
 
+  /** A field inside a fragment section is the library's, not this form's, unless that section is being edited. */
+  const locked = (fieldId: string | undefined): boolean => {
+    const { form, unlockedFragment } = get();
+    if (!form || !fieldId) return false;
+    const section = fragmentSectionOf(form.fields, fieldId);
+    return !!section && section.id !== unlockedFragment;
+  };
+  /** Nothing may be put into a fragment section, or into anything inside one, either. */
+  const lockedPlace = (parentId: string | undefined): boolean => {
+    const { form, unlockedFragment } = get();
+    const parent = form?.fields.find((f) => f.id === parentId);
+    if (!form || !parent) return false;
+    return (!!fragmentUse(parent) && parent.id !== unlockedFragment) || locked(parent.id);
+  };
+
   return {
     form: null,
     selectedFieldId: undefined,
+    unlockedFragment: undefined,
+    unlockFragment: (sectionId) => set({ unlockedFragment: sectionId }),
     isDirty: false,
     past: [],
     future: [],
 
     load: (form) => {
       heldNames.clear();
-      set({ form, selectedFieldId: undefined, isDirty: false, past: [], future: [], lastEdit: undefined });
+      set({ form, selectedFieldId: undefined, isDirty: false, past: [], future: [], lastEdit: undefined, unlockedFragment: undefined });
     },
 
     reset: () => {
@@ -129,7 +153,7 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
       const { form } = get();
       if (!form) return '';
       if (type === 'CAPTCHA' && form.fields.some((f) => f.type === 'CAPTCHA')) return '';
-      if (typeof place === 'object' && !fitsIn(form.fields, [type], place.parentId)) return '';
+      if (typeof place === 'object' && (lockedPlace(place.parentId) || !fitsIn(form.fields, [type], place.parentId))) return '';
       const field = createField(type, form.fields.map((f) => f.name));
       let fields: FormField[];
       if (typeof place === 'number' || place === undefined) {
@@ -160,7 +184,7 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
     updateField: (fieldId, changes) => {
       const { form } = get();
       const current = form?.fields.find((f) => f.id === fieldId);
-      if (!form || !current) return;
+      if (!form || !current || locked(fieldId)) return;
       let next = withFields(form.fields.map((f) => (f.id === fieldId ? { ...f, ...changes } : f)));
       if (changes.name !== undefined && changes.name !== current.name) {
         // The key is typed a character at a time. While it is empty, half-typed or the same as
@@ -179,13 +203,13 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
 
     replaceField: (field) => {
       const { form } = get();
-      if (!form) return;
+      if (!form || locked(field.id)) return;
       commit(withFields(form.fields.map((f) => (f.id === field.id ? field : f))), `field:${field.id}:replace`);
     },
 
     removeField: (fieldId, keepChildren = false) => {
       const { form, selectedFieldId } = get();
-      if (!form) return;
+      if (!form || locked(fieldId)) return;
       const next = withFields(removeFromList(form.fields, fieldId, keepChildren));
       if (!next.fields.some((f) => f.type === 'CAPTCHA')) delete next.captcha;
       const stillThere = next.fields.some((f) => f.id === selectedFieldId);
@@ -196,27 +220,27 @@ export const useFormBuilderStore = create<FormBuilderState>()((set, get) => {
       const { form } = get();
       const field = form?.fields.find((f) => f.id === fieldId);
       if (form && field && !fitsIn(form.fields, [field.type, ...descendantFields(form.fields, field.id).map((f) => f.type)], place.parentId)) return;
-      if (!form || !field) return;
+      if (!form || !field || locked(fieldId) || lockedPlace(place.parentId)) return;
       const fields = placeField(form.fields, field, place);
       if (fields !== form.fields) commit(withFields(fields));
     },
 
     moveSibling: (fieldId, delta) => {
       const { form } = get();
-      if (!form) return;
+      if (!form || locked(fieldId)) return;
       const fields = moveAmongSiblings(form.fields, fieldId, delta);
       if (fields !== form.fields) commit(withFields(fields));
     },
 
     setColumns: (fieldId, weights) => {
       const { form } = get();
-      if (!form) return;
+      if (!form || locked(fieldId)) return;
       commit(withFields(setColumnWeights(form.fields, fieldId, weights)), `field:${fieldId}:columns`);
     },
 
     duplicateField: (fieldId) => {
       const { form } = get();
-      if (!form) return;
+      if (!form || locked(fieldId)) return;
       // One CAPTCHA per form: never copy it, alone or inside a container.
       const subtree = [form.fields.find((f) => f.id === fieldId), ...descendantFields(form.fields, fieldId)];
       if (!subtree[0] || subtree.some((f) => f?.type === 'CAPTCHA')) return;

@@ -7,6 +7,7 @@ import WorkingTimePage from '../form/pages/WorkingTimePage';
 import WebhooksPage from '../form/pages/WebhooksPage';
 import WorkflowsPage from '../form/pages/WorkflowsPage';
 import ExtensionsPage from '../form/pages/ExtensionsPage';
+import FragmentsPage from '../form/pages/FragmentsPage';
 import SubmissionsPage from '../form/pages/SubmissionsPage';
 import '../form/styles/form-builder.css';
 import '../form/styles/work-inbox.css';
@@ -53,6 +54,10 @@ export function WebhooksRoute() {
 
 export function WorkflowsRoute() {
   return <WorkflowsPage />;
+}
+
+export function FragmentsRoute() {
+  return <FragmentsPage />;
 }
 
 export function ExtensionsRoute() {

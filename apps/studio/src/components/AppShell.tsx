@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, LogOut, Menu, Puzzle, ScrollText, Settings, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
+import { BarChart3, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, Library, LogOut, Menu, Puzzle, ScrollText, Settings, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { useAuth } from '../lib/auth';
 import type { Permission } from '../lib/types';
@@ -20,6 +20,7 @@ const WORK: NavItem[] = [
   { to: '/', label: 'Overview', icon: Home },
   { to: '/forms', label: 'Forms', icon: ClipboardList },
   { to: '/workflows', label: 'Workflows', icon: Workflow, needs: 'form.view' },
+  { to: '/fragments', label: 'Fragments', icon: Library, needs: 'form.view' },
   { to: '/work', label: 'Work inbox', icon: Inbox, needs: 'record.work' },
   { to: '/work/dashboard', label: 'Dashboard', icon: BarChart3, needs: 'record.work' },
   { to: '/work/new', label: 'New work item', icon: FilePlus2, needs: 'record.work' },

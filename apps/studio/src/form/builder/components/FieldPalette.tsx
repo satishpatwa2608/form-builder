@@ -1,3 +1,5 @@
+import { Library } from 'lucide-react';
+import type { Fragment } from '../../engine';
 import { useCustomFields } from '../../adapters/extensions';
 import { useDraggable } from '@dnd-kit/core';
 import type { FieldType, FormField } from '../../types';
@@ -36,7 +38,15 @@ function PaletteButton({ item, onAdd }: PaletteButtonProps) {
 }
 
 /** Drag a field type onto the canvas, or click it to append. */
-export function FieldPalette({ fields, onAdd }: { fields: FormField[]; onAdd: (type: FieldType) => void }) {
+interface FieldPaletteProps {
+  fields: FormField[];
+  onAdd: (type: FieldType) => void;
+  /** Sections kept in the organisation's library; clicking one adds a copy at the end of the form. */
+  fragments?: Fragment[];
+  onAddFragment?: (fragment: Fragment) => void;
+}
+
+export function FieldPalette({ fields, onAdd, fragments = [], onAddFragment }: FieldPaletteProps) {
   // Fields the organisation's own code draws appear only when its extension offers some.
   const { data: custom = [] } = useCustomFields();
   return (
@@ -49,6 +59,17 @@ export function FieldPalette({ fields, onAdd }: { fields: FormField[]; onAdd: (t
           ))}
         </div>
       ))}
+      {!!fragments.length && onAddFragment && (
+        <div>
+          <div className="fb-panel__title">Fragments</div>
+          {fragments.map((fragment) => (
+            <button key={fragment.id} type="button" className="fb-palette-item" title={fragment.description || 'Adds this section at the end of the form'} onClick={() => onAddFragment(fragment)}>
+              <Library size={15} aria-hidden="true" />
+              {fragment.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

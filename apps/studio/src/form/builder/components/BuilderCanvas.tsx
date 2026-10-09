@@ -1,3 +1,5 @@
+import { fragmentUse } from '../../engine';
+import { useFormBuilderStore } from '../store/useFormBuilderStore';
 import type { MouseEvent } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { ArrowDown, ArrowUp, Copy, GripVertical, Trash2 } from 'lucide-react';
@@ -58,6 +60,10 @@ function FieldCard({
   ...shared
 }: Shared & { field: FormField; slot: Pick<Placement, 'parentId' | 'column'>; index: number; count: number }) {
   const { selectedFieldId, readOnly, onSelect, onMove, onDuplicate, onRemove } = shared;
+  // A section copied from a fragment shows its fields but offers nothing to do to them, unless it is being changed here.
+  const unlockedFragment = useFormBuilderStore((s) => s.unlockedFragment);
+  const isFragment = !!fragmentUse(field);
+  const inside = isFragment && unlockedFragment !== field.id ? { ...shared, readOnly: true } : shared;
   const drag = useDraggable({ id: `field:${field.id}`, data: { source: 'canvas', id: field.id }, disabled: readOnly });
   const drop = useDroppable({ id: `before:${field.id}`, data: { ...slot, beforeId: field.id } satisfies DropData, disabled: readOnly });
   const item = paletteItem(field.type);
@@ -114,6 +120,7 @@ function FieldCard({
               {item?.label ?? field.type}
             </span>
             <span className="fb-code">{field.name}</span>
+            {isFragment && <span className="fb-chip fb-chip--rule">{unlockedFragment === field.id ? 'fragment: being changed' : 'fragment'}</span>}
             {field.width && WIDTH_LABEL[field.width] && <span className="fb-chip">{WIDTH_LABEL[field.width]}</span>}
             {field.styleId && <span className="fb-chip">style: {field.styleId}</span>}
             {field.systemSource && <span className="fb-chip">from {SYSTEM_SOURCE_LABEL[field.systemSource]}</span>}
@@ -154,7 +161,7 @@ function FieldCard({
       )}
       {(field.type === 'SECTION' || field.type === 'REPEAT' || isSectionGroup(field)) && (
         <div className="fb-section-body">
-          <CanvasList parentId={field.id} column={0} sectionsOnly={isSectionGroup(field)} {...shared} />
+          <CanvasList parentId={field.id} column={0} sectionsOnly={isSectionGroup(field)} {...inside} />
         </div>
       )}
     </div>

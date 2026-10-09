@@ -28,6 +28,10 @@ import { FormSettingsPanel } from '../builder/components/FormSettingsPanel';
 import { PreviewDialog } from '../builder/components/PreviewDialog';
 import { WorkflowDialog } from '../builder/workflow/WorkflowDialog';
 import { useSharedWorkflows } from '../adapters/shared-workflows';
+import { useFragments } from '../adapters/fragments';
+import { addFragmentSection } from '../builder/components/FragmentSettings';
+import { createField } from '../builder/field-catalog';
+import { fragmentUse, syncFragments } from '../engine';
 import { RulesDialog } from '../builder/rules/RulesDialog';
 import { IssuesList } from '../builder/components/IssuesList';
 import { ConfirmDialog, type ConfirmRequest } from '../builder/components/ConfirmDialog';
@@ -110,7 +114,16 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
   const codeLocked = family.length > 0;
   // The library, for a form that uses a shared workflow: its problems are found with the workflow written in.
   const { data: library } = useSharedWorkflows(!!form?.workflowRef);
-  const issues = useMemo(() => (form ? publishIssues(form, library) : []), [form, library]);
+  const { data: fragments } = useFragments();
+  const issues = useMemo(() => (form ? publishIssues(form, library, fragments) : []), [form, library, fragments]);
+  // Sections copied from fragments are brought up to date with the library whenever a draft is open here
+  // (the server does the same when it publishes), except one whose fields are being changed in place.
+  const unlockedFragment = store.unlockedFragment;
+  useEffect(() => {
+    if (!form || !fragments || readOnly || unlockedFragment || !form.fields.some((f) => fragmentUse(f))) return;
+    const synced = syncFragments(form, fragments);
+    if (synced.changed) store.updateForm({ fields: synced.definition.fields });
+  }, [form, fragments, readOnly, unlockedFragment, store]);
   const selectedField = form?.fields.find((f) => f.id === selectedFieldId);
 
   const doSave = useCallback(async (): Promise<FormDefinition | null> => {
@@ -319,7 +332,18 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
 
       <DndContext sensors={sensors} collisionDetection={innermostFirst} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
         <div className="fb-workspace">
-          <aside className="fb-column">{!readOnly && <FieldPalette fields={form.fields} onAdd={(type) => store.addField(type)} />}</aside>
+          <aside className="fb-column">{!readOnly && (
+              <FieldPalette
+                fields={form.fields}
+                onAdd={(type) => store.addField(type)}
+                fragments={fragments ?? []}
+                onAddFragment={(fragment) => {
+                  const section = createField('SECTION', form.fields.map((f) => f.name));
+                  store.updateForm({ fields: addFragmentSection(form, fragment, section) });
+                  store.selectField(section.id);
+                }}
+              />
+            )}</aside>
 
           <main style={{ minWidth: 0 }}>
             <BuilderCanvas
@@ -344,6 +368,7 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
                 onChange={(changes) => store.updateField(selectedField.id, changes)}
                 onFormChange={store.updateForm}
                 onSetColumns={(weights) => store.setColumns(selectedField.id, weights)}
+                canManageLibrary={can('org.manage')}
               />
             ) : (
               <FormSettingsPanel form={form} readOnly={readOnly} codeLocked={codeLocked} onChange={store.updateForm} />

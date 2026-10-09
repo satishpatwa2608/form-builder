@@ -1,5 +1,5 @@
 import type { FormDefinition } from '../types';
-import { resolveSharedWorkflow, validateFormDefinition, type SharedWorkflow } from '../engine';
+import { fragmentUse, fragmentUseProblems, resolveSharedWorkflow, validateFormDefinition, type Fragment, type SharedWorkflow } from '../engine';
 
 export interface PublishIssue {
   message: string;
@@ -14,7 +14,18 @@ export interface PublishIssue {
  * A form that uses a library workflow is judged with that workflow written in,
  * as the server will publish it; `library` is undefined until it has loaded.
  */
-export function publishIssues(form: FormDefinition, library?: SharedWorkflow[]): PublishIssue[] {
+export function publishIssues(form: FormDefinition, library?: SharedWorkflow[], fragments?: Fragment[]): PublishIssue[] {
+  // Sections copied from fragments: told apart when used twice, and still in the library (once that is known).
+  const sections = form.fields.filter((f) => fragmentUse(f));
+  const fromFragments: PublishIssue[] = [
+    ...fragmentUseProblems(form.fields).map((message) => ({ message })),
+    ...(fragments ? sections.filter((s) => !fragments.some((f) => f.id === fragmentUse(s)!.id)) : []).map((s) => ({
+      message: `The fragment "${s.label || s.name}" is no longer in the library. Detach the section to keep its fields, or remove it.`,
+      fieldId: s.id,
+      fieldLabel: s.label || s.name,
+    })),
+  ];
+  if (fromFragments.length) return fromFragments;
   let def = form;
   if (form.workflowRef && library) {
     const shared = library.find((w) => w.id === form.workflowRef!.id);

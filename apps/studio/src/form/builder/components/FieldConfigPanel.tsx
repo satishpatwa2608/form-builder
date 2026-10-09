@@ -2,11 +2,13 @@ import { useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ui/tabs';
 import { MultiSelect } from '@ui/multiselect';
 import type { CaptchaConfig, FieldType, FormDefinition, FormField, SystemFieldSource, UserPrefillSource, ValidationConfig } from '../../types';
-import { formShape, isRepeat, isRowField, MAX_ROWS, columnWeights, isBooleanField, isContainerField, isListField, isNumberField, isOptionField, isSectionGroup, isValueField, paramReferences, safeImageUrl } from '../../engine';
+import { fragmentSectionOf, formShape, isRepeat, isRowField, MAX_ROWS, columnWeights, isBooleanField, isContainerField, isListField, isNumberField, isOptionField, isSectionGroup, isValueField, paramReferences, safeImageUrl } from '../../engine';
 import { COLUMN_PRESETS, DEFAULT_CAPTCHA_CONFIG, paletteItem } from '../field-catalog';
 import { useCustomFields } from '../../adapters/extensions';
 import { useStyles } from '../../adapters/styles/style-master';
 import { ConditionEditor, defaultCondition } from './ConditionEditor';
+import { FragmentSettings } from './FragmentSettings';
+import { useFormBuilderStore } from '../store/useFormBuilderStore';
 import { DataSourceEditor } from './DataSourceEditor';
 import { NumberSetting, Setting, SelectSetting, SwitchSetting, TextSetting, type Choice } from './settings';
 import { DEFAULT_ACCEPT, DEFAULT_MAX_SIZE_MB } from '../../runtime/fields/FileField';
@@ -45,6 +47,8 @@ interface PanelProps {
   onFormChange: (changes: Partial<FormDefinition>) => void;
   /** Change a Columns block's layout (moves fields out of removed columns). */
   onSetColumns: (weights: number[]) => void;
+  /** May change the organisation's libraries (fragments). */
+  canManageLibrary?: boolean;
 }
 
 function nameHint(field: FormField, form: FormDefinition) {
@@ -297,13 +301,14 @@ function RepeatSettings({ field, form, onChange }: Pick<PanelProps, 'field' | 'f
   );
 }
 
-function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: PanelProps) {
+function GeneralTab({ field, form, onChange, onFormChange, onSetColumns, canManageLibrary }: PanelProps) {
   const hidden = field.type === 'HIDDEN';
   if (isContainerField(field)) {
     return (
       <div className="fb-settings">
         {field.type === 'COLUMNS' && <ColumnsSettings field={field} form={form} onSetColumns={onSetColumns} />}
         {field.type === 'SECTION' && <SectionSettings field={field} onChange={onChange} />}
+        {field.type === 'SECTION' && <FragmentSettings field={field} form={form} canManageLibrary={!!canManageLibrary} onFormChange={onFormChange} />}
         {field.type === 'REPEAT' && <RepeatSettings field={field} form={form} onChange={onChange} />}
         {isSectionGroup(field) && (
           <>
@@ -632,6 +637,10 @@ function AppearanceTab({ field, onChange }: Pick<PanelProps, 'field' | 'onChange
 /** Settings for the selected field, grouped into tabs that only appear when relevant. */
 export function FieldConfigPanel(props: PanelProps) {
   const { field, readOnly, onChange } = props;
+  // A field inside a fragment section is the library's copy: shown, not changed here.
+  const owner = fragmentSectionOf(props.form.fields, field.id);
+  const unlocked = useFormBuilderStore((s) => s.unlockedFragment);
+  const copy = !!owner && owner.id !== unlocked;
   const hasValidation = TEXT_TYPES.has(field.type) || isNumberField(field) || isListField(field) || isBooleanField(field) || field.type === 'SIGNATURE';
   const hasOptions = isOptionField(field);
   const hasLogic = !DECORATIVE.has(field.type);
@@ -642,7 +651,12 @@ export function FieldConfigPanel(props: PanelProps) {
       <div className="fb-panel__title">
         {paletteItem(field.type)?.label ?? field.type} {isContainerField(field) ? 'block' : 'field'}
       </div>
-      <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      {copy && (
+        <div className="fb-banner" style={{ marginBottom: 10 }}>
+          Part of the fragment section <strong>{owner.label || owner.name}</strong>. Its fields are changed in the library: select that section.
+        </div>
+      )}
+      <fieldset disabled={readOnly || copy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <Tabs key={field.id} defaultValue="general">
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
