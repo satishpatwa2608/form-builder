@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pdfParse from 'pdf-parse';
 import { JobQueue } from '../src/jobs/job-queue.service';
+import { SignaturesService } from '../src/signatures/signatures.service';
 import { startApp, type Harness } from './harness';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -183,6 +184,23 @@ describe('Signing a response (e2e)', () => {
     expect(req).toMatchObject({ status: 'DECLINED', hasSignedDocument: false, signers: [expect.objectContaining({ status: 'DECLINED', declineReason: 'The amount is wrong' }), expect.objectContaining({ status: 'WAITING' })] });
     await h.api().get(`/records/${sub.submissionId}/signatures/${req.id}/document`).set(h.bearer(owner)).expect(404);
     expect((await h.api().post(`/public/sign/${first.token}`).send(signBody('Too late')).expect(409)).body.message).toBe('This document was declined and is no longer open for signing.');
+  });
+
+  it('an answer that arrives the instant the invitation goes out still moves the flow on', async () => {
+    // The narrowest moment: the signer declines after the invitation is sent and before the flow has noted
+    // which request it is waiting for. Held open here on purpose; it once left the flow waiting for ever.
+    const signatures = h.app.get(SignaturesService);
+    const start = signatures.start.bind(signatures);
+    const spy = jest.spyOn(signatures, 'start').mockImplementationOnce(async (p) => {
+      const id = await start(p);
+      const link = linkTo('quick@customer.test')!;
+      await h.api().post(`/public/sign/${link.token}/decline`).send({ reason: 'Too quick for you' }).expect(200);
+      return id;
+    });
+    const sub = await submit('AGR', 'quick@customer.test');
+    await waitFor(async () => (await statusOf(sub.submissionId)) === 'REFUSED', 'the record to be marked refused');
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
   it('signers are reminded with a fresh link, and a request nobody signs in time lapses', async () => {

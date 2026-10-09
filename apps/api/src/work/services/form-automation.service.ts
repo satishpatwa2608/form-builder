@@ -542,7 +542,9 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
   @OnEvent(SIGNATURE_FINISHED_EVENT, { async: true })
   async onSignatureFinished(e: SignatureFinishedEvent) {
     try {
-      const run = await this.runs.findOneAndUpdate({ uuid: e.runId, orgId: e.orgId, status: 'WAITING', signatureRequestId: { $ne: '' } }, { $set: { status: 'RUNNING' } }).lean();
+      // The run is found by its own id alone. It is marked as waiting before the invitations go out, and a signer
+      // can answer before the request's id has been noted on it: asking for that id here lost such an answer.
+      const run = await this.runs.findOneAndUpdate({ uuid: e.runId, orgId: e.orgId, status: 'WAITING' }, { $set: { status: 'RUNNING' } }).lean();
       if (!run) return;
       const { record, definition } = await this.records.load(e.orgId, e.recordId);
       const automation = (definition.automations ?? []).find((a) => a.id === run.automationId);
