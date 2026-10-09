@@ -1,3 +1,4 @@
+import { DocumentsService } from '../../documents/documents.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -83,6 +84,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     private readonly mail: MailService,
     private readonly handlers: FormHandlerRegistry,
     private readonly jobs: JobQueue,
+    private readonly documents: DocumentsService,
   ) {}
 
   // ---------------------------------------------------------------- triggers
@@ -542,11 +544,15 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         const subject = renderTemplate(action.subject, tctx, false).replace(/[\r\n]+/g, ' ').slice(0, 200);
         const body = escapeHtml(renderTemplate(action.body, tctx, false)).replace(/\r?\n/g, '<br>');
         const template = `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">${body}</div>`;
+        // The PDF of the response, made (or fetched, if it is already kept) once for all recipients.
+        const document = action.attachDocument ? await this.documents.forRecord(orgId, record.uuid) : null;
+        const attachments = document ? [{ fileName: document.fileName, contentType: 'application/pdf', content: document.pdf }] : undefined;
         for (const email of to) {
           const sent = await this.mail.sendMail({
             to: email,
             subject,
             template,
+            attachments,
             orgId,
             sourceModule: 'FORMS',
             entityType: 'form-record',
@@ -554,7 +560,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
           });
           if (!sent?.success) throw new Error(`email to ${email} failed`);
         }
-        return { summary: `emailed ${to.length} recipient${to.length === 1 ? '' : 's'}`, data: { sent: to.length } };
+        return { summary: `emailed ${to.length} recipient${to.length === 1 ? '' : 's'}${document ? ' with the PDF' : ''}`, data: { sent: to.length } };
       }
 
       case 'NOTIFY': {

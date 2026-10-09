@@ -244,7 +244,7 @@ const stepMeta = {
 };
 
 const actionSchema = z.union([
-  z.object({ ...stepMeta, type: z.literal('EMAIL'), to: recipients, subject: z.string().max(200), body: z.string().max(10_000) }),
+  z.object({ ...stepMeta, type: z.literal('EMAIL'), to: recipients, subject: z.string().max(200), body: z.string().max(10_000), attachDocument: z.boolean().optional() }),
   z.object({ ...stepMeta, type: z.literal('NOTIFY'), to: recipients, message: z.string().max(500) }),
   z.object({
     ...stepMeta,

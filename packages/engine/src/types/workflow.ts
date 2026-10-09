@@ -180,7 +180,8 @@ export interface StepMeta {
  */
 export type AutomationAction = StepMeta &
   (
-  | { type: 'EMAIL'; to: RecipientRef[]; subject: string; body: string }
+  /** `attachDocument` sends the PDF of the response with it (made by the server; see the form's `document`). */
+  | { type: 'EMAIL'; to: RecipientRef[]; subject: string; body: string; attachDocument?: boolean }
   | { type: 'NOTIFY'; to: RecipientRef[]; message: string }
   /**
    * Pause the flow until one of `to` approves or rejects (AEM participant

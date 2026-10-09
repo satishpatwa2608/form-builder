@@ -1,6 +1,6 @@
 import type { AutomationAction, FormDefinition } from '../../types';
 import type { CustomWorkflow, Person } from '../../adapters/workflow';
-import { NumberSetting, SelectSetting, Setting, TextSetting } from '../components/settings';
+import { NumberSetting, SelectSetting, Setting, TextSetting, SwitchSetting } from '../components/settings';
 import { PersonSelect } from './PersonSelect';
 import { RecipientsEditor } from './RecipientsEditor';
 
@@ -24,6 +24,15 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
             <Setting label="To">{() => <RecipientsEditor form={form} people={people} value={action.to} onChange={(to) => onChange({ ...action, to })} />}</Setting>
             <TextSetting label="Subject" value={action.subject} onChange={(subject) => onChange({ ...action, subject })} />
             <TextSetting label="Message" multiline value={action.body} hint="Plain text. Insert data from the list below, e.g. {{name}}" onChange={(b) => onChange({ ...action, body: b })} />
+            <SwitchSetting
+              label="Attach the PDF of the response"
+              hint="The same document as in Responses: every answer, with your organisation's name and logo."
+              checked={action.attachDocument === true}
+              onChange={(on) => {
+                const { attachDocument: _was, ...rest } = action;
+                onChange(on ? { ...rest, attachDocument: true } : rest);
+              }}
+            />
           </>
         );
       case 'NOTIFY':

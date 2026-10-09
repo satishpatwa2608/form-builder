@@ -157,6 +157,40 @@ describe('Documents of record (e2e)', () => {
     }
   });
 
+  it('a workflow email can carry the PDF: the same stored document, to every recipient', async () => {
+    const withMail = form('MAILED', {
+      fields: [...form('MAILED').fields, { id: 'e', type: 'EMAIL', name: 'email', label: 'Email' }],
+      automations: [
+        {
+          id: 'a1',
+          name: 'Send a copy',
+          enabled: true,
+          when: 'SUBMITTED',
+          actions: [
+            { id: 's1', type: 'EMAIL', to: [{ kind: 'FIELD', field: 'email' }, { kind: 'EMAIL', email: 'records@acme.test' }], subject: 'Your copy of {{$record.ref}}', body: 'Attached.', attachDocument: true },
+            { id: 's2', type: 'EMAIL', to: [{ kind: 'EMAIL', email: 'plain@acme.test' }], subject: 'No file', body: 'Just words.' },
+          ],
+        },
+      ],
+    });
+    const id = await publish(withMail);
+    const sub = await submit('MAILED', { customer: 'Meera', email: 'meera@customer.test' });
+    await waitFor(() => h.outbox.some((m) => m.to === 'plain@acme.test'), 'the emails');
+    const copies = h.outbox.filter((m) => m.subject === `Your copy of ${sub.ref}`);
+    expect(copies.map((m) => m.to).sort()).toEqual(['meera@customer.test', 'records@acme.test']);
+    for (const mail of copies) {
+      expect(mail.attachments).toHaveLength(1);
+      expect(mail.attachments![0]).toMatchObject({ fileName: `${sub.ref}.pdf`, contentType: 'application/pdf' });
+      expect((await pdfParse(mail.attachments![0]!.content)).text).toContain('Meera');
+    }
+    // What was mailed is what is kept and what Responses gives.
+    const kept = await download(id, sub.submissionId).expect(200);
+    expect(Buffer.compare(kept.body, copies[0]!.attachments![0]!.content)).toBe(0);
+    expect(h.outbox.find((m) => m.to === 'plain@acme.test')!.attachments).toBeUndefined();
+    const events = (await h.api().get(`/records/${sub.submissionId}`).set(h.bearer(owner)).expect(200)).body.events as { message: string }[];
+    expect(events.some((e) => e.message.includes('emailed 2 recipients with the PDF'))).toBe(true);
+  });
+
   describe('the generation API', () => {
     let id: string;
     const generate = (body: object, token = designer) => h.api().post(`/forms/${id}/document`).set(h.bearer(token)).send(body).buffer(true).parse((res, cb) => { const chunks: Buffer[] = []; res.on('data', (c: Buffer) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks))); });
