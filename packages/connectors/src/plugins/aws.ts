@@ -1,3 +1,4 @@
+import { filesFor } from './microsoft';
 import { CloudWatchLogsClient, CreateLogStreamCommand, PutLogEventsCommand } from '@aws-sdk/client-cloudwatch-logs';
 import { ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts';
@@ -82,10 +83,15 @@ export const s3Plugin: ConnectorPlugin = {
       return { rows: (out.Contents ?? []).map((o) => ({ key: o.Key, size: o.Size })), durationMs: elapsed(start) };
     }
     if (req.kind === 'upload') {
-      const name = safeKey(String(req.params.name ?? `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.json`));
-      const body = JSON.stringify(req.params.data ?? req.params, null, 2);
-      await client.send(new PutObjectCommand({ Bucket: String(s.bucket), Key: `${prefix}${name}`, Body: body, ContentType: 'application/json', ServerSideEncryption: 'AES256' }), { abortSignal: ctx.signal });
-      return { rows: [{ key: `${prefix}${name}` }], affected: 1, durationMs: elapsed(start) };
+      // The same files, under the same names, as every other place a response can be saved:
+      // its answers, its PDF, and what the respondent uploaded.
+      const saved: string[] = [];
+      for (const f of filesFor(req.params)) {
+        const key = `${prefix}${safeKey(f.name)}`;
+        await client.send(new PutObjectCommand({ Bucket: String(s.bucket), Key: key, Body: f.body, ContentType: f.type, ServerSideEncryption: 'AES256' }), { abortSignal: ctx.signal });
+        saved.push(key);
+      }
+      return { rows: [{ key: saved[0], id: saved[0], files: saved.join(', ') }], affected: saved.length, durationMs: elapsed(start) };
     }
     throw new ConnectorError('UNSUPPORTED', `S3 can't ${req.kind}`);
   },

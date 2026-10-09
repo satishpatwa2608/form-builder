@@ -436,9 +436,10 @@ only. See [extensions.md](extensions.md) for developers.
 - **Saving a response:** expose a table's *insert* (or a folder's *upload*)
   on the connector, then add it to an automation as **Run a custom API**.
   Under **What goes into each field** the builder shows which answer fills
-  each column, matched by name; change any that are wrong. A folder or
-  container receives the answers as a file and the PDF beside it, named by
-  form and reference.
+  each column, matched by name; change any that are wrong. A folder,
+  container or bucket receives the answers as a file, the PDF beside it, and
+  what the respondent uploaded in a folder next to them
+  (`FORM/REF.json`, `FORM/REF.pdf`, `FORM/REF-files/…`).
 - **When a table gains columns:** a form started from a connected table
   remembers it. Once the connector manager has exposed the new columns, the
   builder shows a line naming them, with **Add them to the form** and

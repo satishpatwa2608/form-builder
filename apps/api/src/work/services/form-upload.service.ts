@@ -150,6 +150,27 @@ export class FormUploadService {
     return files;
   }
 
+  /**
+   * The bytes of what a respondent uploaded with one response, for copying to the organisation's own storage:
+   * as many as fit in `room` bytes together, smallest first, and how many could not be taken.
+   */
+  async copiesOf(orgId: string, uploadIds: string[], room: number): Promise<{ files: { name: string; type: string; content: Buffer }[]; leftOut: number }> {
+    const rows = uploadIds.length ? await this.uploads.find({ orgId, uuid: { $in: uploadIds.slice(0, 100) }, status: 'ATTACHED' }).sort({ size: 1 }).lean() : [];
+    const files: { name: string; type: string; content: Buffer }[] = [];
+    let left = room;
+    let leftOut = uploadIds.length - rows.length;
+    for (const u of rows) {
+      const content = u.size <= left ? await this.store.get(u.key).catch(() => null) : null;
+      if (!content || content.length > left) {
+        leftOut++;
+        continue;
+      }
+      left -= content.length;
+      files.push({ name: u.name, type: u.contentType, content });
+    }
+    return { files, leftOut };
+  }
+
   /** Short-lived link for an authorised viewer. */
   async downloadUrl(key: string, name: string) {
     return this.store.presignGet(key, FormUploadService.safeName(name));

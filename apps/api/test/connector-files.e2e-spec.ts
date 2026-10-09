@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import pdfParse from 'pdf-parse';
 import { startApp, type Harness } from './harness';
 
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+
 /** A response saved as files in the customer's own storage: its answers, and its PDF, under its reference. */
 describe('Connectors that save a response as files (e2e)', () => {
   let h: Harness;
@@ -39,7 +41,7 @@ describe('Connectors that save a response as files (e2e)', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('each response lands in the container as JSON and PDF, named by form and reference; the signature is never given back', async () => {
+  it('each response lands in the container as JSON, PDF and the files the respondent uploaded, named by form and reference', async () => {
     const created = (
       await h
         .api()
@@ -62,24 +64,36 @@ describe('Connectors that save a response as files (e2e)', () => {
       businessId: '',
       access: 'PUBLIC',
       submission: { method: 'POST', endpointId: 'default-submit' },
-      fields: [{ id: 'a', type: 'TEXT', name: 'applicant', label: 'Applicant', required: true }],
+      fields: [
+        { id: 'a', type: 'TEXT', name: 'applicant', label: 'Applicant', required: true },
+        { id: 'b', type: 'FILE', name: 'proof', label: 'Proof of income', props: { accept: ['image/*'], maxSizeMB: 2 }, validation: { max: 3 } },
+      ],
       workflow: { enabled: true, refPrefix: 'LN', statuses: [{ key: 'NEW', label: 'New', category: 'OPEN' }, { key: 'DONE', label: 'Done', category: 'DONE' }], assignment: { type: 'NONE' } },
       automations: [{ id: 'a1', name: 'Archive', enabled: true, when: 'SUBMITTED', actions: [{ id: 'save', type: 'HANDLER', key: step.key }] }],
     };
     const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition }).expect(201)).body.definition.id;
     await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
-    const sub = (await h.api().post(`/public/forms/LOAN/submissions?org=${orgId}`).send({ values: { applicant: 'Ravi Kumar' } }).expect(201)).body;
+    // The respondent uploads a picture, the way the form page does it.
+    const ticket = (await h.api().post(`/public/forms/LOAN/uploads?org=${orgId}`).send({ fieldName: 'proof', fileName: '../payslip (March).png', contentType: 'image/png', size: PNG.length }).expect(201)).body;
+    await h.api().put(h.localUrl(ticket.url).replace(h.base, '')).set('Content-Type', 'image/png').send(PNG).expect(200);
+    await h.api().post(`/public/uploads/${ticket.uploadId}/verify?org=${orgId}`).expect(200);
+    const sub = (await h.api().post(`/public/forms/LOAN/submissions?org=${orgId}`).send({ values: { applicant: 'Ravi Kumar', proof: [{ uploadId: ticket.uploadId }] } }).expect(201)).body;
 
-    for (let i = 0; i < 100 && puts.length < 2; i++) await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 100 && puts.length < 3; i++) await new Promise((r) => setTimeout(r, 50));
     expect(puts.map((p) => [p.path, p.type])).toEqual([
       [`/responses/forms/LOAN/${sub.ref}.json`, 'application/json'],
       [`/responses/forms/LOAN/${sub.ref}.pdf`, 'application/pdf'],
+      // In a folder of its own beside the response; the name it was uploaded with cannot move it anywhere else.
+      [`/responses/forms/LOAN/${sub.ref}-files/${puts[2]?.path.split('-files/')[1]}`, 'image/png'],
     ]);
+    expect(puts[2]!.path.split('-files/')[1]).toMatch(/^1-[A-Za-z0-9._ -]*payslip[A-Za-z0-9._ ()-]*\.png$/);
+    expect(puts[2]!.path).not.toContain('..');
+    expect(Buffer.compare(puts[2]!.body, PNG)).toBe(0);
     expect(JSON.parse(puts[0]!.body.toString())).toMatchObject({ applicant: 'Ravi Kumar' });
     // The same document of record staff download, not a stand-in.
     expect((await pdfParse(puts[1]!.body)).text).toContain('Ravi Kumar');
     const events = ((await h.api().get(`/records/${sub.submissionId}`).set(h.bearer(owner)).expect(200)).body.events as { message: string }[]).map((e) => e.message);
-    expect(events).toEqual(expect.arrayContaining([expect.stringContaining('upload Files in Archive')]));
+    expect(events).toEqual(expect.arrayContaining([expect.stringContaining('saved 3 files in Archive')]));
     expect(JSON.stringify(events)).not.toContain('goodsig');
   });
 });

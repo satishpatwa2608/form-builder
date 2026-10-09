@@ -158,7 +158,8 @@ describe('AWS connectors (assumed role, no keys)', () => {
     expect(assume[0]!.input).toMatchObject({ RoleArn: role.roleArn, ExternalId: role.externalId });
     const put = calls.find((c) => c.name === 's3:PutObjectCommand')!.input;
     expect(put).toMatchObject({ Bucket: 'acme-archive', ServerSideEncryption: 'AES256' });
-    expect(put.Key).toBe('forms/etc/passwd'); // no path climbing
+    expect(put.Key).toBe('forms/etc/passwd.json'); // no path climbing
+    expect(JSON.parse(String(put.Body))).toEqual({ a: 1 });
     expect(calls.some((c) => c.name === 'logs:PutLogEventsCommand')).toBe(true);
   });
 });

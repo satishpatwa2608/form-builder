@@ -226,6 +226,15 @@ describe('Microsoft 365 and Azure (against a stand-in)', () => {
     expect(safeFileName('a/..//b/.hidden/c\\d', 'x')).toBe('a/b/hidden/c_d');
     expect(safeFileName('', 'fallback')).toBe('fallback');
     expect(filesFor({ name: 'A/B', data: { q: 1 }, pdf: PDF.toString('base64') }).map((f) => [f.name, f.type])).toEqual([['A/B.json', 'application/json'], ['A/B.pdf', 'application/pdf']]);
+    // What the respondent uploaded goes in a folder of its own beside the response; its name is only ever a name.
+    const withFiles = filesFor({ name: 'A/B', data: {}, attachments: [{ name: 'receipt.png', type: 'image/png', content: Buffer.from('png').toString('base64') }, { name: '../../../etc/cron.d/x', type: 'text/x-shellscript; rm -rf', content: Buffer.from('x').toString('base64') }, { name: 'empty', content: '' }, { name: 'receipt.png', type: 'image/png', content: Buffer.from('png2').toString('base64') }] });
+    expect(withFiles.map((f) => [f.name, f.type])).toEqual([
+      ['A/B.json', 'application/json'],
+      ['A/B-files/1-receipt.png', 'image/png'],
+      ['A/B-files/2-_.._.._etc_cron.d_x', 'application/octet-stream'],
+      ['A/B-files/4-receipt.png', 'image/png'],
+    ]);
+    expect(withFiles[1]!.body.toString()).toBe('png');
     // Something that is not a PDF is not saved as one.
     expect(filesFor({ name: 'A', data: {}, pdf: Buffer.from('<html>').toString('base64') })).toHaveLength(1);
   });

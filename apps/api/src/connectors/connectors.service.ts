@@ -66,6 +66,19 @@ export interface ConnectorAction {
 }
 
 const LIMITS = { timeoutMs: 15_000, maxRows: 1000 };
+/** Copying files takes longer than a query. */
+const UPLOAD_LIMITS = { timeoutMs: 30_000, maxRows: 1000 };
+/** How much of what a respondent uploaded is copied with one response. A gateway's messages are far smaller. */
+const MAX_COPY_BYTES = 25 * 1024 * 1024;
+const MAX_COPY_BYTES_GATEWAY = 5 * 1024 * 1024;
+
+/** What a response is, as files, for a connector that keeps files. Made only when such a step runs. */
+export interface ResponseFiles {
+  name: string;
+  pdf: () => Promise<Buffer | null>;
+  /** The respondent's uploads that fit in `room` bytes together, and how many did not. */
+  attachments: (room: number) => Promise<{ files: { name: string; type: string; content: Buffer }[]; leftOut: number }>;
+}
 const REF = /^[a-z0-9]{8}$/;
 /** Data source keys in form definitions: /connectors/<ref>/<entity>. */
 export const SOURCE_KEY = /^\/connectors\/([a-z0-9]{8})\/([A-Za-z0-9_][A-Za-z0-9_.-]{0,119})$/;
@@ -310,7 +323,7 @@ export class ConnectorsService implements OnModuleDestroy {
   }
 
   /** Runs one exposed operation and logs the call (never the values). */
-  private async run(c: Connector, entity: ExposedEntity, kind: OperationKind, params: Record<string, unknown>, actor: string): Promise<OperationResult> {
+  private async run(c: Connector, entity: ExposedEntity, kind: OperationKind, params: Record<string, unknown>, actor: string, limits = LIMITS): Promise<OperationResult> {
     if (!entity.operations.includes(kind)) throw new ForbiddenException(`${kind} is not allowed on ${entity.label}`);
     const ref: EntityRef = { key: entity.key, fields: entity.fields, keyField: entity.keyField || undefined };
     const start = Date.now();
@@ -319,12 +332,12 @@ export class ConnectorsService implements OnModuleDestroy {
       if (c.gatewayId) {
         // The same checks run on the agent (registry.run); these are ours first.
         if (WRITE_OPERATIONS.includes(kind) && !c.writable) throw new ConnectorError('READ_ONLY', `"${c.name}" is read-only`);
-        const r = await this.gateways.call(c.orgId, c.gatewayId, 'run', { ...this.record(c), ref: c.ref }, { entity: ref, kind, params, limits: LIMITS });
+        const r = await this.gateways.call(c.orgId, c.gatewayId, 'run', { ...this.record(c), ref: c.ref }, { entity: ref, kind, params, limits });
         if (!r.ok) throw new ConnectorError(r.code === 'READ_ONLY' ? 'READ_ONLY' : 'FAILED', r.error);
         res = r.result as OperationResult;
       } else {
         const secrets = await this.secretsOf(c);
-        res = await this.registry.run({ connector: this.record(c), secrets, allowPrivateNetwork: this.privateAllowed() }, { entity: ref, kind, params, limits: LIMITS });
+        res = await this.registry.run({ connector: this.record(c), secrets, allowPrivateNetwork: this.privateAllowed() }, { entity: ref, kind, params, limits });
       }
       await this.calls.create({ orgId: c.orgId, connectorId: c.id, entity: entity.key, kind, actor, ok: true, durationMs: res.durationMs, rows: res.rows.length || res.affected || 0 });
       return res;
@@ -396,7 +409,7 @@ export class ConnectorsService implements OnModuleDestroy {
   }
 
   /** Run a write step: the form's answers (and work fields) go to the exposed fields with the same names. */
-  async runAction(orgId: string, key: string, values: Record<string, unknown>, formCode: string, map?: Record<string, string>, file?: { name: string; pdf: () => Promise<Buffer | null> }) {
+  async runAction(orgId: string, key: string, values: Record<string, unknown>, formCode: string, map?: Record<string, string>, file?: ResponseFiles) {
     const m = ACTION_KEY.exec(key);
     const c = m ? await this.byRef(orgId, m[1]!) : null;
     if (!c || !c.writable) throw new Error('This connector step is not available any more');
@@ -404,10 +417,21 @@ export class ConnectorsService implements OnModuleDestroy {
       for (const op of e.operations) {
         if (WRITE_OPERATIONS.includes(op) && actionHash(e.key, op) === m![2]) {
           // Each exposed field takes the answer the designer chose for it, or the one whose name matches.
-          // A file store other than S3 gets the response under its reference, with its PDF beside it. (S3 keeps the
-          // dated names it has always used.)
-          const named = op === 'upload' && file && c.type !== 'aws-s3' ? { name: file.name, pdf: (await file.pdf().catch(() => null))?.toString('base64') } : {};
-          const res = await this.run(c, e, op, op === 'upload' || op === 'log' ? { data: values, ...named } : mappedValues(e.fields, values, map), `automation:${formCode}`);
+          // A place files are kept gets the response under its form and reference: the answers, the PDF, and what
+          // the respondent uploaded, as far as that fits (through a gateway much less does).
+          let named: Record<string, unknown> = {};
+          let leftOut = 0;
+          if (op === 'upload' && file) {
+            const room = c.gatewayId ? MAX_COPY_BYTES_GATEWAY : MAX_COPY_BYTES;
+            const attachments = await file.attachments(room).catch(() => ({ files: [], leftOut: 0 }));
+            leftOut = attachments.leftOut;
+            named = { name: file.name, pdf: (await file.pdf().catch(() => null))?.toString('base64'), attachments: attachments.files.map((a) => ({ name: a.name, type: a.type, content: a.content.toString('base64') })) };
+          }
+          const res = await this.run(c, e, op, op === 'upload' || op === 'log' ? { data: values, ...named } : mappedValues(e.fields, values, map), `automation:${formCode}`, op === 'upload' ? UPLOAD_LIMITS : undefined);
+          if (op === 'upload') {
+            const count = res.affected ?? 1;
+            return { summary: `saved ${count} ${count === 1 ? 'file' : 'files'} in ${c.name}${leftOut ? ` (${leftOut} uploaded ${leftOut === 1 ? 'file was' : 'files were'} not copied: too large together, or no longer there)` : ''}`, data: { id: String(res.rows[0]?.id ?? res.rows[0]?.key ?? '') } };
+          }
           // The new row's identifier, whatever that system calls it.
           const row = res.rows[0] ?? {};
           const id = row.id ?? row.Id ?? (e.keyField ? row[e.keyField] : undefined);

@@ -99,6 +99,11 @@ export class FormHandlerRegistry implements OnApplicationBootstrap {
         this.connectors.runAction(ctx.orgId, key, { ...ctx.values, ...((ctx.record.work as Record<string, unknown>) ?? {}) }, ctx.definition.code, ctx.map, {
           // Where a response is saved as a file: under its form and its reference, with the PDF made only if it is wanted.
           name: `${ctx.definition.code}/${ctx.record.ref || ctx.record.uuid}`,
+          attachments: async (room) => {
+            // What the respondent uploaded, read back from our own store. (Loaded when needed, like the document service.)
+            const { FormUploadService } = await import('./form-upload.service');
+            return this.moduleRef.get(FormUploadService, { strict: false }).copiesOf(ctx.orgId, (ctx.record.files ?? []).map((f) => f.uploadId), room);
+          },
           pdf: async () => {
             // Loaded when first needed: the document service's own file leads back to this one.
             const { DocumentsService } = await import('../../documents/documents.service');

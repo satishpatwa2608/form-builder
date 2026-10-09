@@ -145,7 +145,12 @@ export function safeFileName(input: unknown, fallback: string): string {
   return parts.length ? parts.join('/') : fallback;
 }
 
-/** What a response is saved as: its answers as JSON and, when the caller sends one, its PDF. */
+/**
+ * What a response is saved as: its answers as JSON, its PDF when the caller
+ * sends one, and the files the respondent uploaded, in a folder of their own
+ * beside it (`<name>-files/`). Uploaded files keep their names, made safe,
+ * with a number in front so two called the same do not collide.
+ */
 export function filesFor(params: Record<string, unknown>): { name: string; type: string; body: Buffer }[] {
   const baseName = safeFileName(params.name, `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}`);
   const files = [{ name: `${baseName}.json`, type: 'application/json', body: Buffer.from(JSON.stringify(params.data ?? {}, null, 2), 'utf8') }];
@@ -153,6 +158,15 @@ export function filesFor(params: Record<string, unknown>): { name: string; type:
     const pdf = Buffer.from(params.pdf, 'base64');
     if (pdf.subarray(0, 5).toString() === '%PDF-') files.push({ name: `${baseName}.pdf`, type: 'application/pdf', body: pdf });
   }
+  const attachments = Array.isArray(params.attachments) ? params.attachments.slice(0, 100) : [];
+  attachments.forEach((a, i) => {
+    const file = a as { name?: unknown; type?: unknown; content?: unknown };
+    if (typeof file?.content !== 'string' || !file.content) return;
+    // One name, never a path: what a respondent called their file decides nothing about where it goes.
+    const own = String(file.name ?? '').replace(/[/\\]/g, '_').replace(/[^A-Za-z0-9._ -]/g, '_').replace(/^\.+/, '').trim().slice(0, 100) || 'file';
+    const type = typeof file.type === 'string' && /^[a-z]+\/[a-z0-9.+-]+$/i.test(file.type) ? file.type : 'application/octet-stream';
+    files.push({ name: `${baseName}-files/${i + 1}-${own}`, type, body: Buffer.from(file.content, 'base64') });
+  });
   return files;
 }
 
