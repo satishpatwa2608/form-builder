@@ -50,6 +50,16 @@ export class OrgSso {
   @Prop({ type: Date, default: null }) lastSuccessAt: Date | null;
 }
 
+/** The requests portal: where the people this organisation serves find its forms and follow what they sent. */
+@Schema({ _id: false })
+export class OrgPortal {
+  @Prop({ type: Boolean, default: false }) enabled: boolean;
+  /** The page's heading ('' = "Requests"). */
+  @Prop({ type: String, default: '' }) title: string;
+  /** A few words under the heading. */
+  @Prop({ type: String, default: '' }) intro: string;
+}
+
 @Schema({ timestamps: true, collection: 'organizations' })
 export class Organization {
   @Prop({ required: true, unique: true }) id: string;
@@ -61,6 +71,7 @@ export class Organization {
   @Prop({ type: OrgBranding, default: () => ({}) }) branding: OrgBranding;
   @Prop({ type: [OrgDomain], default: [] }) domains: OrgDomain[];
   @Prop({ type: OrgSso, default: () => ({}) }) sso: OrgSso;
+  @Prop({ type: OrgPortal, default: () => ({}) }) portal: OrgPortal;
 }
 export type OrganizationDocument = HydratedDocument<Organization>;
 export const OrganizationSchema = SchemaFactory.createForClass(Organization);

@@ -28,6 +28,8 @@ export interface FormDefinition {
    * link. On unless set to false.
    */
   saveForLater?: boolean;
+  /** Shown on the organisation's requests portal, for anyone to start. Public forms only. */
+  listOnPortal?: boolean;
   /**
    * The PDF made of each response. `keep` stores one with every submission as it
    * arrives; without it a PDF is still made when someone asks for it.

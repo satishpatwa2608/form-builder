@@ -247,6 +247,7 @@ export class FormSubmissionService {
         payload,
         files: [],
         submittedBy: user?.uuid ?? '',
+        requesterEmail: (await this.records.contactEmail(orgId, { payload, submittedBy: user?.uuid ?? '' }, def)).toLowerCase(),
         channel,
         language,
         source,

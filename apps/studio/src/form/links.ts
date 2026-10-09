@@ -5,6 +5,9 @@ const RUNTIME_URL = ((import.meta.env.VITE_RUNTIME_URL as string | undefined) ??
 
 export const publicFormUrl = (orgId: string, code: string) => `${RUNTIME_URL}/f/${encodeURIComponent(orgId)}/${encodeURIComponent(code)}`;
 
+/** The organisation's requests portal: its forms, and each person's own requests. */
+export const portalUrl = (orgId: string) => `${RUNTIME_URL}/portal/${encodeURIComponent(orgId)}`;
+
 export async function copyPublicFormLink(orgId: string, code: string) {
   const url = publicFormUrl(orgId, code);
   try {

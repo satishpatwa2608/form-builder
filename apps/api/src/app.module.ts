@@ -80,6 +80,9 @@ import { DocumentsService } from './documents/documents.service';
 import { DocumentsController } from './documents/documents.controller';
 import { SignatureRequest, SignatureRequestSchema } from './signatures/signature.schema';
 import { SignaturesService } from './signatures/signatures.service';
+import { PortalService } from './portal/portal.service';
+import { PortalController } from './portal/portal.controller';
+import { PortalPass, PortalPassSchema } from './portal/portal.schema';
 import { SignaturePublicController, SignaturesController } from './signatures/signatures.controller';
 import { FragmentRow, FragmentSchema } from './fragments/fragment.schema';
 import { FragmentsService } from './fragments/fragments.service';
@@ -155,6 +158,7 @@ export class AppModule {
           { name: UsageMonth.name, schema: UsageMonthSchema },
           { name: FormStat.name, schema: FormStatSchema },
           { name: FormFieldStat.name, schema: FormFieldStatSchema },
+          { name: PortalPass.name, schema: PortalPassSchema },
           { name: FormDraft.name, schema: FormDraftSchema },
           { name: SsoState.name, schema: SsoStateSchema },
           { name: Job.name, schema: JobSchema },
@@ -196,6 +200,7 @@ export class AppModule {
         ExtensionsController,
         FragmentsController,
         SignaturePublicController,
+        PortalController,
         SignaturesController,
         DocumentsController,
         FormReviewController,
@@ -257,6 +262,7 @@ export class AppModule {
         ExtensionsService,
         FragmentsService,
         SignaturesService,
+        PortalService,
         DocumentsService,
         FormReviewService,
         FormAutomationService,

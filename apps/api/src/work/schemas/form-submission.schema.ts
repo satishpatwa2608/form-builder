@@ -46,6 +46,13 @@ export class FormSubmission {
   @Prop({ type: String, default: '' })
   submittedBy: string;
 
+  /**
+   * Lower-case address of the person this response is from (the form's contact email
+   * field, else the signed-in submitter's): what the requests portal lists by. '' when unknown.
+   */
+  @Prop({ type: String, default: '' })
+  requesterEmail: string;
+
   @Prop({ type: String, default: 'WEB' })
   channel: string;
 
@@ -146,6 +153,7 @@ export class FormSubmission {
 export type FormSubmissionDocument = HydratedDocument<FormSubmission>;
 export const FormSubmissionSchema = SchemaFactory.createForClass(FormSubmission);
 FormSubmissionSchema.index({ uuid: 1 }, { unique: true });
+FormSubmissionSchema.index({ orgId: 1, requesterEmail: 1, createdAt: -1 });
 FormSubmissionSchema.index({ orgId: 1, formCode: 1, createdAt: -1 });
 FormSubmissionSchema.index(
   { orgId: 1, idempotencyKey: 1 },

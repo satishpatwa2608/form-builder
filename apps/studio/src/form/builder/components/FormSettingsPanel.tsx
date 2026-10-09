@@ -168,6 +168,14 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           checked={form.saveForLater !== false}
           onChange={(on) => onChange({ saveForLater: on ? undefined : false })}
         />
+        {form.access === 'PUBLIC' && (
+          <SwitchSetting
+            label="List on the requests portal"
+            hint="Shown under 'Start something new' on your organisation's portal, once the portal is switched on (Organisation settings)."
+            checked={form.listOnPortal === true}
+            onChange={(on) => onChange({ listOnPortal: on || undefined })}
+          />
+        )}
         <SwitchSetting
           label="Keep a PDF of each response"
           hint="Made by the server as each response arrives and stored with it. Without this, a PDF is still made the first time someone opens it from Responses."

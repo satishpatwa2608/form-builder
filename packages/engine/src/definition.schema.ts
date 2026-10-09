@@ -886,6 +886,7 @@ const formDefinitionShapeObject = z.object({
   events: z.array(eventSchema).max(MAX_EVENTS).optional(),
   timeZone: z.string().max(64).optional(),
   saveForLater: z.boolean().optional(),
+  listOnPortal: z.boolean().optional(),
   languages: z.object({ default: languageCode, others: z.array(languageCode).max(20) }).optional(),
   translations: z.record(languageCode, z.record(z.string().max(200), z.string().max(5000))).optional(),
   document: z.object({ keep: z.boolean().optional(), title: z.string().max(150).optional(), footer: z.string().max(200).optional(), showEmpty: z.boolean().optional() }).optional(),

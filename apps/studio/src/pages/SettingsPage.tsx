@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Alert, Button, Card, PageHead, TextField, useSubmit } from '../components/ui';
 import { PlanUsageCard } from '../components/PlanUsage';
-import { BrandingCard, DomainsCard } from '../components/SiteSettings';
+import { BrandingCard, DomainsCard, PortalCard } from '../components/SiteSettings';
 import { SsoCard } from '../components/SsoSettings';
 
 export default function SettingsPage() {
@@ -47,6 +47,7 @@ export default function SettingsPage() {
         <PlanUsageCard />
         <BrandingCard />
         <DomainsCard />
+        <PortalCard />
         <Card title="Security" subtitle="Protect every account in the organisation.">
           <div className="st-stack">
             <div className="st-row" style={{ justifyContent: 'space-between' }}>

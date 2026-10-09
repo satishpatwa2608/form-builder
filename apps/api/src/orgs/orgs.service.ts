@@ -35,12 +35,17 @@ export class OrgsService {
 
   async get(auth: AuthContext) {
     const org = await this.orgs.findOne({ id: auth.orgId }).lean();
-    return { id: org!.id, name: org!.name, security: { require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview } };
+    return {
+      id: org!.id,
+      name: org!.name,
+      security: { require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview },
+      portal: { enabled: !!org!.portal?.enabled, title: org!.portal?.title ?? '', intro: org!.portal?.intro ?? '' },
+    };
   }
 
-  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean; requireReview?: boolean } }) {
+  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean; requireReview?: boolean }; portal?: { enabled?: boolean; title?: string; intro?: string } }) {
     const org = await this.orgs.findOne({ id: auth.orgId });
-    const before = { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview };
+    const before = { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled };
     if (body.security?.require2fa === true && !auth.mfa) {
       // Otherwise the admin locks themselves out on the next request.
       throw new BadRequestException('Turn on two-factor sign-in for yourself first');
@@ -48,13 +53,16 @@ export class OrgsService {
     if (body.name !== undefined) org!.set({ name: body.name });
     if (body.security?.require2fa !== undefined) org!.set({ 'security.require2fa': body.security.require2fa });
     if (body.security?.requireReview !== undefined) org!.set({ 'security.requireReview': body.security.requireReview });
+    if (body.portal?.enabled !== undefined) org!.set({ 'portal.enabled': body.portal.enabled });
+    if (body.portal?.title !== undefined) org!.set({ 'portal.title': body.portal.title });
+    if (body.portal?.intro !== undefined) org!.set({ 'portal.intro': body.portal.intro });
     await org!.save();
     await this.audit.record(actorOf(auth), {
       action: 'org.updated',
       targetType: 'organization',
       targetId: auth.orgId,
       before,
-      after: { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview },
+      after: { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled },
     });
     return this.get(auth);
   }

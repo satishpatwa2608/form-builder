@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Globe, Trash2 } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
-import { Alert, Badge, Button, Card, TextField, useSubmit } from './ui';
+import { Alert, Badge, Button, Card, Field, TextField, useSubmit } from './ui';
+import { portalUrl } from '../form/links';
 
 interface Branding {
   logo: string;
@@ -168,6 +169,76 @@ export function DomainsCard() {
           </Button>
         </form>
       </div>
+    </Card>
+  );
+}
+
+interface OrgPortal {
+  id: string;
+  portal: { enabled: boolean; title: string; intro: string };
+}
+
+/**
+ * The requests portal: a page for the people the organisation serves, with the
+ * forms it chooses to list and, after a link sent to their email, their own requests.
+ */
+export function PortalCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['org-portal'], queryFn: () => api<OrgPortal>('/org') });
+  const [enabled, setEnabled] = useState(false);
+  const [title, setTitle] = useState('');
+  const [intro, setIntro] = useState('');
+  const [note, setNote] = useState<string>();
+  useEffect(() => {
+    if (!data) return;
+    setEnabled(data.portal.enabled);
+    setTitle(data.portal.title);
+    setIntro(data.portal.intro);
+  }, [data]);
+
+  const save = useSubmit(async () => {
+    await api('/org', { method: 'PATCH', body: { portal: { enabled, title, intro } } });
+    await qc.invalidateQueries({ queryKey: ['org-portal'] });
+    setNote(enabled ? 'Portal saved. It is open at the address below.' : 'Portal saved. It is switched off.');
+  });
+
+  if (!data) return null;
+  const url = portalUrl(data.id);
+  return (
+    <Card title="Requests portal" subtitle="One page where the people you serve start a form and follow what they have sent. They sign in with a link sent to their email: no passwords, no accounts for you to manage.">
+      <form className="st-stack" onSubmit={save.submit} noValidate>
+        {note && <Alert tone="success">{note}</Alert>}
+        {save.error && <Alert tone="error">{save.error}</Alert>}
+        <label className="st-check">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          <span>Switch the portal on</span>
+        </label>
+        <div style={{ maxWidth: 420 }}>
+          <TextField label="Heading" value={title} maxLength={80} placeholder="Requests" onChange={(e) => setTitle(e.target.value)} error={save.fields['portal.title']} />
+        </div>
+        <Field label="Introduction (optional)" error={save.fields['portal.intro']}>
+          {(id, describedBy) => <textarea id={id} aria-describedby={describedBy} className="st-input" rows={2} maxLength={500} value={intro} onChange={(e) => setIntro(e.target.value)} />}
+        </Field>
+        {data.portal.enabled && (
+          <div className="st-row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="st-muted">Address:</span>
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              {url}
+            </a>
+            <Button variant="ghost" size="sm" onClick={() => void navigator.clipboard?.writeText(url)}>
+              Copy
+            </Button>
+          </div>
+        )}
+        <p className="st-muted" style={{ margin: 0 }}>
+          People see the reference, the form, the date and the status of what they sent, never the answers. To offer a form on the portal, open it and switch on <strong>List on the requests portal</strong> in its settings.
+        </p>
+        <div>
+          <Button type="submit" busy={save.busy}>
+            Save portal
+          </Button>
+        </div>
+      </form>
     </Card>
   );
 }
