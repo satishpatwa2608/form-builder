@@ -205,6 +205,28 @@ describe('Extensions page: deploying your own code', () => {
     confirm.mockRestore();
   });
 
+  it('makes a deploy key for the pipeline, shows it once, and takes it back', async () => {
+    const seeded = on({ api: 'https://api.forms.test', key: null });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    wrap(<ExtensionsPage />);
+    const area = await screen.findByLabelText('Deploy from your pipeline');
+    expect(area).toHaveTextContent('FB_API_URL: https://api.forms.test');
+    await userEvent.click(within(area).getByRole('button', { name: 'Make a deploy key' }));
+    expect(await within(area).findByLabelText('Deploy key')).toHaveTextContent('fbd_loca••••••••');
+    expect(area).not.toHaveTextContent('fbd_local-key-wxyz');
+    await userEvent.click(within(area).getByRole('button', { name: 'Copy: Deploy key' }));
+    expect(writeText).toHaveBeenCalledWith('fbd_local-key-wxyz');
+    // With a key in use, a new one is asked about first, and it can be taken back.
+    expect(within(area).getByRole('button', { name: 'Make a new deploy key' })).toBeInTheDocument();
+    await userEvent.click(within(area).getByRole('button', { name: 'Take the key back' }));
+    expect(seeded.asked).toEqual(['KEY', 'REVOKE']);
+    expect(await within(area).findByRole('button', { name: 'Make a deploy key' })).toBeInTheDocument();
+    expect(within(area).queryByLabelText('Deploy key')).not.toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
   it('a plan without extensions is told so, and offered nothing to press', async () => {
     on({ included: false });
     seedLocalExtensions([]);

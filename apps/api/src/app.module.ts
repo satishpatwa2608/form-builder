@@ -86,6 +86,8 @@ import { OrgLogService } from './logs/org-log.service';
 import { OperatorService } from './operator/operator.service';
 import { EcrImageStore, ExtensionDeployService, IMAGE_STORE } from './extensions/extension-deploy.service';
 import { ExtensionDeploy, ExtensionDeploySchema } from './extensions/extension-deploy.schema';
+import { ExtensionDeployKey, ExtensionDeployKeySchema } from './extensions/extension-deploy-key.schema';
+import { ExtensionPipelineController } from './extensions/extension-pipeline.controller';
 import { OperatorController } from './operator/operator.controller';
 import { OrgLogController } from './logs/org-log.controller';
 import { OrgLog, OrgLogSchema } from './logs/log.schema';
@@ -170,6 +172,7 @@ export class AppModule {
           { name: PortalPass.name, schema: PortalPassSchema },
           { name: OrgLog.name, schema: OrgLogSchema },
           { name: ExtensionDeploy.name, schema: ExtensionDeploySchema },
+          { name: ExtensionDeployKey.name, schema: ExtensionDeployKeySchema },
           { name: FormDraft.name, schema: FormDraftSchema },
           { name: SsoState.name, schema: SsoStateSchema },
           { name: Job.name, schema: JobSchema },
@@ -209,6 +212,7 @@ export class AppModule {
         StylesController,
         WorkflowsController,
         ExtensionsController,
+        ExtensionPipelineController,
         FragmentsController,
         SignaturePublicController,
         PortalController,

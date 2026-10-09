@@ -144,6 +144,62 @@ describe('Extensions: deployed by the customer (e2e)', () => {
     expect((await status(hac)).deploys[0]).toMatchObject({ kind: 'REMOVE', status: 'REMOVED' });
   });
 
+  describe('from a pipeline, with a deploy key', () => {
+    let key: string;
+    const withKey = (k = key) => ({ Authorization: `Bearer ${k}` });
+
+    it('an administrator makes the key; it is shown once and only its last characters afterwards', async () => {
+      expect((await status(hac)).key).toBeNull();
+      const made = (await h.api().post('/extensions/deploy/key').set(h.bearer(hac)).expect(200)).body;
+      key = made.newKey;
+      expect(key).toMatch(/^fbd_[A-Za-z0-9_-]{40,}$/);
+      const now = await status(hac);
+      expect(now.key).toMatchObject({ hint: key.slice(-4), lastUsedAt: null });
+      expect(now.api).toBe(h.config.API_URL);
+      expect(JSON.stringify(now)).not.toContain(key);
+      const dev = (await h.login('dev@hac.test')).token;
+      await h.api().post('/extensions/deploy/key').set(h.bearer(dev)).expect(403);
+      await h.api().delete('/extensions/deploy/key').set(h.bearer(dev)).expect(403);
+    });
+
+    it('the key pushes and deploys for its own organisation, and the result can be waited for', async () => {
+      const login = (await h.api().post('/extensions/pipeline/login').set(withKey()).expect(200)).body;
+      expect(login).toMatchObject({ image: `${REGISTRY}/fb-ext/${hacId}`, password: `pw-for-fb-ext/${hacId}` });
+      spaces.get(spaceOf(hacId))!.push({ tag: 'abc1234', pushedAt: new Date(), sizeMb: 60 });
+      const asked = (await h.api().post('/extensions/pipeline/deploy').set(withKey()).send({ tag: 'abc1234' }).expect(202)).body;
+      expect(asked).toMatchObject({ kind: 'DEPLOY', tag: 'abc1234', status: 'PENDING' });
+      const job = (await deployer().takeNext())!;
+      expect(job.image).toBe(`${REGISTRY}/fb-ext/${hacId}:abc1234`);
+      expect((await h.api().get('/extensions/pipeline/latest').set(withKey()).expect(200)).body.status).toBe('RUNNING');
+      await deployer().finish(job.id, 'LIVE', 'Version abc1234 is running', '');
+      expect((await h.api().get('/extensions/pipeline/latest').set(withKey()).expect(200)).body).toMatchObject({ id: asked.id, status: 'LIVE', message: 'Version abc1234 is running' });
+      // It is on record that the pipeline did it, and when the key was last used.
+      const trail = (await h.api().get('/audit?action=extension.deploy_requested').set(h.bearer(hac)).expect(200)).body.entries as { actorId: string }[];
+      expect(trail[0]!.actorId).toBe(`deploy-key:${key.slice(-4)}`);
+      expect((await status(hac)).key.lastUsedAt).toBeTruthy();
+    });
+
+    it('the key opens nothing else, and nothing opens without it', async () => {
+      await h.api().post('/extensions/pipeline/deploy').set(withKey()).send({ tag: 'theirs' }).expect(404);
+      await h.api().get('/forms').set(withKey()).expect(401);
+      await h.api().get('/extensions/deploy').set(withKey()).expect(401);
+      await h.api().delete('/extensions/deploy').set(withKey()).expect(401);
+      for (const bad of ['fbd_' + 'x'.repeat(43), key.slice(0, -1), 'Bearer', '']) await h.api().post('/extensions/pipeline/login').set({ Authorization: `Bearer ${bad}` }).expect(401);
+      await h.api().post('/extensions/pipeline/login').expect(401);
+      await h.api().get('/extensions/pipeline/latest').set(h.bearer(hac)).expect(401);
+    });
+
+    it('a new key replaces the old one at once; taking it back leaves the pipeline with nothing', async () => {
+      const second = (await h.api().post('/extensions/deploy/key').set(h.bearer(hac)).expect(200)).body.newKey as string;
+      await h.api().post('/extensions/pipeline/login').set(withKey()).expect(401);
+      await h.api().post('/extensions/pipeline/login').set(withKey(second)).expect(200);
+      expect((await h.api().delete('/extensions/deploy/key').set(h.bearer(hac)).expect(200)).body.key).toBeNull();
+      await h.api().post('/extensions/pipeline/login').set(withKey(second)).expect(401);
+      const trail = (await h.api().get('/audit').set(h.bearer(hac)).expect(200)).body.entries as { action: string }[];
+      expect(trail.map((e) => e.action)).toEqual(expect.arrayContaining(['extension.deploy_key_created', 'extension.deploy_key_revoked']));
+    });
+  });
+
   it('when the image store cannot be reached, says so without saying why', async () => {
     storeDown = true;
     const res = await h.api().post('/extensions/deploy/login').set(h.bearer(hac)).expect(503);

@@ -1,15 +1,24 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { CreateRepositoryCommand, DescribeImagesCommand, ECRClient, GetAuthorizationTokenCommand, PutLifecyclePolicyCommand } from '@aws-sdk/client-ecr';
 import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts';
 import type { Model } from 'mongoose';
 import { actorOf, AuditService } from '../audit/audit.service';
-import type { AuthContext } from '../auth/auth-context';
-import { newId } from '../common/crypto';
+import { hashToken, newId, randomToken } from '../common/crypto';
 import { APP_CONFIG, type AppConfig } from '../config';
 import { orgLog } from '../logs/org-log';
 import { PlansService } from '../plans/plans.service';
+import { ExtensionDeployKey, type ExtensionDeployKeyDocument } from './extension-deploy-key.schema';
 import { ExtensionDeploy, type ExtensionDeployDocument } from './extension-deploy.schema';
+
+/** Who is asking: a signed-in administrator, or the organisation's pipeline showing its deploy key. */
+export interface DeployCaller {
+  orgId: string;
+  userId: string;
+  ip: string;
+  userAgent: string;
+}
+const KEY_PREFIX = 'fbd_';
 
 /** The image store, as much of it as this service uses. Swapped for a stand-in in tests. */
 export interface ImageStore {
@@ -100,6 +109,7 @@ export class ExtensionDeployService {
     private readonly plans: PlansService,
     private readonly audit: AuditService,
     @InjectModel(ExtensionDeploy.name) private readonly deploys: Model<ExtensionDeployDocument>,
+    @InjectModel(ExtensionDeployKey.name) private readonly keys: Model<ExtensionDeployKeyDocument>,
   ) {}
 
   private get registry() {
@@ -116,20 +126,24 @@ export class ExtensionDeployService {
   }
 
   /** Where the page stands: whether this can be done here, what was asked for lately, and how it went. */
-  async status(auth: AuthContext) {
+  async status(auth: DeployCaller) {
     const rows = await this.deploys.find({ orgId: auth.orgId }).sort({ createdAt: -1 }).limit(10).lean();
     const included = ((await this.plans.limitsOf(auth.orgId)).extensions ?? 1) >= 1;
+    const key = await this.keys.findOne({ orgId: auth.orgId }).lean();
     return {
       available: !!this.store && !!this.registry,
       included,
       // The machine the code will run on: an image built for another kind will not start.
       platform: this.config.EXT_PLATFORM,
+      // For a pipeline: where it calls, and whether the organisation has given it a key.
+      api: this.config.API_URL,
+      key: key ? { hint: key.hint, createdAt: key.createdAt ?? null, lastUsedAt: key.lastUsedAt } : null,
       deploys: rows.map((r) => ({ id: r.id, kind: r.kind, tag: r.tag, status: r.status, message: r.message, output: r.output, at: r.createdAt ?? null, finishedAt: r.finishedAt })),
     };
   }
 
   /** A password to push with, good for an hour and for this organisation's space alone. Shown once. */
-  async pushLogin(auth: AuthContext) {
+  async pushLogin(auth: DeployCaller) {
     const store = this.available();
     await this.allowed(auth.orgId);
     const repository = spaceOf(auth.orgId);
@@ -145,7 +159,7 @@ export class ExtensionDeployService {
   }
 
   /** What the organisation has pushed, newest first. */
-  async images(auth: AuthContext) {
+  async images(auth: DeployCaller) {
     const store = this.available();
     const found = await store.images(spaceOf(auth.orgId)).catch(() => {
       throw new ServiceUnavailableException('The image store could not be reached. Try again in a moment.');
@@ -158,7 +172,7 @@ export class ExtensionDeployService {
   }
 
   /** Asks for a pushed version to run. It replaces the one running; if it will not start, that one stays. */
-  async request(auth: AuthContext, tag: string) {
+  async request(auth: DeployCaller, tag: string) {
     this.available();
     await this.allowed(auth.orgId);
     if (!TAG.test(tag) || !UUID.test(auth.orgId)) throw new BadRequestException('Choose one of the versions you have pushed');
@@ -173,7 +187,7 @@ export class ExtensionDeployService {
   }
 
   /** Asks for the extension to be taken away. Forms that use it must be changed before they can be published again. */
-  async remove(auth: AuthContext) {
+  async remove(auth: DeployCaller) {
     this.available();
     await this.busy(auth.orgId);
     const id = newId();
@@ -181,6 +195,39 @@ export class ExtensionDeployService {
     await this.audit.record(actorOf(auth), { action: 'extension.remove_requested', targetType: 'extension', targetId: id });
     orgLog.info(auth.orgId, 'extensions', 'Removal of the extension asked for', { deploy: id });
     return this.status(auth);
+  }
+
+  // ── The organisation's pipeline ──────────────────────────────────────────
+
+  /**
+   * A new deploy key, shown this once. It replaces the one before, which stops working at that moment: there
+   * is one pipeline's worth of trust per organisation, and making a new key is how the old one is taken back.
+   */
+  async createKey(auth: DeployCaller) {
+    this.available();
+    await this.allowed(auth.orgId);
+    const key = `${KEY_PREFIX}${randomToken()}`;
+    await this.keys.deleteMany({ orgId: auth.orgId });
+    await this.keys.create({ orgId: auth.orgId, hash: hashToken(key), hint: key.slice(-4), createdBy: auth.userId });
+    await this.audit.record(actorOf(auth), { action: 'extension.deploy_key_created', targetType: 'organization', targetId: auth.orgId });
+    orgLog.info(auth.orgId, 'extensions', 'A deploy key was made for the pipeline');
+    return { ...(await this.status(auth)), newKey: key };
+  }
+
+  async revokeKey(auth: DeployCaller) {
+    const gone = await this.keys.deleteMany({ orgId: auth.orgId });
+    if (gone.deletedCount) {
+      await this.audit.record(actorOf(auth), { action: 'extension.deploy_key_revoked', targetType: 'organization', targetId: auth.orgId });
+      orgLog.info(auth.orgId, 'extensions', 'The deploy key was taken back');
+    }
+    return this.status(auth);
+  }
+
+  /** The organisation a deploy key speaks for. Anything else is told nothing but "no". */
+  async callerFor(key: string, ip: string, userAgent: string): Promise<DeployCaller> {
+    const row = key.startsWith(KEY_PREFIX) ? await this.keys.findOneAndUpdate({ hash: hashToken(key) }, { $set: { lastUsedAt: new Date() } }).lean() : null;
+    if (!row) throw new UnauthorizedException('This deploy key is not valid. Make a new one on the Extensions page.');
+    return { orgId: row.orgId, userId: `deploy-key:${row.hint}`, ip, userAgent: userAgent.slice(0, 200) };
   }
 
   // ── The server's deploy service (through the `extension` command, never over the network) ────────────

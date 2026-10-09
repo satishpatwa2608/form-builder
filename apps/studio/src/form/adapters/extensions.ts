@@ -103,6 +103,9 @@ export interface DeployStatus {
   included: boolean;
   /** The kind of machine the code runs on: an image built for another will not start. */
   platform: string;
+  /** For a pipeline: the address it calls, and the organisation's deploy key if one has been made. */
+  api?: string;
+  key?: { hint: string; createdAt: string | null; lastUsedAt: string | null } | null;
   deploys: ExtensionDeployRow[];
 }
 /** What to push with: shown once, and it stops working after an hour. */
@@ -161,5 +164,21 @@ export function useRequestDeploy() {
       return unwrap<DeployStatus>(tag ? await adminApi.post('/extensions/deploy', { tag }) : await adminApi.delete('/extensions/deploy'));
     },
     onSuccess: (status) => qc.setQueryData(DEPLOY, status),
+  });
+}
+
+/** Makes the organisation's deploy key (replacing the one before) or, with `false`, takes it back. The new key is shown once. */
+export function useDeployKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (make: boolean) => {
+      if (!USE_API) {
+        localDeploy!.asked.push(make ? 'KEY' : 'REVOKE');
+        localDeploy!.status = { ...localDeploy!.status, key: make ? { hint: 'wxyz', createdAt: null, lastUsedAt: null } : null };
+        return { ...localDeploy!.status, newKey: make ? 'fbd_local-key-wxyz' : undefined };
+      }
+      return unwrap<DeployStatus & { newKey?: string }>(make ? await adminApi.post('/extensions/deploy/key') : await adminApi.delete('/extensions/deploy/key'));
+    },
+    onSuccess: ({ newKey: _shownOnce, ...status }) => qc.setQueryData(DEPLOY, status),
   });
 }

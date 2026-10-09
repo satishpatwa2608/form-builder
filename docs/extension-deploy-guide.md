@@ -142,8 +142,18 @@ No. Git is where you keep and review the code. Deploying is always: build, push,
 choose the version, Deploy.
 
 **Can our pipeline deploy on every commit?**
-Not yet. The push sign-in comes from the page and lasts an hour, so a person
-starts each deployment.
+Yes. On the Extensions page, under **Or deploy on every commit**, press **Make
+a deploy key**. The starter kit already has a GitHub Actions workflow
+(`.github/workflows/deploy.yml`). In your repository on GitHub, under
+**Settings → Secrets and variables → Actions**, add:
+
+- the secret `FB_DEPLOY_KEY`: the key (it is shown once),
+- the variable `FB_API_URL`: the address shown beside it on the page.
+
+From then on, every commit to `main` is built, pushed and deployed, and the run
+fails with your code's own output if the version does not start. The key can
+push to your image space and deploy your extension, and nothing else. Making a
+new key stops the old one at once; **Take the key back** stops the pipeline.
 
 **Do we need to restart anything after a deployment?**
 No. Form Builder reads what your code offers as part of each deployment.

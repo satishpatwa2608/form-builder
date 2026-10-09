@@ -167,6 +167,10 @@ called **Deploy your own code**, and you do not wait for us:
    page shows how it went; if the version did not start it says why, shows
    what your code printed, and the version before keeps running.
 
+To deploy on every commit instead, make a **deploy key** on the same page and
+give it to your pipeline: the starter kit's `.github/workflows/deploy.yml` does
+the rest (see [extension-deploy-guide.md](extension-deploy-guide.md)).
+
 Only your organisation's administrators can do this, each request is in your
 audit trail and your log (area *Extensions*), and the last ten versions you
 pushed are kept. Whatever the image contains, it runs as an ordinary user,

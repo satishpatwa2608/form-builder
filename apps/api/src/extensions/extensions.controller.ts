@@ -49,6 +49,20 @@ export class ExtensionsController {
     return this.deploys.request(auth, body.tag);
   }
 
+  /** A key for the organisation's pipeline, shown once; it replaces the one before. */
+  @Post('deploy/key')
+  @HttpCode(200)
+  @RequirePermission('org.manage')
+  createKey(@Auth() auth: AuthContext) {
+    return this.deploys.createKey(auth);
+  }
+
+  @Delete('deploy/key')
+  @RequirePermission('org.manage')
+  revokeKey(@Auth() auth: AuthContext) {
+    return this.deploys.revokeKey(auth);
+  }
+
   @Delete('deploy')
   @HttpCode(202)
   @RequirePermission('org.manage')

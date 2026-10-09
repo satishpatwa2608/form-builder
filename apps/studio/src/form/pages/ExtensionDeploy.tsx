@@ -4,7 +4,7 @@ import { Copy, KeyRound, RefreshCw, Rocket, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@ui/button';
 import { messageOf } from '../adapters/backend';
-import { deployUnderWay, useDeployStatus, usePushedImages, usePushLogin, useRequestDeploy, type ExtensionDeployRow, type PushLogin } from '../adapters/extensions';
+import { deployUnderWay, useDeployKey, useDeployStatus, usePushedImages, usePushLogin, useRequestDeploy, type DeployStatus, type ExtensionDeployRow, type PushLogin } from '../adapters/extensions';
 
 const STATE: Record<ExtensionDeployRow['status'], string> = { PENDING: 'Waiting to start', RUNNING: 'Deploying', LIVE: 'Running', FAILED: 'Failed', REMOVED: 'Removed' };
 
@@ -29,6 +29,73 @@ function PushCommands({ login }: { login: PushLogin }) {
       <Command label="Sign in to your image space" text={`docker login ${login.registry} -u ${login.username} -p ${login.password}`} secret={login.password} />
       <Command label="Build" text={`docker build --platform ${login.platform} -t ${login.image}:v1 .`} />
       <Command label="Push" text={`docker push ${login.image}:v1`} />
+    </div>
+  );
+}
+
+/** For teams that deploy on every commit: a key their pipeline keeps, in place of someone pressing the buttons above. */
+function PipelineKey({ status }: { status: DeployStatus }) {
+  const key = useDeployKey();
+  const [shown, setShown] = useState('');
+  const make = () =>
+    void key
+      .mutateAsync(true)
+      .then((r) => setShown(r.newKey ?? ''))
+      .catch((e) => toast.error(messageOf(e)));
+  return (
+    <div className="space-y-2" aria-label="Deploy from your pipeline">
+      <div className="fb-panel__title">3. Or deploy on every commit (optional)</div>
+      <p className="fb-muted">
+        A pipeline such as GitHub Actions can push and deploy by itself. Give it a deploy key: it can push to your image space and deploy your extension, and nothing else. The starter kit has the
+        workflow ready; it needs this key as the secret <code>FB_DEPLOY_KEY</code>
+        {status.api && (
+          <>
+            {' '}
+            and this address as the variable <code>FB_API_URL</code>: <code>{status.api}</code>
+          </>
+        )}
+        .
+      </p>
+      {shown && (
+        <>
+          <p className="fb-muted">Copy it now: it is not shown again.</p>
+          <Command label="Deploy key" text={shown} secret={shown.slice(8)} />
+        </>
+      )}
+      {status.key && !shown && (
+        <p className="fb-muted">
+          A key ending in <code>{status.key.hint}</code> is in use{status.key.lastUsedAt ? `, last on ${format(new Date(status.key.lastUsedAt), 'dd MMM, HH:mm')}` : ', and has not been used yet'}.
+        </p>
+      )}
+      <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={key.isPending}
+          onClick={() => (!status.key || window.confirm('Make a new deploy key? The one in use stops working at once, and your pipeline needs the new one.')) && make()}
+        >
+          <KeyRound /> {status.key ? 'Make a new deploy key' : 'Make a deploy key'}
+        </Button>
+        {status.key && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={key.isPending}
+            onClick={() =>
+              window.confirm('Take the deploy key back? Your pipeline will no longer be able to deploy.') &&
+              void key
+                .mutateAsync(false)
+                .then(() => {
+                  setShown('');
+                  toast.success('The deploy key no longer works');
+                })
+                .catch((e) => toast.error(messageOf(e)))
+            }
+          >
+            <Trash2 /> Take the key back
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -135,6 +202,8 @@ export function ExtensionDeploy({ running }: { running: boolean }) {
               )}
             </div>
           </div>
+
+          <PipelineKey status={status} />
 
           {last && (
             <div className="space-y-2" aria-label="Latest deployment" role="status">
