@@ -41,6 +41,8 @@ const conditionSchema: z.ZodType<Condition> = z.lazy(() =>
   ]),
 );
 
+const languageCode = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/, 'Use a language code such as en, hi or ar');
+
 const selectOptionSchema = z.object({ label: z.string().min(1), value: z.string().min(1) });
 
 const dataSourceSchema = z.object({
@@ -874,6 +876,8 @@ const formDefinitionShapeObject = z.object({
   events: z.array(eventSchema).max(MAX_EVENTS).optional(),
   timeZone: z.string().max(64).optional(),
   saveForLater: z.boolean().optional(),
+  languages: z.object({ default: languageCode, others: z.array(languageCode).max(20) }).optional(),
+  translations: z.record(languageCode, z.record(z.string().max(200), z.string().max(5000))).optional(),
   document: z.object({ keep: z.boolean().optional(), title: z.string().max(150).optional(), footer: z.string().max(200).optional(), showEmpty: z.boolean().optional() }).optional(),
   submitChecks: z.array(z.string().regex(/^x-[a-z0-9]{8}-[a-z0-9-]{1,40}$/)).max(5).optional(),
   opensAt: z.string().max(40).optional(),

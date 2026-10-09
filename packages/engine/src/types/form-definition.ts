@@ -48,6 +48,14 @@ export interface FormDefinition {
   /** What the public reads once the form has closed. */
   closedMessage?: string;
 
+  /**
+   * The languages the form is offered in: the one it is written in, and others
+   * it has translations for (see i18n.ts). Left out, the form is in English only.
+   */
+  languages?: { default: string; others: string[] };
+  /** Per language, the translation of each piece of wording, by key (`field.email.label`). */
+  translations?: Record<string, Record<string, string>>;
+
   fields: FormField[];
   /** Calculations, conditional states and cross-field validation. */
   rules?: FormRule[];

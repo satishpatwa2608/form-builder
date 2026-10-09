@@ -29,3 +29,4 @@ export * from './diff';
 export * from './import-form';
 export * from './shared-workflow';
 export * from './fragments';
+export * from './i18n';

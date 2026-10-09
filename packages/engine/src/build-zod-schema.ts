@@ -3,35 +3,36 @@ import type { FormDefinition, FormField, FormValues, SystemContext } from './typ
 import { fieldLabel, isBooleanField, isEmptyValue, isRepeat, isSignature, isValueField, MAX_CUSTOM_LENGTH } from './field-kinds';
 import { formShape, MAX_ROWS, rowKey, rowsOf } from './repeat';
 import { computeFormState } from './form-state';
+import { uiText, type Say } from './i18n';
 
 /** Used when a PHONE field has no pattern of its own. */
 export const DEFAULT_PHONE_PATTERN = '^\\+?[0-9][0-9\\s-]{6,14}$';
 
 const isValidDate = (v: string) => !Number.isNaN(Date.parse(v));
 
-function stringSchema(field: FormField, defaultPattern?: string): z.ZodType {
+function stringSchema(field: FormField, say: Say, defaultPattern?: string): z.ZodType {
   const v = field.validation ?? {};
   const m = v.messages ?? {};
   let s = z.string();
   if (v.minLength !== undefined) {
-    s = s.min(v.minLength, m.minLength ?? `Must be at least ${v.minLength} characters`);
+    s = s.min(v.minLength, m.minLength ?? say('minLength', { n: v.minLength }));
   }
   if (v.maxLength !== undefined) {
-    s = s.max(v.maxLength, m.maxLength ?? `Must be at most ${v.maxLength} characters`);
+    s = s.max(v.maxLength, m.maxLength ?? say('maxLength', { n: v.maxLength }));
   }
   const pattern = v.pattern ?? defaultPattern;
   if (pattern) {
-    s = s.regex(new RegExp(pattern), m.pattern ?? `${fieldLabel(field)} is not in the expected format`);
+    s = s.regex(new RegExp(pattern), m.pattern ?? say('format', { label: fieldLabel(field) }));
   }
   return s;
 }
 
-function optionValueSchema(field: FormField): z.ZodType {
+function optionValueSchema(field: FormField, say: Say): z.ZodType {
   const options = field.dataSource?.type === 'STATIC' ? field.dataSource.options ?? [] : undefined;
   const base = z.string();
   if (!options) return base;
   const allowed = new Set(options.map((o) => o.value));
-  return base.refine((v) => allowed.has(v), 'Select a valid option');
+  return base.refine((v) => allowed.has(v), say('option'));
 }
 
 /**
@@ -40,54 +41,54 @@ function optionValueSchema(field: FormField): z.ZodType {
  * so nothing here needs to be optional. Returns null for fields that are
  * never validated.
  */
-export function buildFieldValueSchema(field: FormField): z.ZodType | null {
+export function buildFieldValueSchema(field: FormField, say: Say = uiText('en')): z.ZodType | null {
   const v = field.validation ?? {};
   const m = v.messages ?? {};
   switch (field.type) {
     case 'TEXT':
     case 'TEXTAREA':
-      return stringSchema(field);
+      return stringSchema(field, say);
     case 'PHONE':
-      return stringSchema(field, DEFAULT_PHONE_PATTERN);
+      return stringSchema(field, say, DEFAULT_PHONE_PATTERN);
     case 'EMAIL': {
-      let s = z.email(m.pattern ?? 'Enter a valid email address');
+      let s = z.email(m.pattern ?? say('email'));
       if (v.maxLength !== undefined) {
-        s = s.max(v.maxLength, m.maxLength ?? `Must be at most ${v.maxLength} characters`);
+        s = s.max(v.maxLength, m.maxLength ?? say('maxLength', { n: v.maxLength }));
       }
       return s;
     }
     case 'NUMBER':
     case 'STEPPER': {
-      let s = z.number('Enter a number');
-      if (v.min !== undefined) s = s.min(v.min, m.min ?? `Must be at least ${v.min}`);
-      if (v.max !== undefined) s = s.max(v.max, m.max ?? `Must be at most ${v.max}`);
+      let s = z.number(say('number'));
+      if (v.min !== undefined) s = s.min(v.min, m.min ?? say('min', { n: v.min }));
+      if (v.max !== undefined) s = s.max(v.max, m.max ?? say('max', { n: v.max }));
       return s;
     }
     case 'SIGNATURE':
-      return z.string().refine(isSignature, 'Sign again');
+      return z.string().refine(isSignature, say('signAgain'));
     case 'CUSTOM':
       // What it means is the organisation's own business (a check in its extension can judge it); here it is text of a sane size.
-      return z.string().max(MAX_CUSTOM_LENGTH, 'This answer is too long');
+      return z.string().max(MAX_CUSTOM_LENGTH, say('tooLong'));
     case 'DATE':
     case 'DATETIME':
-      return z.string().refine(isValidDate, 'Enter a valid date');
+      return z.string().refine(isValidDate, say('date'));
     case 'CHECKBOX':
     case 'SWITCH':
     case 'CONSENT':
       return z.boolean();
     case 'RADIO':
     case 'DROPDOWN':
-      return optionValueSchema(field);
+      return optionValueSchema(field, say);
     case 'MULTI_SELECT':
     case 'CHECKBOX_GROUP': {
-      let s = z.array(optionValueSchema(field));
-      if (v.min !== undefined) s = s.min(v.min, m.min ?? `Select at least ${v.min}`);
-      if (v.max !== undefined) s = s.max(v.max, m.max ?? `Select at most ${v.max}`);
+      let s = z.array(optionValueSchema(field, say));
+      if (v.min !== undefined) s = s.min(v.min, m.min ?? say('selectMin', { n: v.min }));
+      if (v.max !== undefined) s = s.max(v.max, m.max ?? say('selectMax', { n: v.max }));
       return s;
     }
     case 'FILE': {
       let s = z.array(z.any());
-      if (v.max !== undefined) s = s.max(v.max, m.max ?? `Attach at most ${v.max} files`);
+      if (v.max !== undefined) s = s.max(v.max, m.max ?? say('filesMax', { n: v.max }));
       return s;
     }
     case 'CAPTCHA':
@@ -109,26 +110,26 @@ export function buildFieldValueSchema(field: FormField): z.ZodType | null {
 /** A required checkbox, switch or consent is only satisfied when on. */
 const isMissing = (field: FormField, value: unknown) => isEmptyValue(value) || (isBooleanField(field) && value !== true);
 
-const requiredMessage = (field: FormField) =>
+const requiredMessage = (field: FormField, say: Say) =>
   field.validation?.messages?.required ??
   (field.type === 'CAPTCHA'
-    ? 'Please complete the verification'
+    ? say('captcha')
     : field.type === 'CONSENT'
-      ? 'Please accept to continue'
+      ? say('consent')
       : field.type === 'SIGNATURE'
-        ? 'Please sign'
-        : `${fieldLabel(field)} is required`);
+        ? say('sign')
+        : say('required', { label: fieldLabel(field) }));
 
 /** How many rows a repeating section must and may have. */
-function rowCountProblem(field: FormField, count: number, required: boolean): string | null {
+function rowCountProblem(field: FormField, count: number, required: boolean, say: Say): string | null {
   const { min, max, messages } = field.validation ?? {};
   const atLeast = Math.max(min ?? 0, required ? 1 : 0);
   if (count < atLeast) {
-    if (count === 0 && required) return messages?.required ?? `Add at least one row to ${fieldLabel(field)}`;
-    return messages?.min ?? `Add at least ${atLeast} rows`;
+    if (count === 0 && required) return messages?.required ?? say('rowsRequired', { label: fieldLabel(field) });
+    return messages?.min ?? say('rowsMin', { n: atLeast });
   }
   const atMost = Math.min(max ?? MAX_ROWS, MAX_ROWS);
-  return count > atMost ? messages?.max ?? `No more than ${atMost} rows` : null;
+  return count > atMost ? messages?.max ?? say('rowsMax', { n: atMost }) : null;
 }
 
 /**
@@ -144,11 +145,13 @@ function rowCountProblem(field: FormField, count: number, required: boolean): st
  * a mistake in a row is reported at `[section, row, field]`.
  * Build it once per definition version, not per render.
  */
-export function buildZodSchema(def: Pick<FormDefinition, 'fields' | 'rules'>, ctx?: SystemContext) {
+export function buildZodSchema(def: Pick<FormDefinition, 'fields' | 'rules'> & Partial<Pick<FormDefinition, 'translations'>>, ctx?: SystemContext) {
+  // Messages are worded in the language the form is being filled in. Give the form already localised, so labels match.
+  const say = uiText(ctx?.language, def);
   const shape = formShape(def.fields);
   const valueSchemas = new Map<string, z.ZodType>();
   for (const field of def.fields) {
-    const schema = isValueField(field) ? buildFieldValueSchema(field) : null;
+    const schema = isValueField(field) ? buildFieldValueSchema(field, say) : null;
     if (schema) valueSchemas.set(field.name, schema);
   }
 
@@ -165,7 +168,7 @@ export function buildZodSchema(def: Pick<FormDefinition, 'fields' | 'rules'>, ct
       const ruleError = errors.get(key);
       if (isMissing(field, value)) {
         // A rule can fault an empty field too ("give a phone number or an email").
-        const message = state.required ? requiredMessage(field) : ruleError;
+        const message = state.required ? requiredMessage(field, say) : ruleError;
         if (message) add(message);
         return;
       }
@@ -174,7 +177,7 @@ export function buildZodSchema(def: Pick<FormDefinition, 'fields' | 'rules'>, ct
       if (!result.success) return add(result.error.issues[0].message);
 
       const allowed = options.get(key);
-      if (allowed && ![value].flat().every((v) => allowed.has(String(v)))) return add('Select a valid option');
+      if (allowed && ![value].flat().every((v) => allowed.has(String(v)))) return add(say('option'));
       if (ruleError) add(ruleError);
     };
 
@@ -186,7 +189,7 @@ export function buildZodSchema(def: Pick<FormDefinition, 'fields' | 'rules'>, ct
       const state = states.get(field.name);
       if (!state?.visible) continue;
       const rows = rowsOf(values[field.name]);
-      const problem = rowCountProblem(field, rows.length, state.required) ?? errors.get(field.name);
+      const problem = rowCountProblem(field, rows.length, state.required, say) ?? errors.get(field.name);
       if (problem) issues.addIssue({ code: 'custom', path: [field.name], message: problem });
       const children = shape.repeats.find((r) => r.field === field)?.valueChildren ?? [];
       rows.forEach((row, i) => {

@@ -13,6 +13,8 @@ export interface SystemContext {
   /** Injected so tests and server-side validation get a deterministic date. */
   now?: Date;
   urlParams?: Record<string, string>;
+  /** The language the form is being filled in: decides the wording of messages. The form's own when not given. */
+  language?: string;
   /** IANA zone (e.g. Asia/Kolkata) that `today()` in a rule is taken in. UTC when not given. */
   timeZone?: string;
 }
