@@ -30,7 +30,7 @@ jobs:
           key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
       # The API and gateway load these two packages from their build output.
-      - run: pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/sdk build
+      - run: pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/sdk --filter @fb/gateway build
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

@@ -18,7 +18,7 @@ beforeAll(() => {
   Element.prototype.scrollIntoView ??= () => {};
 });
 
-const KEY = 'x-abcd1234-stars';
+const STARS = 'x-abcd1234-stars';
 const form = (fields: FormField[]): FormDefinition => ({
   id: 'f-v1',
   orgId: 'org-1',
@@ -33,7 +33,7 @@ const form = (fields: FormField[]): FormDefinition => ({
   createdBy: 'u',
   updatedBy: 'u',
 });
-const rating = (over: Partial<FormField> = {}): FormField => ({ id: 'r', type: 'CUSTOM', name: 'rating', label: 'Rate us', required: true, props: { custom: KEY, height: 60 }, ...over });
+const rating = (over: Partial<FormField> = {}): FormField => ({ id: 'r', type: 'CUSTOM', name: 'rating', label: 'Rate us', required: true, props: { custom: STARS, height: 60 }, ...over });
 
 function renderForm(fields: FormField[]) {
   const onSubmitted = vi.fn<(r: SubmissionResult) => void>();
@@ -131,7 +131,7 @@ describe('The palette', () => {
     expect(await screen.findByRole('button', { name: 'Signature' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Custom field' })).not.toBeInTheDocument();
     first.unmount();
-    seedLocalExtensions([], [], [{ key: KEY, label: 'Acme rules: Star rating', height: 60 }]);
+    seedLocalExtensions([], [], [{ key: STARS, label: 'Acme rules: Star rating', height: 60 }]);
     palette();
     expect(await screen.findByRole('button', { name: 'Custom field' })).toBeInTheDocument();
     expect(screen.getByText('Your extension')).toBeInTheDocument();
