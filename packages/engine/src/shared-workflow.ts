@@ -95,6 +95,8 @@ function mapWorkflow(workflow: WorkflowConfig, automations: Automation[], rename
           return { ...base, to: mapRecipients(base.to, rename), message: mapText(base.message, rename) };
         case 'APPROVAL':
           return { ...base, to: mapRecipients(base.to, rename), title: mapText(base.title, rename), ...(base.instructions ? { instructions: mapText(base.instructions, rename) } : {}) };
+        case 'SIGN':
+          return { ...base, to: mapRecipients(base.to, rename), title: mapText(base.title, rename), ...(base.message ? { message: mapText(base.message, rename) } : {}) };
         case 'CREATE_TASK':
           return { ...base, to: mapRecipients(base.to, rename), title: mapText(base.title, rename), ...(base.description ? { description: mapText(base.description, rename) } : {}) };
         default:

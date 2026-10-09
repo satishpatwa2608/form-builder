@@ -1,4 +1,5 @@
 import { DocumentsService } from '../../documents/documents.service';
+import { SIGNATURE_FINISHED_EVENT, SignaturesService, type SignatureFinishedEvent } from '../../signatures/signatures.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -40,6 +41,7 @@ const STEP_NAME: Record<AutomationAction['type'], string> = {
   WEBHOOK: 'Webhook',
   HANDLER: 'Custom API',
   APPROVAL: 'Approval',
+  SIGN: 'Send for signature',
 };
 const stepName = (a: AutomationAction) => a.label || STEP_NAME[a.type];
 
@@ -85,6 +87,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     private readonly handlers: FormHandlerRegistry,
     private readonly jobs: JobQueue,
     private readonly documents: DocumentsService,
+    private readonly signatures: SignaturesService,
   ) {}
 
   // ---------------------------------------------------------------- triggers
@@ -366,6 +369,30 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         await log(`${stepName(action)} skipped (condition not met)`, { ...base, ok: true, skipped: true });
         continue;
       }
+      if (action.type === 'SIGN') {
+        // Like an approval, but the people are outside: the flow stops here until they have all signed, or one declines, or time runs out.
+        const ctx = { ...run, record: live, steps: { ...steps }, stepKey: key };
+        const signers = await this.emails(action.to, ctx);
+        try {
+          if (!signers.length) throw new Error('no one to sign');
+          const title = renderTemplate(action.title, this.templateContext(ctx), false).slice(0, 200);
+          await this.runs.updateOne(
+            { uuid: runId },
+            { $set: { orgId: run.orgId, recordId: run.recordId, formId: run.definition.id, automationId: automation.id, trigger: run.trigger, depth, actor, status: 'WAITING', stepIndex: index, steps } },
+            { upsert: true },
+          );
+          const requestId = await this.signatures.start({ orgId: run.orgId, recordId: run.recordId, runId, stepKey: key, title, message: action.message ? renderTemplate(action.message, this.templateContext(ctx), false) : undefined, order: action.order, expiresInDays: action.expiresInDays, signers });
+          await this.runs.updateOne({ uuid: runId }, { $set: { signatureRequestId: requestId } });
+          await log(`sent for signature to ${signers.length} ${signers.length === 1 ? 'person' : 'people'}: ${title}`, { ...base, ok: true, waiting: true });
+          return;
+        } catch (e) {
+          await this.runs.updateOne({ uuid: runId, status: 'WAITING' }, { $set: { status: 'RUNNING' } });
+          await log(`SIGN failed - ${(e as Error).message}`, { ...base, ok: false, error: (e as Error).message });
+          if (action.continueOnError) continue;
+          await log(`stopped after step ${index + 1} failed`, { ok: false, stopped: true, stepIndex: index });
+          return finish('STOPPED');
+        }
+      }
       if (action.type === 'APPROVAL') {
         // Participant step: save where we are and stop; a decision resumes from the next step.
         const approvers = await this.userIds(action.to, { orgId: run.orgId, record: live });
@@ -503,6 +530,32 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     ).catch((err) => this.logger.error(`resuming flow ${runId} failed: ${(err as Error).message}`));
   }
 
+  /** Everyone has signed, someone declined, or time ran out: the flow carries on from the step after, knowing which. */
+  @OnEvent(SIGNATURE_FINISHED_EVENT, { async: true })
+  async onSignatureFinished(e: SignatureFinishedEvent) {
+    try {
+      const run = await this.runs.findOneAndUpdate({ uuid: e.runId, orgId: e.orgId, status: 'WAITING', signatureRequestId: { $ne: '' } }, { $set: { status: 'RUNNING' } }).lean();
+      if (!run) return;
+      const { record, definition } = await this.records.load(e.orgId, e.recordId);
+      const automation = (definition.automations ?? []).find((a) => a.id === run.automationId);
+      const said = e.output.status === 'SIGNED' ? `signed by ${e.output.signers === 1 ? 'the signer' : `all ${e.output.signers} signers`}` : e.output.status === 'DECLINED' ? `declined by ${e.output.declinedBy}` : 'not signed in time';
+      await this.records.log(e.orgId, e.recordId, 'AUTOMATION', '', `${automation?.name ?? 'Automation'}: ${said}`, { runId: e.runId, automationId: run.automationId, stepKey: e.stepKey, stepIndex: run.stepIndex, action: 'SIGN', ok: e.output.status === 'SIGNED', output: e.output });
+      if (!automation) {
+        await this.runs.updateOne({ uuid: e.runId }, { $set: { status: 'STOPPED' } });
+        return;
+      }
+      await this.runFlow(
+        automation,
+        { orgId: e.orgId, trigger: run.trigger as AutomationTrigger, definition, values: valuesFromPayload(definition, record.payload as FormValues), recordId: e.recordId },
+        run.depth,
+        run.actor,
+        { runId: e.runId, from: run.stepIndex + 1, steps: { ...(run.steps ?? {}), [e.stepKey]: e.output } },
+      );
+    } catch (err) {
+      this.logger.error(`resuming flow ${e.runId} after signature failed: ${(err as Error).message}`);
+    }
+  }
+
   private templateContext(ctx: FormHandlerContext): TemplateContext {
     const base = (process.env.FORM_APP_URL ?? '').replace(/\/+$/, '');
     const status = findStatus(workflowOf(ctx.definition), ctx.record.status);
@@ -587,8 +640,9 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         return this.webhook(action.url, ctx);
 
       case 'APPROVAL':
+      case 'SIGN':
         // Pausing is the flow's job (runFlow); reaching here would be a bug.
-        throw new Error('approval steps are handled by the flow');
+        throw new Error('approval and signature steps are handled by the flow');
 
       case 'HANDLER': {
         const handler = this.handlers.get(action.key);

@@ -65,7 +65,7 @@ An independent review of the new code found issues; all were fixed, tested and r
 - **Plans** count extensions.
 
 ### Tests
-See the figures in the last hand-over message for the run of 9 October. Suites: engine, connectors, SDK, API (unit and end-to-end on an in-memory database), studio, runtime, the outbound proxy, 17 browser scenarios files (`pnpm e2e`) and the Docker hosting suite (`pnpm e2e:docker`). CI runs on every push to the private repository and passes.
+See the figures in the last hand-over message for the run of 9 October. Suites: engine, connectors, SDK, API (unit and end-to-end on an in-memory database), studio, runtime, the outbound proxy, 19 browser scenario files (`pnpm e2e`) and the Docker hosting suite (`pnpm e2e:docker`). CI runs on every push to the private repository and passes.
 
 ## What needs to be done
 
@@ -84,7 +84,7 @@ See the figures in the last hand-over message for the run of 9 October. Suites: 
 - Local `.env` uses the Business plan so the demo isn't capped; new orgs elsewhere start on Free.
 
 ### Engineering work remaining
-- **AEM parity:** e-signature (Phase 7), languages and accessibility (Phase 9), portal, headless API and deeper analytics (Phase 10), more connectors (Phase 11). In Phase 6: designed document templates, attaching the PDF to an email, PDF operations, more scripts. In Phase 8: a form from a connector entity or a fillable PDF.
+- **AEM parity:** portal, headless API and deeper analytics (Phase 10), more connectors (Phase 11). In Phase 7 (e-signature): outside providers (DocuSign, Aadhaar eSign) and certifying the PDF with a certificate. In Phase 9: XLIFF, translated emails, right-to-left PDFs, an outside accessibility audit. In Phase 6: designed document templates, attaching the PDF to an email, PDF operations, more scripts. In Phase 8: a form from a connector entity or a fillable PDF.
 - **Production hosting:** apply and correct the Terraform; a registry for the SDK and customers' images; a build service for customers' repositories; a secrets manager in place of `infra/.state/`.
 - SAML sign-in (only OpenID Connect today).
 - Email for review requests; per-field drop-off analytics; onboarding tour.

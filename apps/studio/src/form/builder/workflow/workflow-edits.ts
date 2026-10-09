@@ -18,6 +18,7 @@ import type { CustomWorkflow, Person } from '../../adapters/workflow';
 export const ACTION_LABEL: Record<AutomationAction['type'], string> = {
   EMAIL: 'Send an email',
   APPROVAL: 'Wait for approval',
+  SIGN: 'Send for signature',
   NOTIFY: 'Notify in Form Builder',
   CREATE_TASK: 'Create a task',
   ASSIGN: 'Assign to someone',
@@ -132,6 +133,7 @@ export function newAutomation(existing: Automation[]): Automation {
 const STEP_ID_BASE: Record<AutomationAction['type'], string> = {
   EMAIL: 'email',
   APPROVAL: 'approval',
+  SIGN: 'sign',
   NOTIFY: 'notify',
   CREATE_TASK: 'task',
   ASSIGN: 'assign',
@@ -182,6 +184,8 @@ export function stepOutputs(step: AutomationAction, customWorkflows: CustomWorkf
       return customWorkflows.find((w) => w.key === step.key)?.outputs ?? [];
     case 'APPROVAL':
       return ['decision', 'decidedByName', 'comment'];
+    case 'SIGN':
+      return ['status', 'signedAt'];
     default:
       return [];
   }
@@ -211,6 +215,15 @@ export function outputPseudoFields(steps: AutomationAction[], index: number, cus
   return steps.slice(0, index).flatMap((s, i) =>
     stepOutputs(s, customWorkflows).map((o): FormField => {
       const name = `$steps.${stepKey(s, i)}.${o}`;
+      if (s.type === 'SIGN' && o === 'status') {
+        return {
+          id: name,
+          type: 'DROPDOWN',
+          name,
+          label: `${stepTitle(s)} → status`,
+          dataSource: { type: 'STATIC', options: [{ label: 'Signed by everyone', value: 'SIGNED' }, { label: 'Declined', value: 'DECLINED' }, { label: 'Ran out of time', value: 'EXPIRED' }] },
+        };
+      }
       // An approval's decision is one of two values: offer them as a choice.
       if (s.type === 'APPROVAL' && o === 'decision') {
         return {
@@ -263,6 +276,8 @@ export function stepSummary(s: AutomationAction, form: FormDefinition, people: P
       return customWorkflows.find((w) => w.key === s.key)?.label ?? (s.key || 'Choose a custom API');
     case 'APPROVAL':
       return `By ${who(s.to)}${s.dueInHours ? ` · due in ${s.dueInHours}h` : ''}`;
+    case 'SIGN':
+      return `By ${who(s.to)}${s.to.length > 1 ? (s.order === 'PARALLEL' ? ' · all at once' : ' · one after another') : ''}`;
   }
 }
 
@@ -282,6 +297,8 @@ export function newAction(type: AutomationAction['type'], form: FormDefinition):
       return { type, to: tracked ? [{ kind: 'ASSIGNEE' }] : [], message: `New ${form.name}${tracked ? ' {{$record.ref}}' : ''}` };
     case 'CREATE_TASK':
       return { type, to: tracked ? [{ kind: 'ASSIGNEE' }] : [], title: `Follow up ${form.name}${tracked ? ' {{$record.ref}}' : ''}`, dueInHours: 48 };
+    case 'SIGN':
+      return { type, to: emailField ? [{ kind: 'FIELD', field: emailField.name }] : [], title: `${form.name}${tracked ? ' {{$record.ref}}' : ''}`, expiresInDays: 14 };
     case 'APPROVAL':
       return {
         type,

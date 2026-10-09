@@ -89,6 +89,16 @@ describe('workflow validation', () => {
     );
   });
 
+  it('a signature step needs someone to sign and a name for what is signed', () => {
+    const sign = (a: object) => ({ workflow: wf, automations: [auto({ actions: [{ type: 'SIGN', to: [], title: ' ', ...a } as never] })] });
+    expect(issues(sign({}), 'shape')).toEqual([]);
+    expect(issues(sign({}))).toEqual(expect.arrayContaining(['"A": choose who signs', '"A": say what is being signed']));
+    // Signers are people outside as often as inside: an address or an email field of the form will do.
+    expect(issues(sign({ to: [{ kind: 'EMAIL', email: 'asha@example.com' }, { kind: 'FIELD', field: 'email' }], title: 'Agreement', order: 'PARALLEL', expiresInDays: 30 }))).toEqual([]);
+    expect(issues(sign({ to: [{ kind: 'EMAIL', email: 'asha@example.com' }], title: 'Agreement', expiresInDays: 400 }), 'shape')).not.toEqual([]);
+    expect(issues(sign({ to: [{ kind: 'EMAIL', email: 'asha@example.com' }], title: 'Agreement', order: 'RANDOM' }), 'shape')).not.toEqual([]);
+  });
+
   it('status features need the workflow switched on', () => {
     const off = issues({
       automations: [

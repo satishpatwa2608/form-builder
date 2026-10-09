@@ -60,6 +60,26 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
             <NumberSetting label="Due in (hours)" min={1} value={action.dueInHours} onChange={(dueInHours) => onChange({ ...action, dueInHours })} />
           </>
         );
+      case 'SIGN':
+        return (
+          <>
+            <Setting label="Signers" hint="Each gets a private link by email and signs the PDF of the response on a page of ours. The flow waits until all have signed.">
+              {() => <RecipientsEditor form={form} people={people} value={action.to} onChange={(to) => onChange({ ...action, to })} />}
+            </Setting>
+            <TextSetting label="What is being signed" value={action.title} onChange={(title) => onChange({ ...action, title })} />
+            <TextSetting label="Message to the signers" multiline value={action.message} onChange={(message) => onChange({ ...action, message: message || undefined })} />
+            <SelectSetting
+              label="When there are several signers"
+              value={action.order ?? 'IN_ORDER'}
+              options={[
+                { label: 'One after another, in the order above', value: 'IN_ORDER' },
+                { label: 'All at once', value: 'PARALLEL' },
+              ]}
+              onChange={(order) => onChange({ ...action, order })}
+            />
+            <NumberSetting label="Give up after (days)" min={1} value={action.expiresInDays ?? 14} onChange={(expiresInDays) => onChange({ ...action, expiresInDays: expiresInDays ? Math.min(90, Math.round(expiresInDays)) : undefined })} />
+          </>
+        );
       case 'APPROVAL':
         return (
           <>

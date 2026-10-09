@@ -190,6 +190,13 @@ export type AutomationAction = StepMeta &
   | { type: 'APPROVAL'; to: RecipientRef[]; title: string; instructions?: string; dueInHours?: number }
   /** A task in the Tasks module: the first recipient is accountable, the rest responsible. */
   | { type: 'CREATE_TASK'; title: string; description?: string; to: RecipientRef[]; dueInHours?: number }
+  /**
+   * Send the PDF of the response to be signed. Signers get a link by email and
+   * sign on a page of ours, one after another or all at once. The flow waits
+   * until all have signed, one declines, or it expires. Output:
+   * { status: 'SIGNED' | 'DECLINED' | 'EXPIRED', signedAt }.
+   */
+  | { type: 'SIGN'; to: RecipientRef[]; title: string; message?: string; order?: 'IN_ORDER' | 'PARALLEL'; expiresInDays?: number }
   | { type: 'ASSIGN'; userId: string }
   | { type: 'SET_STATUS'; status: string }
   /** POST the record as JSON to an allow-listed https URL (FORM_WEBHOOK_ALLOWLIST). */

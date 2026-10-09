@@ -264,6 +264,15 @@ const actionSchema = z.union([
     instructions: z.string().max(2000).optional(),
     dueInHours: z.number().positive().max(8760).optional(),
   }),
+  z.object({
+    ...stepMeta,
+    type: z.literal('SIGN'),
+    to: recipients,
+    title: z.string().max(120),
+    message: z.string().max(2000).optional(),
+    order: z.enum(['IN_ORDER', 'PARALLEL']).optional(),
+    expiresInDays: z.number().int().min(1).max(90).optional(),
+  }),
   z.object({ ...stepMeta, type: z.literal('ASSIGN'), userId: z.string().max(64) }),
   z.object({ ...stepMeta, type: z.literal('SET_STATUS'), status: z.string().max(40) }),
   z.object({ ...stepMeta, type: z.literal('WEBHOOK'), url: z.string().max(500) }),
@@ -474,10 +483,11 @@ function checkWorkflow(def: FormDefinition, ctx: z.RefinementCtx) {
         if (!ok) missing(`step ${k + 1}'s condition uses "${ref}", which isn't an answer${wf?.enabled ? ', the status' : ''} or an earlier step's output`);
       }
       seen.add(key);
-      if ((action.type === 'EMAIL' || action.type === 'NOTIFY' || action.type === 'CREATE_TASK' || action.type === 'APPROVAL') && !action.to.length) {
-        missing(action.type === 'APPROVAL' ? 'choose who approves' : 'add who it goes to');
+      if ((action.type === 'EMAIL' || action.type === 'NOTIFY' || action.type === 'CREATE_TASK' || action.type === 'APPROVAL' || action.type === 'SIGN') && !action.to.length) {
+        missing(action.type === 'APPROVAL' ? 'choose who approves' : action.type === 'SIGN' ? 'choose who signs' : 'add who it goes to');
       }
       if (action.type === 'APPROVAL' && !action.title.trim()) missing('the approval needs a title');
+      if (action.type === 'SIGN' && !action.title.trim()) missing('say what is being signed');
       if (action.type === 'EMAIL' && (!action.subject.trim() || !action.body.trim())) missing('the email needs a subject and a message');
       if (action.type === 'NOTIFY' && !action.message.trim()) missing('the notification needs a message');
       if (action.type === 'CREATE_TASK' && !action.title.trim()) missing('the task needs a title');

@@ -124,6 +124,29 @@ describe('Workflow dialog', () => {
     expect(steps[1].if).toEqual({ field: '$steps.approval.decision', operator: 'equals', value: 'REJECTED' });
   });
 
+  it('signature step: starts with the form\'s email field as signer; later steps branch on how it ended', async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    render(<Harness initial={{ ...basic, automations: [{ id: 'a', name: 'A', enabled: true, when: 'SUBMITTED', actions: [] }] }} spy={spy} />);
+    await user.click(screen.getByRole('tab', { name: /Automations/ }));
+    await user.click(screen.getByRole('button', { name: 'Add a step at the start' }));
+    await user.click(within(screen.getByRole('group', { name: 'Choose a step' })).getByRole('button', { name: /Send for signature/ }));
+    await user.click(screen.getByRole('combobox', { name: 'When there are several signers' }));
+    await user.click(await screen.findByRole('option', { name: 'All at once' }));
+    await user.click(screen.getByRole('button', { name: 'Add a step after step 1' }));
+    await user.click(within(screen.getByRole('group', { name: 'Choose a step' })).getByRole('button', { name: /Send an email/ }));
+    await user.click(screen.getByRole('switch', { name: 'Run only if...' }));
+    await user.click(screen.getByRole('combobox', { name: 'When field' }));
+    await user.click(await screen.findByRole('option', { name: 'Send for signature → status' }));
+    await user.click(screen.getByRole('combobox', { name: 'Value' }));
+    await user.click(await screen.findByRole('option', { name: 'Declined' }));
+    const steps = spy.mock.lastCall![0].automations[0].actions;
+    expect(steps[0]).toMatchObject({ id: 'sign', type: 'SIGN', order: 'PARALLEL', expiresInDays: 14 });
+    expect(steps[0].to).toEqual([{ kind: 'FIELD', field: expect.any(String) }]);
+    expect(steps[0].title).toContain(basic.name);
+    expect(steps[1].if).toEqual({ field: '$steps.sign.status', operator: 'equals', value: 'DECLINED' });
+  });
+
   it('who works the records: switch to a team of people and departments', async () => {
     const user = userEvent.setup();
     const spy = vi.fn();

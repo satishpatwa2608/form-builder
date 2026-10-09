@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowRightLeft, ArrowUp, Bell, Code2, Flag, ListChecks, Mail, Play, Plus, Trash2, UserCheck, UserPlus, Webhook, X } from 'lucide-react';
+import { ArrowDown, ArrowRightLeft, ArrowUp, Bell, Code2, Flag, ListChecks, Mail, Play, Plus, Trash2, UserCheck, UserPlus, Webhook, X, PenLine } from 'lucide-react';
 import { Button } from '@ui/button';
 import { Input } from '@ui/input';
 import type { Automation, AutomationAction, AutomationTrigger, FormDefinition } from '../../types';
@@ -32,6 +32,7 @@ interface FlowEditorProps {
 const STEP_ICON: Record<AutomationAction['type'], ReactNode> = {
   EMAIL: <Mail size={16} />,
   APPROVAL: <UserCheck size={16} />,
+  SIGN: <PenLine size={16} />,
   NOTIFY: <Bell size={16} />,
   CREATE_TASK: <ListChecks size={16} />,
   ASSIGN: <UserPlus size={16} />,

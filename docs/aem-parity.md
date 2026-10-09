@@ -169,6 +169,21 @@ Limits to know:
 
 **Done when:** a submission is signed by the requester and then an approver, and the signed PDF is on the record.
 
+**Status, 9 October 2026: our own signing is built and tested; outside providers and certification are not.**
+
+| Item | State |
+|---|---|
+| "Send for signature" step | Done. A step in an automation: choose who signs (an email field of the form, a typed address, the submitter, a member of staff), say what is being signed, one after another or all at once, and after how many days to give up (14 unless changed, at most 90). A new step starts with the form's email field as the signer. The flow waits, as it does for an approval, and carries on knowing how it ended (signed, declined, ran out of time), so later steps can branch on it from a dropdown. |
+| Signing | Done, on a page of ours (`/sign/…` on the form app). Each signer gets a private link by email, reads the PDF of the response, types their name, draws a signature (or leaves the box empty to sign with the typed name), and ticks that they agree to sign electronically. They can decline, with a reason; that ends it for everyone. The page passes the automated accessibility check. |
+| Signed document and audit trail | Done. When the last person signs, the server adds a page to the PDF: each signature, the name typed, the address the link went to, the time, the network address and browser, and the SHA-256 fingerprint of the document that was signed. It is stored, shown on the record (who signed, who is still to sign, **Download signed PDF**), and emailed to every signer. The document is checked against its fingerprint before it is marked signed. |
+| Reminders and expiry | Done. A reminder every three days (at most five) with a fresh link; the earlier link stops working. After the last day the request lapses and the flow is told. |
+| Links | A link is a 256-bit random value kept only as a hash. It signs once, only for the person it was sent to, and only while it is their turn; two uses at the same moment sign once. A list of who signed never includes the links or the signature pictures. |
+| DocuSign and Aadhaar eSign | Not built. Both need commercial accounts (see the decisions table). The step is the place they would plug in: the flow only needs to be told "signed", "declined" or "expired". |
+| Certifying the PDF with the organisation's certificate | Not built. The signed PDF is protected by where it is stored and by its recorded fingerprint, not by a certificate inside the file, so a copy taken outside the product cannot prove on its own that it is unaltered. |
+| Wording of the signing page and emails | English only; not yet translated with the form. |
+
+What this is, legally: an ordinary electronic signature (who was sent the link, what they typed and drew, when and from where). It is not an Aadhaar eSign or a certificate-based digital signature. Whether that is enough for a given document is a question for the customer's own legal advice.
+
 ### Phase 8 – Authoring lifecycle (3 weeks)
 
 - **Fragments:** save a section as a reusable fragment; forms reference it and pick up changes at their next publish.

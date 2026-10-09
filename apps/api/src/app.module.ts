@@ -78,6 +78,9 @@ import { FormReviewController } from './forms/form-review.controller';
 import { DocumentBatch, DocumentBatchSchema } from './documents/document-batch.schema';
 import { DocumentsService } from './documents/documents.service';
 import { DocumentsController } from './documents/documents.controller';
+import { SignatureRequest, SignatureRequestSchema } from './signatures/signature.schema';
+import { SignaturesService } from './signatures/signatures.service';
+import { SignaturePublicController, SignaturesController } from './signatures/signatures.controller';
 import { FragmentRow, FragmentSchema } from './fragments/fragment.schema';
 import { FragmentsService } from './fragments/fragments.service';
 import { FragmentsController } from './fragments/fragments.controller';
@@ -157,6 +160,7 @@ export class AppModule {
           { name: SharedWorkflowRow.name, schema: SharedWorkflowSchema },
           { name: ExtensionRow.name, schema: ExtensionSchema },
           { name: FragmentRow.name, schema: FragmentSchema },
+          { name: SignatureRequest.name, schema: SignatureRequestSchema },
           { name: DocumentBatch.name, schema: DocumentBatchSchema },
           { name: FormComment.name, schema: FormCommentSchema },
         ]),
@@ -190,6 +194,8 @@ export class AppModule {
         WorkflowsController,
         ExtensionsController,
         FragmentsController,
+        SignaturePublicController,
+        SignaturesController,
         DocumentsController,
         FormReviewController,
         ExtensionPublicController,
@@ -249,6 +255,7 @@ export class AppModule {
         WorkflowsService,
         ExtensionsService,
         FragmentsService,
+        SignaturesService,
         DocumentsService,
         FormReviewService,
         FormAutomationService,

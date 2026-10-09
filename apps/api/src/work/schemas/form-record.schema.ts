@@ -136,6 +136,10 @@ export class FormFlowRun {
   @Prop({ type: MongooseSchema.Types.Mixed, default: null })
   approval: FlowApproval | null;
 
+  /** Set while the flow waits at a "Send for signature" step: the request it is waiting for. */
+  @Prop({ type: String, default: '' })
+  signatureRequestId: string;
+
   /** FLOW = an automation paused at an approval step; ACTION = a named action waiting for approval. */
   @Prop({ type: String, default: 'FLOW' })
   kind: 'FLOW' | 'ACTION';

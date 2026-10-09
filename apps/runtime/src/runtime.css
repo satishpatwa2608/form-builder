@@ -80,3 +80,75 @@
   background: #fff;
   font: inherit;
 }
+
+/* Signing a document (/sign/:token) */
+.rt-sign__message {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  font-size: 14px;
+}
+.rt-sign__doc {
+  margin: 16px 0;
+  font-weight: 600;
+}
+.rt-sign__form {
+  display: grid;
+  gap: 16px;
+}
+.rt-sign__field {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+.rt-sign__field > span:first-child {
+  font-weight: 600;
+}
+.rt-sign__field input,
+.rt-sign__field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--fb-soft);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+.rt-sign__pad {
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  aspect-ratio: 600 / 180;
+  border: 1px dashed var(--fb-soft);
+  border-radius: 8px;
+  background: #fff;
+  touch-action: none;
+  cursor: crosshair;
+}
+.rt-sign__agree {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14px;
+}
+.rt-sign__agree input {
+  margin-top: 3px;
+}
+.rt-sign__actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.rt-sign__primary {
+  padding: 9px 22px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rt-sign__primary--danger {
+  background: var(--fb-danger);
+}
+.rt-sign__primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

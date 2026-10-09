@@ -12,6 +12,7 @@ import { WorkFieldsSection } from "./work/WorkFieldsSection";
 import { SlaSummary } from "./work/SlaSummary";
 import { EmailComposer } from "./work/EmailComposer";
 import { ReopenBox } from "./work/ReopenBox";
+import { SignaturesSection } from "./work/SignaturesSection";
 import {
   answerText as fieldAnswerText,
   findStatus,
@@ -434,6 +435,8 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
                 ))}
               </section>
             )}
+
+            <SignaturesSection recordId={recordId} reference={record.ref} />
 
             {def.workflow?.enabled && (
               <section

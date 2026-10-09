@@ -200,6 +200,27 @@ export function useRecord(id: string | undefined) {
   });
 }
 
+/** A document of this record sent out for signature, and how far each signer has got. */
+export interface RecordSignature {
+  id: string;
+  title: string;
+  status: 'WAITING' | 'SIGNED' | 'DECLINED' | 'EXPIRED';
+  order: 'IN_ORDER' | 'PARALLEL';
+  expiresAt: string;
+  finishedAt?: string | null;
+  hasSignedDocument: boolean;
+  signers: { email: string; name: string; status: 'WAITING' | 'SENT' | 'SIGNED' | 'DECLINED'; signedAt?: string | null; declineReason?: string }[];
+}
+
+/** Kept under the record's own key, so anything that refreshes the record refreshes this too. */
+export function useRecordSignatures(id: string | undefined) {
+  return useQuery({
+    queryKey: [...KEY, 'one', id, 'signatures'],
+    queryFn: async () => unwrap<RecordSignature[]>(await adminApi.get(`/records/${id}/signatures`)),
+    enabled: !!id && recordsAvailable,
+  });
+}
+
 type RecordAction =
   | { kind: 'status'; to: string; note?: string }
   | { kind: 'assign'; userId: string }

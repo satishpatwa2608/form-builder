@@ -181,6 +181,32 @@ for the public until the restored draft is published.
 
 ## 4. Responses and work
 
+### Sending a response to be signed
+
+Add the step **Send for signature** to an automation (Workflow → Automations).
+
+- **Signers:** pick an email field of the form, type an address, or choose a
+  member of staff. A new step already has the form's email field.
+- **What is being signed:** the name signers see, for example
+  `Loan agreement {{$record.ref}}`.
+- **When there are several signers:** one after another in the order listed,
+  or all at once.
+- **Give up after (days):** 14 unless you change it.
+
+Each signer gets an email with a private link. They read the PDF of the
+response, type their name, draw a signature (or sign with the typed name),
+and tick that they agree. They can also decline and say why.
+
+The automation waits. Steps after it can use **Run only if… → Send for
+signature → status** to do different things when it was signed by everyone,
+declined, or ran out of time.
+
+Open the record to see who has signed and who is still to sign. Once
+everyone has, **Download signed PDF** gives the response with a last page
+listing each signature, name, address, time and the document's fingerprint.
+Every signer is emailed the same file. Signers who have not signed are
+reminded every three days.
+
 ### The PDF of a response
 
 Every response can be had as a PDF made by the server: your organisation's

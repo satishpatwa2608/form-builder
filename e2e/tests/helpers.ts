@@ -38,7 +38,7 @@ export async function call<T = any>(expected: number, path: string, options: Cal
 export function mails(): { to: string; subject: string; text: string }[] {
   const log = readFileSync(readState().apiLog, 'utf8').replace(/\x1b\[[0-9;]*m/g, '');
   const out: { to: string; subject: string; text: string }[] = [];
-  const marker = /\[Mail\] to=(\S+) subject="([^"]*)"\n/g;
+  const marker = /\[Mail\] to=(\S+) subject="([^"]*)"(?: attachments=[^\n]*)?\n/g;
   const starts = [...log.matchAll(marker)];
   starts.forEach((m, i) => {
     const from = m.index! + m[0].length;
