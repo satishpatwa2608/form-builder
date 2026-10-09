@@ -115,8 +115,11 @@ test('a designer uses it from the builder: its step, its list, and its check tic
   // Close the list of options, then the dialog, each once it has gone.
   await page.keyboard.press('Escape');
   await expect(page.getByRole('option')).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  // The list can still be closing when the next key arrives and take it for itself: press until the dialog has gone.
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden({ timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
 
   // The list is among the places a dropdown's options can come from.
   await page.locator('.fb-canvas, [aria-label="Form canvas"]').first().getByText('Branch', { exact: true }).click();
