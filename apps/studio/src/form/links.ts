@@ -17,3 +17,16 @@ export async function copyPublicFormLink(orgId: string, code: string) {
     toast.info(url);
   }
 }
+
+/** One line that puts the form on any web page: it loads the embed script, which draws the form where the line is. */
+export const embedCode = (orgId: string, code: string) => `<script src="${RUNTIME_URL}/embed.js" data-org="${orgId}" data-code="${code}"></script>`;
+
+export async function copyEmbedCode(orgId: string, code: string) {
+  const html = embedCode(orgId, code);
+  try {
+    await navigator.clipboard.writeText(html);
+    toast.success('Embed code copied', { description: 'Paste it into your web page where the form should appear.' });
+  } catch {
+    toast.info(html);
+  }
+}

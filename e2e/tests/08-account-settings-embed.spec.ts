@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { expect, test } from '@playwright/test';
+import { RUNTIME } from '../stack';
 import { addMember, call, createOrg, formUrl, label, mails, PASSWORD, publishForm, signIn, submissions, type Org } from './helpers';
 
 /** The current code an authenticator app would show for this key (RFC 6238: HMAC-SHA1, 30 s, 6 digits). */
@@ -85,8 +86,10 @@ test.describe('branding, analytics, embedding and raising work from inside', () 
   let formId: string;
 
   let hostSite: Server | undefined;
+  let embedSite: Server | undefined;
   test.afterAll(() => {
     hostSite?.close();
+    embedSite?.close();
   });
 
   test.beforeAll(async () => {
@@ -220,6 +223,47 @@ test.describe('branding, analytics, embedding and raising work from inside', () 
     const latest = (await submissions(org, formId))[0] as unknown as { channel: string; payload: { who: string } };
     expect(latest.payload.who).toBe('From the host page');
     expect(latest.channel).toBe('EMBED');
+  });
+
+  test('one line of HTML puts the form on another website: it sizes itself and says when it is submitted', async ({ page }) => {
+    // The line the builder's Embed button copies, on someone else's page, and the same form again as an element in Hindi.
+    const html = `<h1>Shop</h1>
+      <div id="one"><script src="${RUNTIME}/embed.js" data-org="${org.orgId}" data-code="ENQUIRY"></script></div>
+      <div id="two"><form-builder-form org="${org.orgId}" code="ENQUIRY" lang="hi" title="Enquiry"></form-builder-form></div>
+      <div id="bad"><form-builder-form org="${org.orgId}" code="not a code"></form-builder-form></div>
+      <script>window.done = []; document.addEventListener('submitted', (e) => window.done.push(e.detail));</script>`;
+    const host = createServer((_req, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(html));
+    await new Promise<void>((done) => host.listen(0, '127.0.0.1', done));
+    embedSite = host;
+    await page.goto(`http://127.0.0.1:${(host.address() as AddressInfo).port}/`);
+
+    const first = page.frameLocator('#one iframe');
+    await expect(first.getByLabel(label('Your name'))).toBeVisible();
+    // It starts at a fixed height and takes the form's own once the form says what that is.
+    await expect.poll(() => page.locator('#one iframe').evaluate((f) => (f as HTMLIFrameElement).style.height)).not.toBe('480px');
+    expect(await page.locator('#two iframe').getAttribute('src')).toContain('lang=hi');
+    expect(await page.locator('#two iframe').getAttribute('title')).toBe('Enquiry');
+    // Something that is not a form code draws nothing rather than a broken frame.
+    await expect(page.locator('#bad iframe')).toHaveCount(0);
+
+    // A message from anywhere else on the page is not taken for the form's.
+    await page.evaluate(() => window.postMessage({ type: 'form-builder:submitted', submissionId: 'forged' }, '*'));
+    await first.getByLabel(label('Your name')).fill('From the one-line embed');
+    await first.getByRole('button', { name: 'Submit' }).click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { done: { code: string; submissionId: string }[] }).done)).toHaveLength(1);
+    const done = await page.evaluate(() => (window as unknown as { done: { code: string; submissionId: string }[] }).done[0]!);
+    const latest = (await submissions(org, formId))[0] as unknown as { uuid: string; channel: string; payload: { who: string } };
+    expect(done).toEqual({ code: 'ENQUIRY', submissionId: latest.uuid });
+    expect(latest).toMatchObject({ channel: 'EMBED', payload: { who: 'From the one-line embed' } });
+  });
+
+  test('the builder hands over the embed line for a live public form', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await signIn(page, org.email);
+    await page.goto(`/forms/${formId}/edit`);
+    await page.getByRole('button', { name: 'Embed' }).click();
+    await expect(page.getByText('Embed code copied')).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`<script src="${RUNTIME}/embed.js" data-org="${org.orgId}" data-code="ENQUIRY"></script>`);
   });
 
   test('on a phone the form fits the screen, and a table of rows stacks with its labels', async ({ browser }) => {

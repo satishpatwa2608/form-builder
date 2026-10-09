@@ -60,11 +60,12 @@ on the PATH, or `E2E_MONGODB_URL` pointing at a server that is already running.
 | `05-work-items` | Inbox, record view, actions, approval and rejection, comments, emails, dashboard |
 | `06-accounts-and-access` | Sign-up, invitations, roles, folder permissions, organisation isolation, versions, export/import, audit log |
 | `07-connectors` | Options, a look-up and write-back against a real database; what the public may read |
-| `08-account-settings-embed` | Password reset, two-factor, branding, analytics, embedding, phone and wide layouts, staff-raised items |
+| `08-account-settings-embed` | Password reset, two-factor, branding, analytics (funnel and question by question), embedding by frame and by one line of HTML, phone and wide layouts, staff-raised items |
 | `09-gateway` | The gateway agent as its own process: register, read a private database, revoke |
 | `10-every-screen-and-templates` | Every builder screen opens cleanly; a webhook; each built-in template publishes and opens |
 | `11-lifecycle` | Opening and closing times, the save-for-later switch, scheduled publishing, comparing and restoring versions |
 | `12-start-from-a-file` | A new form from a spreadsheet and from a JSON Schema |
+| `20-portal` | The requests portal: switched on by an admin, a form listed with one switch, a requester signs in by emailed link and follows the status; someone else sees none of it |
 | `19-signatures` | A response sent to two people to sign from emailed links (typed and drawn), the signed PDF on the record, a decline, a link that was never issued |
 | `18-languages-accessibility` | One form in English, Hindi and Arabic (translated on screen and by spreadsheet, right to left); every kind of field through an automated accessibility check |
 | `17-documents` | A PDF kept for each response: switched on in the form, made by the server, downloaded from Responses |

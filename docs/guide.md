@@ -169,7 +169,19 @@ for the public until the restored draft is published.
 ## 3. Sharing forms
 
 - Public link: `https://<forms host>/f/<your org id>/<FORM_CODE>`.
-- Embed: add `?embed=1` inside an iframe; the page reports its height
+- Embed on your own website: on a published public form, **Embed** copies one
+  line of HTML. Paste it where the form should appear. It sizes itself, and
+  your page can listen for when it is sent:
+  `document.addEventListener('submitted', (e) => …e.detail.submissionId)`.
+  The same form as an element, in a chosen language:
+  `<form-builder-form org="…" code="…" lang="hi"></form-builder-form>`.
+- Draw the form yourself (headless): `GET /public/forms/CODE?org=ORG` returns
+  the published form as JSON; `POST /public/forms/CODE/submissions?org=ORG`
+  with `{ "values": { … } }` stores a response, or answers 422 with the
+  faults field by field. Send an `idempotencyKey` (a UUID) so a retry is not
+  stored twice. From a browser this needs your site's address added under
+  Organisation → Custom domains.
+- Embed by hand: add `?embed=1` inside an iframe; the page reports its height
   (`form-builder:resize`) and submission (`form-builder:submitted`) to the parent.
 - **Your own domain** (Team plan and above): Organisation → Custom domains.
   Add `forms.yourcompany.com`, create the TXT record shown, press **Verify**,
@@ -179,7 +191,33 @@ for the public until the restored draft is published.
 - **Save and continue later**: respondents get a private link valid for 30
   days (attachments must be added again when they come back).
 
+### The requests portal
+
+A page where the people you serve start a form and follow what they sent.
+
+1. **Organisation → Requests portal:** switch it on, give it a heading and a
+   line of introduction. The card shows its address.
+2. On each form to offer there: **Form settings → List on the requests
+   portal**, then publish.
+
+People open the page, choose a form, and send it. To see their requests they
+enter their email and open the link sent to it. There are no passwords and
+no accounts for you to manage. They see the reference, the form, the date and
+the status of each response sent from that address, in your own status
+names. They do not see the answers.
+
+Which address a response belongs to: the form's contact email field
+(Workflow → Requester's email is in), else its first email field.
+
 ## 4. Responses and work
+
+### Where people give up
+
+**Responses → Analytics → Question by question** lists every question with
+how many people answered it, how many made a mistake on it, and how many
+left the form with it as the last thing they touched. The line above the
+table names the question most people stopped at. These are counts only:
+nothing about who answered or what they wrote.
 
 ### Sending a response to be signed
 

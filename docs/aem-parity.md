@@ -248,6 +248,23 @@ What this is, legally: an ordinary electronic signature (who was sent the link, 
 
 **Done when:** a customer renders one of our forms in their own React app, and a requester sees their open requests in the portal.
 
+**Status, 9 October 2026: portal, embed, headless JSON and per-question analytics are built and tested; four items are not.**
+
+| Item | State |
+|---|---|
+| Requests portal | Done (Organisation settings → Requests portal; on a form, **List on the requests portal**). One page on the form app (`/portal/<organisation>`, or `/portal` on the customer's own form address) with the organisation's logo and colour: the listed forms that are public, published and open, and each person's own requests. |
+| Signing in to the portal | Done, without passwords: the person enters their email and opens the link sent to it. A link works once, for 30 minutes; the session lasts 12 hours, lives in that browser tab, and is for one organisation. At most five links an hour go to one address. The answer is the same whether or not the address has sent anything. |
+| What a requester sees | The reference, the form, the date and the status in the form's own words, for responses whose contact email (the form's contact email field, else its first email field, else the signed-in submitter's) is theirs. Never the answers: an address typed into a form does not prove who filled it in. Tests cover one person against another and one organisation against another. |
+| Drafts in the portal | Not built. A saved draft is reached by its own private link, as before; it is not tied to an email address. |
+| Script-tag embed and web component | Done. One line of HTML (the builder's **Embed** button copies it) or a `<form-builder-form org code lang>` element. The form runs in a frame on our address, grows to its own height, and raises a `submitted` event with the submission id. Messages are accepted only from that frame and our address. |
+| Headless | Done as JSON over the public API: fetch a published form, send answers, get the reference or the faults field by field. The server checks every answer with the same engine our own form page uses; a test runs seven cases through both and compares. A browser on the customer's site may call it once the site's address is a verified form domain; a server may call it from anywhere. |
+| React package | Not built. A package that draws our forms inside a customer's own React app would mean handing customers the renderer's source, which the product's rule ("we do not share code") rules out. In React, use the `<form-builder-form>` element, or draw your own fields from the JSON. |
+| Analytics per question | Done (Responses → Analytics → Question by question): how many people answered each question, made a mistake on it, and left the form with it as the last thing touched. Counts only, per day; nothing about who or what they wrote. A form now counts as started when the person first answers something (it used to count on opening). Started = submitted + left somewhere, checked in a browser test. |
+| Time per question; drop-off per step | Not built. |
+| Export to GA4 and Segment | Not built: it loads a third party's script on public forms, which needs a decision on consent first. |
+| Visual flow designer with branches and parallel steps | Not built. Automations remain a top-to-bottom list of steps, each with an optional "Run only if". |
+| Chart component | Not built. |
+
 ### Phase 11 – Connectors and submit targets (ongoing)
 
 Ordered by what pilot customers ask for, not all at once:

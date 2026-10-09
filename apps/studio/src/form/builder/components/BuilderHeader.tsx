@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarClock, Eye, GitBranch, Link2, Redo2, Save, Send, Sigma, Undo2, Workflow, MessageSquare } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Eye, GitBranch, Link2, Redo2, Save, Send, Sigma, Undo2, Workflow, MessageSquare, Code2 } from 'lucide-react';
 import { Button } from '@ui/button';
 import type { FormDefinition } from '../../types';
 import { FormStatusBadge } from './FormStatusBadge';
@@ -29,6 +29,8 @@ interface BuilderHeaderProps {
   publishAt?: string | null;
   onNewVersion: () => void;
   onCopyLink: () => void;
+  /** Copies the line of HTML that puts the form on another website. */
+  onCopyEmbed?: () => void;
 }
 
 function ScheduleButton({ onClick, busy, publishAt }: { onClick: () => void; busy: boolean; publishAt?: string | null }) {
@@ -86,6 +88,11 @@ export function BuilderHeader(props: BuilderHeaderProps) {
         {form.status === 'PUBLISHED' && form.access === 'PUBLIC' && (
           <Button type="button" variant="outline" onClick={props.onCopyLink}>
             <Link2 /> Copy link
+          </Button>
+        )}
+        {form.status === 'PUBLISHED' && form.access === 'PUBLIC' && props.onCopyEmbed && (
+          <Button type="button" variant="outline" onClick={props.onCopyEmbed} title="Copy a line of HTML that puts this form on your own website">
+            <Code2 /> Embed
           </Button>
         )}
         {readOnly ? (

@@ -37,7 +37,7 @@ import { ReviewDialog } from '../builder/components/ReviewDialog';
 import { useFormReview } from '../adapters/review';
 import { IssuesList } from '../builder/components/IssuesList';
 import { ConfirmDialog, type ConfirmRequest } from '../builder/components/ConfirmDialog';
-import { copyPublicFormLink } from '../links';
+import { copyEmbedCode, copyPublicFormLink } from '../links';
 import { useAuth } from '../../lib/auth';
 import '../styles/form-builder.css';
 
@@ -326,6 +326,7 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
         publishAt={doc?.publishAt}
         onNewVersion={onNewVersion}
         onCopyLink={() => copyPublicFormLink(me?.org.id ?? '', form.code)}
+        onCopyEmbed={() => copyEmbedCode(me?.org.id ?? '', form.code)}
       />
 
       {form.status === 'DRAFT' && doc?.publishAt && (
