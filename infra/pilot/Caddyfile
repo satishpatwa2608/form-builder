@@ -1,0 +1,15 @@
+# The only thing that faces the internet. It gets and renews an HTTPS certificate for each name by itself,
+# and sends plain http to https.
+{$APP_HOST} {
+	encode gzip
+	reverse_proxy studio:80
+}
+
+{$FORMS_HOST} {
+	encode gzip
+	reverse_proxy runtime:80
+}
+
+{$API_HOST} {
+	reverse_proxy api:4100
+}
