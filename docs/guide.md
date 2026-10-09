@@ -397,7 +397,13 @@ only. See [extensions.md](extensions.md) for developers.
 ## 6. Your data (connectors)
 
 - **Connectors → New connector** (Connector managers): MongoDB, PostgreSQL,
-  MySQL, Supabase, REST API, Amazon S3, CloudWatch Logs.
+  MySQL, SQL Server, Supabase, REST API, OData, Amazon S3, CloudWatch Logs.
+- **OData** reaches Dynamics 365, SAP and other systems that offer an OData
+  service. Give the service's address and how it signs in; its tables, fields
+  and each table's key are then found for you. For Dynamics, sign in **as an
+  application**: the token address, client ID and secret come from an app
+  registration in Microsoft Entra, and the scope is your Dynamics address
+  followed by `/.default`.
 - Credentials are encrypted and never shown again. **Test**, **Expose** the
   tables/fields/operations forms may use (nothing is usable until exposed),
   and keep it read-only unless forms must write.

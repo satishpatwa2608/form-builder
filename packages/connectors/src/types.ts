@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 
 /** Connector types in the first release (docs/plan.md, section 5.2). */
-export const CONNECTOR_TYPES = ['mongodb', 'postgres', 'mysql', 'supabase', 'rest', 'aws-s3', 'aws-cloudwatch'] as const;
+export const CONNECTOR_TYPES = ['mongodb', 'postgres', 'mysql', 'mssql', 'supabase', 'rest', 'odata', 'aws-s3', 'aws-cloudwatch'] as const;
 export type ConnectorType = (typeof CONNECTOR_TYPES)[number];
 
 export type OperationKind = 'list' | 'get' | 'lookup' | 'insert' | 'update' | 'upload' | 'log';

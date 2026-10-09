@@ -1,3 +1,4 @@
+import mssql from 'mssql';
 import mysql from 'mysql2/promise';
 import pg from 'pg';
 import { z } from 'zod';
@@ -6,11 +7,13 @@ import type { ConnectorContext, ConnectorPlugin, ConnectorType, Entity, EntityFi
 import { ConnectionPool } from './pool';
 import { assertIdentifier, assertPublicHost, elapsed, filtersFrom, now, rowFrom, type Primitive } from './shared';
 
-type Dialect = 'postgres' | 'mysql';
+type Dialect = 'postgres' | 'mysql' | 'mssql';
 
 /** Identifiers are whitelisted (assertIdentifier) and then quoted; values are always parameters. */
-const quote = (d: Dialect, name: string) => (d === 'postgres' ? `"${name}"` : `\`${name}\``);
-const param = (d: Dialect, i: number) => (d === 'postgres' ? `$${i}` : '?');
+const quote = (d: Dialect, name: string) => (d === 'postgres' ? `"${name}"` : d === 'mssql' ? `[${name}]` : `\`${name}\``);
+const param = (d: Dialect, i: number) => (d === 'postgres' ? `$${i}` : d === 'mssql' ? `@p${i}` : '?');
+/** "At most n rows": SQL Server says it before the columns, the others after everything else. */
+const first = (d: Dialect, n: number) => (d === 'mssql' ? { top: `TOP (${Math.floor(n)}) `, limit: '' } : { top: '', limit: ` LIMIT ${Math.floor(n)}` });
 
 export interface SqlStatement {
   text: string;
@@ -30,14 +33,16 @@ export function buildSql(d: Dialect, schema: string | undefined, req: OperationR
   switch (req.kind) {
     case 'list': {
       const where = filtersFrom(req.entity, req.params).map(([k, v]) => `${quote(d, k)} = ${next(v)}`);
-      return { text: `SELECT ${cols.join(', ')} FROM ${table}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} LIMIT ${Math.floor(req.limits.maxRows)}`, values };
+      const { top, limit } = first(d, req.limits.maxRows);
+      return { text: `SELECT ${top}${cols.join(', ')} FROM ${table}${where.length ? ` WHERE ${where.join(' AND ')}` : ''}${limit}`, values };
     }
     case 'get':
     case 'lookup': {
       const key = req.params[keyField];
       if (key === undefined) throw new ConnectorError('UNSUPPORTED', `${keyField} is required`);
       const k = quote(d, assertIdentifier(keyField, req.entity.fields));
-      return { text: `SELECT ${req.kind === 'lookup' ? '1' : cols.join(', ')} FROM ${table} WHERE ${k} = ${next(key)} LIMIT 1`, values };
+      const { top, limit } = first(d, 1);
+      return { text: `SELECT ${top}${req.kind === 'lookup' ? (d === 'mssql' ? '1 AS found' : '1') : cols.join(', ')} FROM ${table} WHERE ${k} = ${next(key)}${limit}`, values };
     }
     case 'insert': {
       const row = rowFrom(req.entity, req.params);
@@ -87,6 +92,29 @@ async function connect(d: Dialect, ctx: ConnectorContext): Promise<SqlDriver> {
         close: () => p.end(),
       };
     }
+    if (d === 'mssql') {
+      // Always encrypted unless TLS is switched off; the certificate is checked unless that is switched off too.
+      const p = await new mssql.ConnectionPool({
+        server: String(s.host),
+        port: Number(s.port ?? 1433),
+        database: String(s.database),
+        user: secret.user,
+        password: secret.password,
+        options: { encrypt: s.ssl !== false, trustServerCertificate: s.verifyCertificate === false },
+        pool: { max: 5, idleTimeoutMillis: 60_000 },
+        connectionTimeout: 5000,
+        requestTimeout: 30_000,
+      }).connect();
+      return {
+        async query(text, values) {
+          const request = p.request();
+          values.forEach((v, i) => request.input(`p${i + 1}`, v));
+          const r = await request.query(text);
+          return { rows: (r.recordset ?? []) as Record<string, unknown>[], affected: r.rowsAffected.reduce((a, b) => a + b, 0) };
+        },
+        close: () => p.close(),
+      };
+    }
     const p = mysql.createPool({ host: String(s.host), port: Number(s.port ?? 3306), database: String(s.database), user: secret.user, password: secret.password, ssl: tls, connectionLimit: 5, connectTimeout: 5000 });
     return {
       async query(text, values, timeoutMs) {
@@ -104,9 +132,11 @@ const TYPE: Record<string, EntityField['type']> = {
   boolean: 'boolean', bool: 'boolean',
   date: 'date', timestamp: 'date', 'timestamp without time zone': 'date', 'timestamp with time zone': 'date', datetime: 'date',
   json: 'object', jsonb: 'object',
+  // SQL Server's own names.
+  bit: 'boolean', money: 'number', smallmoney: 'number', datetime2: 'date', smalldatetime: 'date', datetimeoffset: 'date',
 };
 
-function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql'>, label: string): ConnectorPlugin {
+function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql' | 'mssql'>, label: string): ConnectorPlugin {
   const d: Dialect = type;
   return {
     type,
@@ -129,7 +159,7 @@ function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql'>, label: st
     },
 
     async discover(ctx): Promise<Entity[]> {
-      const schema = String(ctx.connector.settings.schema ?? (d === 'postgres' ? 'public' : ctx.connector.settings.database));
+      const schema = String(ctx.connector.settings.schema ?? (d === 'postgres' ? 'public' : d === 'mssql' ? 'dbo' : ctx.connector.settings.database));
       const rows = (
         await (
           await connect(d, ctx)
@@ -160,4 +190,5 @@ function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql'>, label: st
 
 export const postgresPlugin = sqlPlugin('postgres', 'PostgreSQL');
 export const mysqlPlugin = sqlPlugin('mysql', 'MySQL');
+export const mssqlPlugin = sqlPlugin('mssql', 'SQL Server');
 export const closeSqlConnections = () => pools.closeAll();

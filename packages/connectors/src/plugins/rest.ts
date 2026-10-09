@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ConnectorError } from '../registry';
 import type { ConnectorContext, ConnectorPlugin, Entity } from '../types';
-import { elapsed, filtersFrom, now, rowFrom, safeFetch } from './shared';
+import { elapsed, filtersFrom, now, rowFrom, safeFetch, savedRow } from './shared';
 
 /**
  * A REST API. Each entity is a resource the connector manager defines:
@@ -114,7 +114,7 @@ export const restPlugin: ConnectorPlugin = {
           body: JSON.stringify(rowFrom(req.entity, req.kind === 'insert' ? req.params : rest)),
         });
         if (r.status >= 400) throw new ConnectorError('FAILED', `The API answered ${r.status}`);
-        return { rows: r.json && typeof r.json === 'object' && !Array.isArray(r.json) ? [r.json as Record<string, unknown>] : [], affected: 1, durationMs: elapsed(start) };
+        return { rows: savedRow(req.entity, r.json, keyField), affected: 1, durationMs: elapsed(start) };
       }
       default:
         throw new ConnectorError('UNSUPPORTED', `REST connectors can't ${req.kind}`);

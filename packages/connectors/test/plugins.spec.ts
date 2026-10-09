@@ -128,7 +128,8 @@ describe('network safety (REST, Supabase, webhooks-style calls)', () => {
     const ctx = { connector: record('rest', { baseUrl: base, auth: 'bearer', resources }), secrets: { token: 't0k' }, allowPrivateNetwork: true };
     const entity = { key: 'customers', fields: ['id', 'name'] };
     const res = await reg.run(ctx, { entity, kind: 'list', params: { name: 'Asha' }, limits });
-    expect(res.rows).toEqual([{ id: 1, name: 'Asha', hidden: 'no' }]);
+    // The API sent a field that is not exposed: it stops here.
+    expect(res.rows).toEqual([{ id: 1, name: 'Asha' }]);
     expect(seen.at(-1)).toMatchObject({ method: 'GET', url: '/api/customers?name=Asha', auth: 'Bearer t0k' });
     await reg.run(ctx, { entity, kind: 'insert', params: { name: 'Bala', role: 'admin' }, limits });
     expect(JSON.parse(seen.at(-1)!.body!)).toEqual({ name: 'Bala' });

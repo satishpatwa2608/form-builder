@@ -5,7 +5,7 @@ import { API_URL, api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 
-type ConnectorType = 'mongodb' | 'postgres' | 'mysql' | 'supabase' | 'rest' | 'aws-s3' | 'aws-cloudwatch';
+type ConnectorType = 'mongodb' | 'postgres' | 'mysql' | 'mssql' | 'supabase' | 'rest' | 'odata' | 'aws-s3' | 'aws-cloudwatch';
 type Op = 'list' | 'get' | 'lookup' | 'insert' | 'update' | 'upload' | 'log';
 
 interface ExposedEntity {
@@ -44,6 +44,8 @@ interface Discovered {
   key: string;
   label: string;
   fields: { name: string; type: string }[];
+  /** The field that identifies a row, when the system itself says which it is. */
+  keyField?: string;
 }
 interface Call {
   entity: string;
@@ -64,14 +66,22 @@ interface FieldSpec {
   hint?: string;
   kind?: 'text' | 'number' | 'bool' | 'select' | 'textarea' | 'password';
   options?: string[];
+  /** What a person reads for each option, when the stored word is not plain enough. */
+  optionLabels?: Record<string, string>;
   optional?: boolean;
+  /** Asked for only with these ways of signing in (the `auth` choice). */
+  showFor?: string[];
 }
+
+/** The boxes to show: a way of signing in brings its own, and hides the others'. */
+export const fieldsFor = (fields: FieldSpec[], values: Record<string, string | boolean>) => fields.filter((f) => !f.showFor || f.showFor.includes(String(values.auth ?? 'none')));
+const AUTH_LABELS = { none: 'None', bearer: 'A token (Bearer)', apiKey: 'An API key in a header', basic: 'User name and password', oauth: 'As an application (OAuth client credentials)' };
 const ROLE: FieldSpec[] = [
   { name: 'region', label: 'AWS region', hint: 'e.g. ap-south-1' },
   { name: 'roleArn', label: 'Role ARN', hint: 'A role in your account that trusts Form Builder' },
   { name: 'externalId', label: 'External ID', hint: 'Put this in the role trust policy (sts:ExternalId)' },
 ];
-const SPECS: Record<ConnectorType, { label: string; blurb: string; fields: FieldSpec[] }> = {
+export const SPECS: Record<ConnectorType, { label: string; blurb: string; fields: FieldSpec[] }> = {
   mongodb: { label: 'MongoDB', blurb: 'Collections for dropdowns, prefill and saving answers.', fields: [{ name: 'database', label: 'Database' }, { name: 'uri', label: 'Connection string', secret: true, kind: 'password', hint: 'mongodb+srv://user:password@host/ - use a user with only the rights forms need' }] },
   postgres: {
     label: 'PostgreSQL',
@@ -98,18 +108,47 @@ const SPECS: Record<ConnectorType, { label: string; blurb: string; fields: Field
       { name: 'password', label: 'Password', secret: true, kind: 'password' },
     ],
   },
+  mssql: {
+    label: 'SQL Server',
+    blurb: 'Tables and views in Microsoft SQL Server or Azure SQL.',
+    fields: [
+      { name: 'host', label: 'Host' },
+      { name: 'port', label: 'Port', kind: 'number', optional: true, hint: 'Default: 1433' },
+      { name: 'database', label: 'Database' },
+      { name: 'schema', label: 'Schema', optional: true, hint: 'Default: dbo' },
+      { name: 'ssl', label: 'Use TLS', kind: 'bool' },
+      { name: 'user', label: 'User', secret: true, hint: 'A SQL login with only the rights forms need' },
+      { name: 'password', label: 'Password', secret: true, kind: 'password' },
+    ],
+  },
   supabase: { label: 'Supabase', blurb: 'Your project through its REST API (row level security applies).', fields: [{ name: 'url', label: 'Project URL', hint: 'https://xyz.supabase.co' }, { name: 'apiKey', label: 'API key', secret: true, kind: 'password', hint: 'A restricted key, not service_role' }] },
   rest: {
     label: 'REST API',
     blurb: 'Your own API: define resources as path + fields.',
     fields: [
       { name: 'baseUrl', label: 'Base URL', hint: 'https only' },
-      { name: 'auth', label: 'Authentication', kind: 'select', options: ['none', 'bearer', 'apiKey', 'basic'] },
-      { name: 'apiKeyHeader', label: 'API key header', optional: true, hint: 'For apiKey auth, e.g. X-API-Key' },
+      { name: 'auth', label: 'How it signs in', kind: 'select', options: ['none', 'bearer', 'apiKey', 'basic'], optionLabels: AUTH_LABELS },
+      { name: 'apiKeyHeader', label: 'API key header', optional: true, hint: 'e.g. X-API-Key', showFor: ['apiKey'] },
       { name: 'resources', label: 'Resources (JSON)', kind: 'textarea', hint: '[{"key":"customers","path":"/customers","fields":["id","name"],"dataPath":"data"}]' },
-      { name: 'token', label: 'Token / API key', secret: true, kind: 'password', optional: true },
-      { name: 'username', label: 'Username (basic)', secret: true, optional: true },
-      { name: 'password', label: 'Password (basic)', secret: true, kind: 'password', optional: true },
+      { name: 'token', label: 'Token / API key', secret: true, kind: 'password', showFor: ['bearer', 'apiKey'] },
+      { name: 'username', label: 'User name', secret: true, showFor: ['basic'] },
+      { name: 'password', label: 'Password', secret: true, kind: 'password', showFor: ['basic'] },
+    ],
+  },
+  odata: {
+    label: 'OData',
+    blurb: 'Dynamics 365, SAP and other systems that offer an OData service. Their tables and fields are found for you.',
+    fields: [
+      { name: 'baseUrl', label: 'Service address', hint: 'e.g. https://yourorg.crm.dynamics.com/api/data/v9.2' },
+      { name: 'auth', label: 'How it signs in', kind: 'select', options: ['oauth', 'basic', 'bearer', 'apiKey', 'none'], optionLabels: AUTH_LABELS },
+      { name: 'tokenUrl', label: 'Token address', showFor: ['oauth'], hint: 'For Microsoft: https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token' },
+      { name: 'clientId', label: 'Client (application) ID', showFor: ['oauth'] },
+      { name: 'scope', label: 'Scope', optional: true, showFor: ['oauth'], hint: 'For Dynamics: https://yourorg.crm.dynamics.com/.default' },
+      { name: 'clientSecret', label: 'Client secret', secret: true, kind: 'password', showFor: ['oauth'] },
+      { name: 'username', label: 'User name', secret: true, showFor: ['basic'] },
+      { name: 'password', label: 'Password', secret: true, kind: 'password', showFor: ['basic'] },
+      { name: 'apiKeyHeader', label: 'API key header', optional: true, hint: 'e.g. X-API-Key', showFor: ['apiKey'] },
+      { name: 'token', label: 'Token / API key', secret: true, kind: 'password', showFor: ['bearer', 'apiKey'] },
     ],
   },
   'aws-s3': { label: 'Amazon S3', blurb: "Save answers as JSON files in your bucket (your account, your role).", fields: [...ROLE, { name: 'bucket', label: 'Bucket' }, { name: 'prefix', label: 'Key prefix', optional: true, hint: 'e.g. forms/' }] },
@@ -121,8 +160,10 @@ const OPS_BY_TYPE: Record<ConnectorType, Op[]> = {
   mongodb: ['list', 'get', 'lookup', 'insert', 'update'],
   postgres: ['list', 'get', 'lookup', 'insert', 'update'],
   mysql: ['list', 'get', 'lookup', 'insert', 'update'],
+  mssql: ['list', 'get', 'lookup', 'insert', 'update'],
   supabase: ['list', 'get', 'lookup', 'insert', 'update'],
   rest: ['list', 'get', 'lookup', 'insert', 'update'],
+  odata: ['list', 'get', 'lookup', 'insert', 'update'],
   'aws-s3': ['list', 'upload'],
   'aws-cloudwatch': ['log'],
 };
@@ -138,18 +179,23 @@ function NewConnector({ onDone, onCancel }: { onDone: (c: ConnectorView) => void
   const gateways = useQuery({ queryKey: ['gateways'], queryFn: () => api<GatewayView[]>('/gateways') });
   const spec = SPECS[type];
   const viaGateway = !!gatewayId;
-  const shownFields = viaGateway ? spec.fields.filter((f) => !f.secret) : spec.fields;
+  // OData is most often an application signing in as itself; the others start with nothing.
+  const forType: Record<string, string | boolean> = { ...values, auth: values[`auth:${type}`] ?? (type === 'odata' ? 'oauth' : 'none') };
+  const asked = fieldsFor(spec.fields, forType);
+  const shownFields = viaGateway ? asked.filter((f) => !f.secret) : asked;
   const create = useSubmit(async () => {
     const settings: Record<string, unknown> = {};
     const secrets: Record<string, unknown> = {};
-    for (const f of spec.fields) {
-      const v = values[f.name];
+    // Only what is on the screen is sent: a box from another way of signing in must not ride along.
+    for (const f of asked) {
+      const v = forType[f.name];
       if (v === undefined || v === '' || (f.secret && viaGateway)) continue;
       (f.secret ? secrets : settings)[f.name] = f.kind === 'number' ? Number(v) : v;
     }
     onDone(await api<ConnectorView>('/connectors', { method: 'POST', body: viaGateway ? { type, name, settings, writable, gatewayId } : { type, name, settings, secrets, writable } }));
   });
-  const set = (k: string, v: string | boolean) => setValues((x) => ({ ...x, [k]: v }));
+  // The way of signing in is remembered per type, so switching type does not carry one type's choice to another.
+  const set = (k: string, v: string | boolean) => setValues((x) => ({ ...x, [k === 'auth' ? `auth:${type}` : k]: v }));
   const fieldError = (n: string) => create.fields[`settings.${n}`] ?? create.fields[`secrets.${n}`];
 
   return (
@@ -184,21 +230,21 @@ function NewConnector({ onDone, onCancel }: { onDone: (c: ConnectorView) => void
           {shownFields.map((f) =>
             f.kind === 'bool' ? (
               <label key={f.name} className="st-check" style={{ alignSelf: 'end', paddingBottom: 10 }}>
-                <input type="checkbox" checked={!!values[f.name]} onChange={(e) => set(f.name, e.target.checked)} />
+                <input type="checkbox" checked={!!forType[f.name]} onChange={(e) => set(f.name, e.target.checked)} />
                 {f.label}
               </label>
             ) : f.kind === 'select' ? (
-              <SelectField key={f.name} label={f.label} value={String(values[f.name] ?? '')} onChange={(e) => set(f.name, e.target.value)} error={fieldError(f.name)}>
+              <SelectField key={f.name} label={f.label} value={String(forType[f.name] ?? '')} onChange={(e) => set(f.name, e.target.value)} error={fieldError(f.name)}>
                 {f.options!.map((o) => (
                   <option key={o} value={o}>
-                    {o}
+                    {f.optionLabels?.[o] ?? o}
                   </option>
                 ))}
               </SelectField>
             ) : f.kind === 'textarea' ? (
               <div key={f.name} className="st-field" style={{ gridColumn: '1 / -1' }}>
                 <label htmlFor={`cx-${f.name}`}>{f.label}</label>
-                <textarea id={`cx-${f.name}`} className="st-input st-mono" style={{ height: 90, padding: 10 }} value={String(values[f.name] ?? '')} onChange={(e) => set(f.name, e.target.value)} />
+                <textarea id={`cx-${f.name}`} className="st-input st-mono" style={{ height: 90, padding: 10 }} value={String(forType[f.name] ?? '')} onChange={(e) => set(f.name, e.target.value)} />
                 <span className={fieldError(f.name) ? 'st-field__error' : 'st-field__hint'}>{fieldError(f.name) ?? f.hint}</span>
               </div>
             ) : (
@@ -207,7 +253,7 @@ function NewConnector({ onDone, onCancel }: { onDone: (c: ConnectorView) => void
                 label={`${f.label}${f.optional ? ' (optional)' : ''}`}
                 type={f.kind === 'password' ? 'password' : f.kind === 'number' ? 'number' : 'text'}
                 autoComplete={f.secret ? 'new-password' : 'off'}
-                value={String(values[f.name] ?? '')}
+                value={String(forType[f.name] ?? '')}
                 onChange={(e) => set(f.name, e.target.value)}
                 hint={f.hint}
                 error={fieldError(f.name)}
@@ -258,7 +304,8 @@ function ExposeEditor({ c, onSaved }: { c: ConnectorView; onSaved: (msg: string)
   const toggle = (e: Discovered, on: boolean) =>
     setDraft((d) => {
       const next = { ...d };
-      if (on) next[e.key] = d[e.key] ?? { key: e.key, label: e.label, fields: e.fields.slice(0, 20).map((f) => f.name), keyField: '', operations: ['list'], valueField: '', labelField: '' };
+      // A system that says which field identifies a row (OData does) saves the person choosing it.
+      if (on) next[e.key] = d[e.key] ?? { key: e.key, label: e.label, fields: [...new Set([...(e.keyField ? [e.keyField] : []), ...e.fields.slice(0, 20).map((f) => f.name)])], keyField: e.keyField ?? '', operations: ['list'], valueField: '', labelField: '' };
       else delete next[e.key];
       return next;
     });

@@ -20,7 +20,7 @@ export interface GatewayRequest {
 export type GatewayResponse = { id: string; ok: true; result: unknown } | { id: string; ok: false; error: string; code?: string };
 
 /** Settings that decide where a connection goes; on a gateway they come only from the local credentials file. */
-export const TARGET_KEYS = ['host', 'port', 'ssl', 'verifyCertificate', 'url', 'baseUrl', 'auth', 'apiKeyHeader'];
+export const TARGET_KEYS = ['host', 'port', 'ssl', 'verifyCertificate', 'url', 'baseUrl', 'auth', 'apiKeyHeader', 'tokenUrl'];
 
 /** Agent side: run one request with local credentials. Errors keep only their kind (drivers echo secrets). */
 export async function handleGatewayRequest(

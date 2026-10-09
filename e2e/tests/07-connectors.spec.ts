@@ -1,3 +1,5 @@
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { expect, test } from '@playwright/test';
 import { MongoClient } from 'mongodb';
 import { MONGO, PORTS } from '../stack';
@@ -181,4 +183,115 @@ test('the connectors page shows the connection, its calls and never its credenti
   const calls = await call<unknown[]>(200, `/connectors/${connectorId}/calls`, { token: org.token });
   expect(calls.length).toBeGreaterThan(2);
   expect(JSON.stringify(calls)).not.toContain('asha@customer.test');
+});
+
+test.describe('an OData system (Dynamics 365, SAP and the like)', () => {
+  // A stand-in service: it describes itself, lists accounts and takes new enquiries.
+  const METADATA = `<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx"><edmx:DataServices><Schema Namespace="Crm" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+    <EntityType Name="account"><Key><PropertyRef Name="accountid"/></Key><Property Name="accountid" Type="Edm.String" Nullable="false"/><Property Name="name" Type="Edm.String"/><Property Name="creditlimit" Type="Edm.Decimal"/></EntityType>
+    <EntityType Name="enquiry"><Key><PropertyRef Name="enquiryid"/></Key><Property Name="enquiryid" Type="Edm.String" Nullable="false"/><Property Name="account" Type="Edm.String"/><Property Name="about" Type="Edm.String"/></EntityType>
+    <EntityContainer Name="C"><EntitySet Name="accounts" EntityType="Crm.account"/><EntitySet Name="enquiries" EntityType="Crm.enquiry"/></EntityContainer>
+  </Schema></edmx:DataServices></edmx:Edmx>`;
+  const posted: Record<string, unknown>[] = [];
+  const asked: string[] = [];
+  let service: Server;
+  let serviceUrl: string;
+  let odataId: string;
+  let odataRef: string;
+
+  test.beforeAll(async () => {
+    service = createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const url = decodeURIComponent(req.url!.replace(/\+/g, ' '));
+        asked.push(`${req.method} ${url}`);
+        const json = (status: number, data: unknown) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
+        if (url === '/odata/') return json(200, { value: [{ name: 'accounts' }, { name: 'enquiries' }] });
+        if (url === '/odata/$metadata') return res.writeHead(200, { 'Content-Type': 'application/xml' }).end(METADATA);
+        if (req.method === 'GET' && url.startsWith('/odata/accounts?')) return json(200, { value: [{ accountid: 'A-1', name: 'Northwind', creditlimit: 5000 }, { accountid: 'A-2', name: 'Contoso', creditlimit: 100 }] });
+        if (req.method === 'POST' && url === '/odata/enquiries') {
+          posted.push(JSON.parse(body));
+          return json(201, { enquiryid: 'E-1', ...JSON.parse(body) });
+        }
+        json(404, {});
+      });
+    });
+    await new Promise<void>((done) => service.listen(0, '127.0.0.1', done));
+    serviceUrl = `http://127.0.0.1:${(service.address() as AddressInfo).port}/odata`;
+  });
+  test.afterAll(() => {
+    service?.close();
+  });
+
+  test('is added from the Connectors page with just its address; its tables, fields and keys are found for you', async ({ page }) => {
+    const problems = watchForProblems(page);
+    await signIn(page, org.email);
+    await page.goto('/connectors');
+    await page.getByRole('button', { name: 'New connector' }).click();
+    const form = page.locator('.st-card', { hasText: 'New connector' }).first();
+    await form.getByRole('radio', { name: /OData/ }).check({ force: true });
+    // It starts on "as an application", with that way's boxes and no others.
+    await expect(form.getByLabel('Token address')).toBeVisible();
+    await expect(form.getByLabel('User name')).toHaveCount(0);
+    await form.getByLabel('How it signs in').selectOption({ label: 'None' });
+    await expect(form.getByLabel('Token address')).toHaveCount(0);
+    await form.getByLabel('Name', { exact: true }).fill('Sales CRM');
+    await form.getByLabel('Service address').fill(serviceUrl);
+    await form.getByRole('button', { name: 'Create connector' }).click();
+    await expect(page.getByText('Sales CRM').first()).toBeVisible();
+
+    const made = (await call<{ id: string; ref: string; name: string; type: string }[]>(200, '/connectors', { token: org.token })).find((c) => c.name === 'Sales CRM')!;
+    expect(made.type).toBe('odata');
+    odataId = made.id;
+    odataRef = made.ref;
+    expect(await call<{ ok: boolean; message: string }>(200, `/connectors/${odataId}/test`, { method: 'POST', token: org.token })).toMatchObject({ ok: true, message: 'Connected: 2 entity sets' });
+    const found = await call<{ key: string; keyField?: string; fields: { name: string; type: string }[] }[]>(200, `/connectors/${odataId}/discover`, { method: 'POST', token: org.token });
+    expect(found.map((e) => [e.key, e.keyField])).toEqual([['accounts', 'accountid'], ['enquiries', 'enquiryid']]);
+    expect(found[0]!.fields).toEqual([{ name: 'accountid', type: 'string' }, { name: 'name', type: 'string', nullable: true }, { name: 'creditlimit', type: 'number', nullable: true }]);
+    expect(problems).toEqual([]);
+  });
+
+  test('a dropdown reads its accounts and a submission is written to it, with only the exposed fields', async ({ page }) => {
+    await call(200, `/connectors/${odataId}`, { method: 'PATCH', token: org.token, body: { writable: true } }).catch(() => undefined);
+    await call(200, `/connectors/${odataId}/entities`, {
+      method: 'PUT',
+      token: org.token,
+      body: {
+        entities: [
+          // The credit limit is not exposed, so no form can read it.
+          { key: 'accounts', label: 'Accounts', fields: ['accountid', 'name'], keyField: 'accountid', operations: ['list'], valueField: 'accountid', labelField: 'name' },
+          { key: 'enquiries', label: 'Enquiries', fields: ['account', 'about'], operations: ['insert'] },
+        ],
+      },
+    });
+    const steps = await call<{ key: string; label: string }[]>(200, '/custom-workflows', { token: org.token });
+    const insert = steps.find((a) => a.label === 'Sales CRM: insert Enquiries')!;
+    await publishForm(org, {
+      name: 'Enquiry for sales',
+      code: 'SALES_ENQUIRY',
+      fields: [
+        { id: 'a', type: 'DROPDOWN', name: 'account', label: 'Account', required: true, dataSource: { type: 'API', api: { url: `/connectors/${odataRef}/accounts`, method: 'GET', valueField: 'accountid', labelField: 'name' } } },
+        { id: 'b', type: 'TEXT', name: 'about', label: 'About', required: true },
+        { id: 'c', type: 'TEXT', name: 'internal', label: 'Internal note' },
+      ],
+      automations: [{ id: 'a1', name: 'To CRM', enabled: true, when: 'SUBMITTED', actions: [{ id: 's1', type: 'HANDLER', key: insert.key, label: 'Save' }] }],
+    });
+
+    await page.goto(formUrl(org, 'SALES_ENQUIRY'));
+    await page.getByRole('combobox', { name: label('Account') }).click();
+    await page.getByRole('option', { name: 'Contoso' }).click();
+    await page.getByLabel(label('About')).fill("Pricing for O'Brien's order");
+    await page.getByLabel(label('Internal note')).fill('not for the CRM');
+    await page.getByRole('button', { name: 'Submit' }).click();
+    await expect(page.getByText(/Thank you|submitted|received/i).first()).toBeVisible();
+
+    await expect.poll(() => posted.length).toBe(1);
+    expect(posted[0]).toEqual({ account: 'A-2', about: "Pricing for O'Brien's order" });
+    // The list asked for the two exposed fields and nothing else.
+    expect(asked.find((a) => a.startsWith('GET /odata/accounts?'))).toContain('$select=accountid,name');
+    // What the public may read is what was exposed: the credit limit is not in it.
+    const rows = await call<Record<string, unknown>[]>(200, `/public/data-sources/query?org=${org.orgId}`, { method: 'POST', body: { formCode: 'SALES_ENQUIRY', key: `/connectors/${odataRef}/accounts`, params: {} } });
+    expect(JSON.stringify(rows)).not.toContain('creditlimit');
+  });
 });

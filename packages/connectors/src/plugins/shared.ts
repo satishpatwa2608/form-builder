@@ -38,6 +38,16 @@ export function rowFrom(entity: EntityRef, values: Record<string, unknown>): Rec
   return row;
 }
 
+/**
+ * The row a service sends back after a write, for later steps to use: the
+ * exposed fields and the key it gave the row, nothing else it happened to include.
+ */
+export function savedRow(entity: EntityRef, row: unknown, keyField: string): Record<string, unknown>[] {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
+  const keep = new Set([...entity.fields, keyField]);
+  return [Object.fromEntries(Object.entries(row as Record<string, unknown>).filter(([k]) => keep.has(k)))];
+}
+
 const now = () => performance.now();
 export const elapsed = (start: number) => Math.round(now() - start);
 export { now };

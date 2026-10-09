@@ -61,7 +61,12 @@ export class ConnectorRegistry {
     });
     try {
       const result = await Promise.race([plugin.run({ ...ctx, signal: controller.signal }, { ...request, limits }), timeout]);
-      return { ...result, rows: result.rows.slice(0, limits.maxRows) };
+      // What comes back is cut down to the exposed fields here, whatever the other side chose to send: a database
+      // returns the columns asked for, but an API is free to ignore "only these" and send everything it has.
+      const exposed = request.entity.fields;
+      const reads = request.kind === 'list' || request.kind === 'get';
+      const rows = result.rows.slice(0, limits.maxRows);
+      return { ...result, rows: reads && exposed.length ? rows.map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => exposed.includes(k)))) : rows };
     } catch (e) {
       if (e instanceof ConnectorError) throw e;
       // Never pass the plugin's message through: drivers echo connection strings and SQL.

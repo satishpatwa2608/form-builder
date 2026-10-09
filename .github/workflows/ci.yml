@@ -16,6 +16,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # A real SQL Server for the connector's own test (the other databases are tested by their statements).
+    # The password is for this throwaway container only; it protects nothing.
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Test-Only-Passw0rd
+        ports: ['1433:1433']
+    env:
+      MSSQL_TEST: 127.0.0.1:1433:Test-Only-Passw0rd
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
