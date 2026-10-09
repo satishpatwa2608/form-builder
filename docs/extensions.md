@@ -96,8 +96,8 @@ new one and move forms over.
    code: `package.json`, `tsconfig.json` and `src/`.
 2. We build it and run it beside Form Builder, in a container that only Form
    Builder can reach: not the internet, not other customers. It cannot reach
-   Form Builder's database, and by default cannot make outbound calls; access
-   to your own systems is agreed with us.
+   Form Builder's database, and it starts with no outbound access (see
+   "Calling your own systems" below).
 3. The first delivery installs it for your organisation and issues its
    secret, which the container is started with. You never handle it.
 4. What you declared appears under **Administration → Extensions** and in the
@@ -108,6 +108,23 @@ new one and move forms over.
 Your plan must include extensions. The same repository works whether you are
 on the shared installation or one of your own. For how we run this, see
 [hosting.md](hosting.md).
+
+## Calling your own systems
+
+Your extension starts with no outbound access. Tell us which addresses it
+needs (host and port); once they are agreed, your code calls them with an
+ordinary `fetch` and nothing else changes:
+
+```ts
+ext.step({ key: 'erp-customer', label: 'Look up the customer in ERP', outputs: ['creditLimit'] }, async ({ values }) => {
+  const res = await fetch(`https://erp.acme.com/customers/${encodeURIComponent(String(values.customer))}`);
+  if (!res.ok) throw new Error(`ERP answered ${res.status}`);
+  return { data: { creditLimit: (await res.json()).creditLimit } };
+});
+```
+
+A call to an address that has not been agreed fails. If a call fails that you
+expect to work, ask us: every attempt is recorded on our side with the reason.
 
 ## Security
 
