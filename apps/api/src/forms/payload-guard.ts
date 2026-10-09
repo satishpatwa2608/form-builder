@@ -27,7 +27,7 @@ export const containsMarkup = (s: string) => MARKUP.test(s);
 
 /** Field types whose values are free text a person typed. */
 const TEXT_TYPES = new Set(['TEXT', 'TEXTAREA', 'EMAIL', 'PHONE']);
-const STRING_TYPES = new Set(['TEXT', 'TEXTAREA', 'EMAIL', 'PHONE', 'DATE', 'DATETIME', 'DROPDOWN', 'RADIO', 'CAPTCHA']);
+const STRING_TYPES = new Set(['TEXT', 'TEXTAREA', 'EMAIL', 'PHONE', 'DATE', 'DATETIME', 'TIME', 'MONTH', 'URL', 'COLOR', 'DROPDOWN', 'RADIO', 'CAPTCHA']);
 
 function checkValue(field: FormField, value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
@@ -43,6 +43,7 @@ function checkValue(field: FormField, value: unknown): string | null {
   }
   switch (field.type) {
     case 'NUMBER':
+    case 'SLIDER':
     case 'STEPPER':
       return typeof value === 'number' && Number.isFinite(value) ? null : 'Must be a number';
     case 'CHECKBOX':

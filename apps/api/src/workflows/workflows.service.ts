@@ -11,7 +11,7 @@ import { SharedWorkflowRow, type SharedWorkflowDocument } from './workflow.schem
 
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Types a top-level answer can have, as far as a workflow's rules and messages care. */
-const FIELD_TYPES = new Set(['TEXT', 'TEXTAREA', 'NUMBER', 'STEPPER', 'EMAIL', 'PHONE', 'DATE', 'DATETIME', 'CHECKBOX', 'SWITCH', 'RADIO', 'DROPDOWN', 'MULTI_SELECT', 'CHECKBOX_GROUP']);
+const FIELD_TYPES = new Set(['TEXT', 'TEXTAREA', 'NUMBER', 'STEPPER', 'EMAIL', 'PHONE', 'DATE', 'DATETIME', 'TIME', 'MONTH', 'URL', 'COLOR', 'SLIDER', 'CHECKBOX', 'SWITCH', 'RADIO', 'DROPDOWN', 'MULTI_SELECT', 'CHECKBOX_GROUP']);
 const MAX_WORKFLOWS = 200;
 
 export interface WorkflowUse {

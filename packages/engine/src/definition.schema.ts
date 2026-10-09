@@ -121,6 +121,11 @@ const fieldSchema = z.object({
     'PHONE',
     'DATE',
     'DATETIME',
+    'TIME',
+    'MONTH',
+    'URL',
+    'COLOR',
+    'SLIDER',
     'CHECKBOX',
     'RADIO',
     'DROPDOWN',
@@ -658,7 +663,11 @@ function checkFields(fields: FormField[], ctx: z.RefinementCtx) {
       else if (typeof f.props?.alt !== 'string' || !f.props.alt.trim()) issue(i, 'props', 'Describe the picture for people who cannot see it');
     }
     if (f.type === 'CONSENT' && (typeof f.props?.text !== 'string' || !f.props.text.trim())) issue(i, 'props', `"${f.name}" needs the terms people are accepting`);
-    if (f.type === 'STEPPER' && f.props?.step !== undefined && !(typeof f.props.step === 'number' && f.props.step > 0)) {
+    if (f.type === 'SLIDER') {
+      const { min, max } = f.validation ?? {};
+      if (typeof min !== 'number' || typeof max !== 'number' || !(max > min)) issue(i, 'validation', 'A slider needs a lowest and a highest value');
+    }
+    if ((f.type === 'STEPPER' || f.type === 'SLIDER') && f.props?.step !== undefined && !(typeof f.props.step === 'number' && f.props.step > 0)) {
       issue(i, 'props', 'The step must be a number above 0');
     }
     const section = shape.repeatOf.get(f.name);
@@ -721,6 +730,11 @@ const CALCULABLE_TYPES: ReadonlySet<FormField['type']> = new Set([
   'PHONE',
   'DATE',
   'DATETIME',
+  'TIME',
+  'MONTH',
+  'URL',
+  'COLOR',
+  'SLIDER',
   'CHECKBOX',
   'SWITCH',
   'STEPPER',

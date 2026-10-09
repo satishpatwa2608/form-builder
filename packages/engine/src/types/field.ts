@@ -10,6 +10,16 @@ export type FieldType =
   | 'PHONE'
   | 'DATE'
   | 'DATETIME'
+  /** A time of day, stored as HH:MM (24 hours). */
+  | 'TIME'
+  /** A month of a year, stored as YYYY-MM. */
+  | 'MONTH'
+  /** A web address, http or https only. */
+  | 'URL'
+  /** A colour, stored as #rrggbb. */
+  | 'COLOR'
+  /** A number chosen by dragging between `validation.min` and `validation.max`; `props.step` is the size of one notch. */
+  | 'SLIDER'
   | 'CHECKBOX'
   | 'RADIO'
   | 'DROPDOWN'

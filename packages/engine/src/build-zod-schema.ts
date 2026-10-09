@@ -9,6 +9,11 @@ import { uiText, type Say } from './i18n';
 export const DEFAULT_PHONE_PATTERN = '^\\+?[0-9][0-9\\s-]{6,14}$';
 
 const isValidDate = (v: string) => !Number.isNaN(Date.parse(v));
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+const COLOR = /^#[0-9a-fA-F]{6}$/;
+/** A web address a person could open: http or https, a host with a dot, nothing that is not printable. */
+export const isWebAddress = (v: string) => /^https?:\/\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,63}(:\d{1,5})?([/?#][^\s<>"'`\\]*)?$/i.test(v);
 
 function stringSchema(field: FormField, say: Say, defaultPattern?: string): z.ZodType {
   const v = field.validation ?? {};
@@ -58,6 +63,7 @@ export function buildFieldValueSchema(field: FormField, say: Say = uiText('en'))
       return s;
     }
     case 'NUMBER':
+    case 'SLIDER':
     case 'STEPPER': {
       let s = z.number(say('number'));
       if (v.min !== undefined) s = s.min(v.min, m.min ?? say('min', { n: v.min }));
@@ -72,6 +78,15 @@ export function buildFieldValueSchema(field: FormField, say: Say = uiText('en'))
     case 'DATE':
     case 'DATETIME':
       return z.string().refine(isValidDate, say('date'));
+    case 'TIME':
+      return z.string().regex(TIME, m.pattern ?? say('time'));
+    case 'MONTH':
+      return z.string().regex(MONTH, m.pattern ?? say('month'));
+    case 'COLOR':
+      return z.string().regex(COLOR, m.pattern ?? say('colour'));
+    case 'URL':
+      // http and https only: an address is shown as a link, and a link may not run anything.
+      return z.string().max(v.maxLength ?? 2000, say('tooLong')).refine(isWebAddress, m.pattern ?? say('url'));
     case 'CHECKBOX':
     case 'SWITCH':
     case 'CONSENT':

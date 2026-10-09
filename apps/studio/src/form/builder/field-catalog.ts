@@ -27,8 +27,7 @@ import {
   Phone,
   ShieldCheck,
   Type,
-  type LucideIcon,
-} from 'lucide-react';
+  type LucideIcon, Clock, CalendarRange, Link, SlidersHorizontal, Palette } from 'lucide-react';
 import type { FieldType, FormField } from '../types';
 
 export interface PaletteItem {
@@ -66,6 +65,11 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: 'PHONE', label: 'Phone', icon: Phone },
       { type: 'DATE', label: 'Date', icon: Calendar },
       { type: 'DATETIME', label: 'Date & time', icon: CalendarClock },
+      { type: 'TIME', label: 'Time', icon: Clock },
+      { type: 'MONTH', label: 'Month', icon: CalendarRange },
+      { type: 'URL', label: 'Web address', icon: Link },
+      { type: 'SLIDER', label: 'Slider', icon: SlidersHorizontal },
+      { type: 'COLOR', label: 'Colour', icon: Palette },
     ],
   },
   {
@@ -112,6 +116,11 @@ const DEFAULT_LABEL: Partial<Record<FieldType, string>> = {
   PHONE: 'Phone',
   DATE: 'Date',
   DATETIME: 'Date & time',
+  TIME: 'Time',
+  MONTH: 'Month',
+  URL: 'Website',
+  COLOR: 'Colour',
+  SLIDER: 'How much',
   DROPDOWN: 'Choose one',
   RADIO: 'Pick one',
   CHECKBOX: 'I agree',
@@ -199,6 +208,10 @@ export function createField(type: FieldType, takenNames: Iterable<string>): Form
       break;
     case 'SECTION':
       field.props = { description: '', collapsible: false };
+      break;
+    case 'SLIDER':
+      field.props = { step: 1 };
+      field.validation = { min: 0, max: 10 };
       break;
     case 'STEPPER':
       field.props = { step: 1 };

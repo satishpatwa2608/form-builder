@@ -111,7 +111,7 @@ function DefaultValueSetting({ field, onChange }: Pick<PanelProps, 'field' | 'on
       />
     );
   }
-  const type = field.type === 'DATE' ? 'date' : field.type === 'DATETIME' ? 'datetime-local' : 'text';
+  const type = field.type === 'DATE' ? 'date' : field.type === 'DATETIME' ? 'datetime-local' : field.type === 'TIME' ? 'time' : field.type === 'MONTH' ? 'month' : field.type === 'COLOR' ? 'color' : 'text';
   return (
     <TextSetting
       label="Default value"
@@ -506,6 +506,14 @@ function ValidationTab({ field, onChange }: PanelProps) {
           <NumberSetting label="Minimum" value={v.min} onChange={(min) => set({ min })} />
           <NumberSetting label="Maximum" value={v.max} onChange={(max) => set({ max })} />
         </div>
+      )}
+      {field.type === 'SLIDER' && (
+        <NumberSetting
+          label="One notch is"
+          min={0}
+          value={typeof field.props?.step === 'number' ? field.props.step : 1}
+          onChange={(step) => onChange({ props: { ...field.props, step: step && step > 0 ? step : 1 } })}
+        />
       )}
       {field.type === 'STEPPER' && (
         <NumberSetting

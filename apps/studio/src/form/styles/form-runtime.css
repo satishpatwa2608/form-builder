@@ -429,3 +429,28 @@
     grid-column: 1 / -1;
   }
 }
+
+/* Slider: a number chosen by dragging */
+.fp-slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  align-items: center;
+  max-width: 480px;
+}
+.fp-slider__input {
+  width: 100%;
+  accent-color: var(--primary);
+}
+.fp-slider__value {
+  min-width: 3ch;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.fp-slider__ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--fb-soft);
+}

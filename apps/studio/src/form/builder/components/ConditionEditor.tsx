@@ -31,6 +31,7 @@ export function operatorsFor(field: FormField | undefined): ConditionOperator[] 
   switch (field.type) {
     case 'NUMBER':
     case 'STEPPER':
+    case 'SLIDER':
     case 'DATE':
     case 'DATETIME':
       return ['equals', 'notEquals', 'greaterThan', 'lessThan', 'greaterThanOrEqual', 'lessThanOrEqual', 'isEmpty', 'isNotEmpty'];

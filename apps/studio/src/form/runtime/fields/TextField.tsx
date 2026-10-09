@@ -11,14 +11,19 @@ const INPUT_TYPE: Partial<Record<FieldType, string>> = {
   PHONE: 'tel',
   DATE: 'date',
   DATETIME: 'datetime-local',
+  TIME: 'time',
+  MONTH: 'month',
+  URL: 'url',
+  COLOR: 'color',
 };
 
 const AUTOCOMPLETE: Partial<Record<FieldType, string>> = {
   EMAIL: 'email',
   PHONE: 'tel',
+  URL: 'url',
 };
 
-/** TEXT, EMAIL, PHONE, DATE and DATETIME: a single-line input that holds a string. */
+/** TEXT, EMAIL, PHONE, DATE, DATETIME, TIME, MONTH, URL and COLOR: a single-line input that holds a string. */
 export function TextField({ field, required }: FieldComponentProps) {
   const { control } = useFormContext();
   return (

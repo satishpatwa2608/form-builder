@@ -164,3 +164,50 @@ describe("a field drawn by the organisation's own code", () => {
   });
 });
 
+
+describe('time, month, web address, colour and slider', () => {
+  const fields = [
+    field({ type: 'TIME', name: 'at' }),
+    field({ type: 'MONTH', name: 'period' }),
+    field({ type: 'URL', name: 'site' }),
+    field({ type: 'COLOR', name: 'paint' }),
+    field({ type: 'SLIDER', name: 'score', validation: { min: 0, max: 10 }, props: { step: 1 } }),
+  ];
+
+  it('accept what a browser gives for each', () => {
+    expect(errors(fields, { at: '09:05', period: '2026-10', site: 'https://example.com/a?b=1#c', paint: '#1a2B3c', score: 7 })).toEqual({});
+    expect(errors(fields, {})).toEqual({});
+  });
+
+  it('say what is wrong, each in its own words', () => {
+    expect(errors(fields, { at: '25:00', period: '2026-13', site: 'example.com', paint: 'red', score: 11 })).toEqual({
+      at: 'Enter a time, for example 14:30',
+      period: 'Choose a month',
+      site: 'Enter a web address starting with https://',
+      paint: 'Choose a colour',
+      score: 'Must be at most 10',
+    });
+  });
+
+  it.each(['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'https://a.example/"><script>', 'https://exa mple.com', 'ftp://example.com/x', '//example.com', 'https://localhost', ' https://example.com'])('a web address is never %s', (site) => {
+    expect(errors(fields, { site })).toHaveProperty('site');
+  });
+
+  it('a slider is a number, counts as one in rules, and needs both ends to be published', () => {
+    expect(isValueField(fields[4]!)).toBe(true);
+    const total = computeFormState({ fields: [...fields, field({ type: 'NUMBER', name: 'double' })], rules: [{ id: 'r', then: [{ type: 'SET_VALUE', target: 'double', value: 'score * 2' }] }] }, { score: 4 }, {});
+    expect(total.values.double).toBe(8);
+    const issues = (f: FormField) => {
+      const r = validateFormDefinition({ ...(base as object), fields: [f] });
+      return r.success ? [] : r.issues.map((i) => i.message);
+    };
+    expect(issues(field({ type: 'SLIDER', name: 'score', validation: { min: 0 } }))).toContain('A slider needs a lowest and a highest value');
+    expect(issues(field({ type: 'SLIDER', name: 'score', validation: { min: 5, max: 5 } }))).toContain('A slider needs a lowest and a highest value');
+    expect(issues(fields[4]!)).toEqual([]);
+  });
+
+  it('are stored as they were given', () => {
+    const def = { ...(base as object), fields } as never;
+    expect(buildPayload(def, { at: '09:05', period: '2026-10', site: 'https://example.com', paint: '#000000', score: 3 }, {})).toMatchObject({ at: '09:05', period: '2026-10', site: 'https://example.com', paint: '#000000', score: 3 });
+  });
+});

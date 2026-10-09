@@ -1,5 +1,6 @@
 import type { FieldType } from '../../types';
 import type { FieldComponent } from '../fields/types';
+import { SliderField } from '../fields/SliderField';
 import { TextField } from '../fields/TextField';
 import { TextAreaField } from '../fields/TextAreaField';
 import { NumberField } from '../fields/NumberField';
@@ -27,6 +28,11 @@ const registry: Partial<Record<FieldType, FieldComponent>> = {
   PHONE: TextField,
   DATE: TextField,
   DATETIME: TextField,
+  TIME: TextField,
+  MONTH: TextField,
+  URL: TextField,
+  COLOR: TextField,
+  SLIDER: SliderField,
   TEXTAREA: TextAreaField,
   NUMBER: NumberField,
   DROPDOWN: SelectField,

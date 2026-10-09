@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { call, createOrg, formUrl, signIn, submissions, watchForProblems, type Org } from './helpers';
+import { call, createOrg, formUrl, label, publishForm, signIn, submissions, watchForProblems, type Org } from './helpers';
 
 /** One form in English, Hindi and Arabic; and every kind of field checked for accessibility. */
 
@@ -139,6 +139,11 @@ const everyField = [
   { id: 'ms', type: 'MULTI_SELECT', name: 'langs', label: 'Languages', dataSource: { type: 'STATIC', options: [{ label: 'Hindi', value: 'HI' }, { label: 'Tamil', value: 'TA' }] } },
   { id: 'cg', type: 'CHECKBOX_GROUP', name: 'days', label: 'Days', dataSource: { type: 'STATIC', options: [{ label: 'Monday', value: 'MON' }, { label: 'Tuesday', value: 'TUE' }] } },
   { id: 'st', type: 'STEPPER', name: 'guests', label: 'Guests', validation: { min: 0, max: 5 } },
+  { id: 'nti', type: 'TIME', name: 'arriveAt', label: 'Arrival time' },
+  { id: 'nmo', type: 'MONTH', name: 'period', label: 'Month of visit' },
+  { id: 'nur', type: 'URL', name: 'site', label: 'Company website' },
+  { id: 'nco', type: 'COLOR', name: 'badge', label: 'Badge colour' },
+  { id: 'nsl', type: 'SLIDER', name: 'hours', label: 'Hours on site', required: true, validation: { min: 0, max: 12 }, props: { step: 1 } },
   { id: 'f', type: 'FILE', name: 'proof', label: 'Proof' },
   { id: 'sg', type: 'SIGNATURE', name: 'sign', label: 'Signature' },
   { id: 'co', type: 'CONSENT', name: 'terms', label: 'I accept the terms', required: true, props: { text: 'Visitors must wear a badge at all times.' } },
@@ -185,4 +190,39 @@ test('every kind of field passes an automated accessibility check: empty, with m
   await page.getByRole('combobox', { name: 'Language' }).selectOption('ar');
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
   expect(await accessibilityProblems(page)).toEqual([]);
+});
+
+test('time, month, web address, colour and slider are filled in, checked and stored as given', async ({ page }) => {
+  const problems = watchForProblems(page);
+  const id = await publishForm(org, {
+    name: 'Site visit',
+    code: 'SITE_VISIT_FIELDS',
+    fields: [
+      { id: 'ti', type: 'TIME', name: 'arriveAt', label: 'Arrival time', required: true },
+      { id: 'mo', type: 'MONTH', name: 'period', label: 'Month of visit' },
+      { id: 'ur', type: 'URL', name: 'site', label: 'Company website' },
+      { id: 'co', type: 'COLOR', name: 'badge', label: 'Badge colour' },
+      { id: 'sl', type: 'SLIDER', name: 'hours', label: 'Hours on site', required: true, validation: { min: 0, max: 12 }, props: { step: 1 } },
+    ],
+  });
+  await page.goto(formUrl(org, 'SITE_VISIT_FIELDS'));
+  await page.getByLabel(label('Arrival time')).fill('09:30');
+  await page.getByLabel(label('Month of visit')).fill('2026-11');
+  await page.getByLabel(label('Badge colour')).fill('#0a7d3b');
+  // Something that is not a web address is refused in words; a slider left alone is not an answer.
+  await page.getByLabel(label('Company website')).fill('javascript:alert(1)');
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await expect(page.getByText('Enter a web address starting with https://').first()).toBeVisible();
+  await expect(page.getByText('Hours on site is required').first()).toBeVisible();
+  await page.getByLabel(label('Company website')).fill('https://example.com/about');
+  // The slider works from the keyboard.
+  const slider = page.getByRole('slider', { name: label('Hours on site') });
+  await slider.focus();
+  await slider.press('Home');
+  for (let i = 0; i < 4; i++) await slider.press('ArrowRight');
+  await page.getByRole('button', { name: 'Submit' }).click();
+  await expect(page.getByText(/Thank you|submitted|received/i).first()).toBeVisible();
+  const stored = (await submissions(org, id))[0]!.payload;
+  expect(stored).toMatchObject({ arriveAt: '09:30', period: '2026-11', site: 'https://example.com/about', badge: '#0a7d3b', hours: 4 });
+  expect(problems).toEqual([]);
 });

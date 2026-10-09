@@ -17,7 +17,7 @@ const OPTION_TYPES: ReadonlySet<FieldType> = new Set(['RADIO', 'DROPDOWN', 'MULT
 
 const BOOLEAN_TYPES: ReadonlySet<FieldType> = new Set(['CHECKBOX', 'SWITCH', 'CONSENT']);
 const LIST_TYPES: ReadonlySet<FieldType> = new Set(['MULTI_SELECT', 'CHECKBOX_GROUP']);
-const NUMBER_TYPES: ReadonlySet<FieldType> = new Set(['NUMBER', 'STEPPER']);
+const NUMBER_TYPES: ReadonlySet<FieldType> = new Set(['NUMBER', 'STEPPER', 'SLIDER']);
 
 /** How a form names a field its organisation's extension draws. */
 export const CUSTOM_FIELD_KEY = /^x-[a-z0-9]{8}-[a-z0-9-]{1,40}$/;
