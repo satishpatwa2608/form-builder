@@ -5,7 +5,7 @@ import * as argon2 from 'argon2';
 import type { Model } from 'mongoose';
 import { permissionsOf } from '../access/roles';
 import { actorOf, AuditService } from '../audit/audit.service';
-import { APP_CONFIG, type AppConfig } from '../config';
+import { APP_CONFIG, isOperator, type AppConfig } from '../config';
 import { hashToken, newId, randomToken, SecretBox } from '../common/crypto';
 import { MAILER, type Mailer } from '../common/mailer';
 import type { RequestMeta } from '../common/request-meta';
@@ -84,6 +84,9 @@ export class AuthService implements OnModuleInit {
    */
   async signup(body: { name: string; email: string; password: string; orgName: string }, meta: RequestMeta) {
     const email = body.email.toLowerCase();
+    // Closed: a new organisation is started only by the people who run the installation. Said plainly, since the
+    // sign-up page says the same and it reveals nothing about who has an account.
+    if (this.config.SIGNUP === 'closed' && !isOperator(this.config, email)) throw new ForbiddenException('New accounts are by invitation here. Ask whoever provides Form Builder to you.');
     const existing = await this.users.findOne({ email }).lean();
     if (existing) {
       await this.mailer.send({
@@ -266,6 +269,9 @@ export class AuthService implements OnModuleInit {
       org: { id: auth.orgId, name: current?.name ?? '', role: auth.role, permissions: permissionsOf(auth.role), require2fa: !!current?.security?.require2fa, requireReview: !!current?.security?.requireReview },
       session: { mfa: auth.mfa },
       orgs: memberships.map((m) => ({ id: m.orgId, name: orgs.find((o) => o.id === m.orgId)?.name ?? '', role: m.role })),
+      // Adding an organisation: anyone where sign-up is open, the operators where it is closed. Operators also choose its plan.
+      operator: isOperator(this.config, user!.email),
+      canCreateOrgs: this.config.SIGNUP === 'open' || isOperator(this.config, user!.email),
     };
   }
 

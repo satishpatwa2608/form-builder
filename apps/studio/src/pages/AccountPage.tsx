@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { Copy, Download, ShieldCheck, ShieldOff } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Alert, Badge, Button, Card, PageHead, PasswordStrength, TextField, useSubmit } from '../components/ui';
+import { Alert, Badge, Button, Card, PageHead, PasswordStrength, SelectField, TextField, useSubmit } from '../components/ui';
 
 function TwoFactorCard() {
   const { me, reload } = useAuth();
@@ -175,19 +175,34 @@ function PasswordCard() {
   );
 }
 
-function NewOrgCard() {
+function NewOrgCard({ operator }: { operator: boolean }) {
   const { switchOrg } = useAuth();
   const [name, setName] = useState('');
+  const [plan, setPlan] = useState('FREE');
   const create = useSubmit(async () => {
-    const org = await api<{ id: string }>('/orgs', { method: 'POST', body: { name } });
+    const org = await api<{ id: string }>('/orgs', { method: 'POST', body: operator ? { name, plan } : { name } });
     await switchOrg(org.id);
   });
   return (
-    <Card title="Another organisation" subtitle="Keep a separate workspace, e.g. for another company. You'll be its owner.">
+    <Card
+      title={operator ? 'Add a customer' : 'Another organisation'}
+      subtitle={operator ? "A new organisation for a customer, on the plan they have bought. You'll be its owner to begin with: invite their person under Members, make them an owner, then leave." : "Keep a separate workspace, e.g. for another company. You'll be its owner."}
+    >
       <form className="st-row" style={{ alignItems: 'flex-end' }} onSubmit={create.submit} noValidate>
+        {create.error && !Object.keys(create.fields).length && <Alert tone="error">{create.error}</Alert>}
         <div style={{ flex: '1 1 260px' }}>
           <TextField label="Organisation name" value={name} onChange={(e) => setName(e.target.value)} error={create.fields.name} />
         </div>
+        {operator && (
+          <div style={{ width: 180 }}>
+            <SelectField label="Plan" value={plan} onChange={(e) => setPlan(e.target.value)}>
+              <option value="FREE">Free</option>
+              <option value="TEAM">Team</option>
+              <option value="BUSINESS">Business</option>
+              <option value="ENTERPRISE">Enterprise</option>
+            </SelectField>
+          </div>
+        )}
         <Button type="submit" variant="secondary" busy={create.busy} disabled={!name.trim()}>
           Create and switch
         </Button>
@@ -207,7 +222,7 @@ export default function AccountPage() {
         {!needsTwoFactor && (
           <>
             <PasswordCard />
-            <NewOrgCard />
+            {me.canCreateOrgs !== false && <NewOrgCard operator={!!me.operator} />}
           </>
         )}
       </div>

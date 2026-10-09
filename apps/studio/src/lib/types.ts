@@ -21,6 +21,10 @@ export interface Me {
   org: { id: string; name: string; role: OrgRole; permissions: Permission[]; require2fa: boolean; requireReview?: boolean };
   session: { mfa: boolean };
   orgs: { id: string; name: string; role: OrgRole }[];
+  /** One of the people who run this installation: may add organisations and choose their plan. */
+  operator?: boolean;
+  /** Whether this person may add an organisation (anyone where sign-up is open; operators where it is closed). */
+  canCreateOrgs?: boolean;
 }
 
 export interface Member {

@@ -75,6 +75,20 @@ through the person's browser. Three things to know when hosting it:
   Answers nobody asked for (provider-started sign-in) are refused. Requests
   are not signed and encrypted statements are not accepted: neither is set up.
 
+## Who may start an organisation
+
+`SIGNUP=open` (the default) lets anyone sign up and get an organisation of their own on `DEFAULT_PLAN`.
+`SIGNUP=closed` is for an installation sold to named customers:
+
+- Nobody can sign up, except the addresses in `OPERATOR_EMAILS` (comma-separated), who are the people
+  running the installation. The sign-in page then offers no account to create.
+- An operator adds each customer under **Account → Add a customer**, choosing the plan bought, invites the
+  customer's person under Members, makes them an owner, and leaves the organisation.
+- Everyone else joins an organisation by invitation or through its single sign-on, as before.
+- A customer cannot add organisations or choose a plan.
+
+An operator is otherwise an ordinary user: being one gives no sight of any customer's organisation.
+
 ## Each organisation's log
 
 Organisations read their own log in the studio (Logs). Nothing to operate,

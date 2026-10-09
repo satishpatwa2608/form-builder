@@ -48,6 +48,13 @@ const schema = z.object({
   JOBS_POLL: z.enum(['true', 'false']).optional(),
   /** Plan for organisations billing hasn't set one on (see src/plans/plans.ts). */
   DEFAULT_PLAN: z.enum(['FREE', 'TEAM', 'BUSINESS', 'ENTERPRISE']).default('FREE'),
+  /**
+   * Who may start a new organisation. `open`: anyone, by signing up. `closed`: only the operators below;
+   * everyone else joins an organisation by invitation or single sign-on.
+   */
+  SIGNUP: z.enum(['open', 'closed']).default('open'),
+  /** Email addresses of the people who run this installation (comma-separated): they may add organisations and choose their plan. */
+  OPERATOR_EMAILS: z.string().default(''),
   /** Secure cookies (https only). Must be true outside local development. */
   COOKIE_SECURE: z
     .enum(['true', 'false'])
@@ -56,6 +63,10 @@ const schema = z.object({
 });
 
 export type AppConfig = z.infer<typeof schema>;
+
+/** Is this address one of the people who run the installation? */
+export const isOperator = (config: Pick<AppConfig, 'OPERATOR_EMAILS'>, email: string | undefined) =>
+  !!email && config.OPERATOR_EMAILS.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(email.trim().toLowerCase());
 export const APP_CONFIG = Symbol('APP_CONFIG');
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {

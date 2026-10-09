@@ -4,10 +4,12 @@ import { MailCheck } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Alert, Button, PasswordStrength, TextField, useSubmit } from '../../components/ui';
 import { AuthLayout } from './AuthLayout';
+import { useSignupOpen } from '../../lib/signup';
 
 export default function SignupPage() {
   const [form, setForm] = useState({ name: '', email: '', orgName: '', password: '' });
   const [sent, setSent] = useState(false);
+  const signupOpen = useSignupOpen();
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
   const { busy, error, fields, submit } = useSubmit(async () => {
     await api('/auth/signup', { method: 'POST', body: form });
@@ -26,6 +28,22 @@ export default function SignupPage() {
           </Button>
           <p className="st-auth__foot">
             Already confirmed?{' '}
+            <Link className="st-link" to="/login">
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (!signupOpen) {
+    return (
+      <AuthLayout title="By invitation" subtitle="New accounts are not made here.">
+        <div className="st-stack">
+          <Alert tone="info">Ask whoever provides Form Builder to you for an invitation. It arrives by email with a link to set your password.</Alert>
+          <p className="st-auth__foot">
+            Already have an account?{' '}
             <Link className="st-link" to="/login">
               Sign in
             </Link>

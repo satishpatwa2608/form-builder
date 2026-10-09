@@ -1,3 +1,4 @@
+import { useSignupOpen } from '../../lib/signup';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api, errorMessage } from '../../lib/api';
@@ -6,6 +7,7 @@ import { Alert, Button, TextField } from '../../components/ui';
 import { AuthLayout } from './AuthLayout';
 
 export default function LoginPage() {
+  const signupOpen = useSignupOpen();
   const { signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -134,12 +136,16 @@ export default function LoginPage() {
           Sign in with SSO
         </Button>
       </form>
-      <p className="st-auth__foot">
-        New to Form Builder?{' '}
-        <Link className="st-link" to="/signup">
-          Create an account
-        </Link>
-      </p>
+      {signupOpen ? (
+        <p className="st-auth__foot">
+          New to Form Builder?{' '}
+          <Link className="st-link" to="/signup">
+            Create an account
+          </Link>
+        </p>
+      ) : (
+        <p className="st-auth__foot">New accounts are by invitation. Use the link in the email you were sent.</p>
+      )}
     </AuthLayout>
   );
 }

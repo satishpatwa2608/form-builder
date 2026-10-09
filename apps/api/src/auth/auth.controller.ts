@@ -55,6 +55,13 @@ export class AuthController {
     return { accessToken: signed.accessToken, expiresIn: signed.expiresIn };
   }
 
+  /** What the sign-in pages need to know before anyone is signed in: whether new accounts can be made here. */
+  @Public()
+  @Get('config')
+  publicConfig() {
+    return { signup: this.config.SIGNUP };
+  }
+
   @Public()
   @Throttle(STRICT)
   @Post('signup')

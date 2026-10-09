@@ -12,7 +12,7 @@ import { OrgsService } from './orgs.service';
 
 const orgName = z.string().trim().min(1).max(100);
 const updateOrgBody = z.object({ name: orgName.optional(), security: z.object({ require2fa: z.boolean().optional(), requireReview: z.boolean().optional() }).optional(), portal: z.object({ enabled: z.boolean().optional(), title: z.string().trim().max(80).optional(), intro: z.string().trim().max(500).optional() }).optional() });
-const createOrgBody = z.object({ name: orgName });
+const createOrgBody = z.object({ name: orgName, plan: z.enum(['FREE', 'TEAM', 'BUSINESS', 'ENTERPRISE']).optional() });
 const memberBody = z
   .object({
     role: z.enum(ORG_ROLES).optional(),
@@ -41,7 +41,7 @@ export class OrgsController {
 
   @Post('orgs')
   create(@Auth() auth: AuthContext, @Body(new ZodBody(createOrgBody)) body: z.infer<typeof createOrgBody>) {
-    return this.orgs.create(auth, body.name);
+    return this.orgs.create(auth, body.name, body.plan);
   }
 
   @Get('members')

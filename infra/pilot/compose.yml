@@ -24,6 +24,9 @@ x-api-env: &api-env
   UPLOADS_BUCKET: ${UPLOADS_BUCKET}
   KMS_KEY_ID: ${KMS_KEY_ID}
   DEFAULT_PLAN: ${DEFAULT_PLAN}
+  # Who may start an organisation: closed means only the operators, who add each customer.
+  SIGNUP: ${SIGNUP:-closed}
+  OPERATOR_EMAILS: ${OPERATOR_EMAILS:-}
   FILE_SCANNER: none
   JOBS_POLL: "true"
 

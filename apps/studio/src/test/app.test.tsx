@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -188,6 +188,41 @@ describe('studio', () => {
     const sent = calls.find((c) => c.method === 'POST' && c.path === '/connectors')!.body as Record<string, unknown>;
     expect(sent).toMatchObject({ gatewayId: 'g1', settings: { host: 'erp.internal', database: 'erp' } });
     expect(sent.secrets).toBeUndefined();
+  });
+
+  it('where sign-up is closed, the sign-in page offers no account to create and the sign-up page says how to get in', async () => {
+    fakeApi({ ...signedOut, 'GET /auth/config': () => ({ body: { signup: 'closed' } }) });
+    renderApp('/login');
+    expect(await screen.findByText(/New accounts are by invitation/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Create an account' })).toBeNull();
+    cleanup();
+    fakeApi({ ...signedOut, 'GET /auth/config': () => ({ body: { signup: 'closed' } }) });
+    renderApp('/signup');
+    expect(await screen.findByRole('heading', { name: 'By invitation' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Organisation name')).toBeNull();
+  });
+
+  it('where sign-up is open, or the server does not say, an account can be created as before', async () => {
+    fakeApi({ ...signedOut, 'GET /auth/config': () => ({ body: { signup: 'open' } }) });
+    renderApp('/login');
+    expect(await screen.findByRole('link', { name: 'Create an account' })).toBeInTheDocument();
+  });
+
+  it('an operator is offered "Add a customer" with a plan; someone who may not add organisations is offered nothing', async () => {
+    const user = userEvent.setup();
+    const { calls } = fakeApi({ ...signedIn({ ...ME, operator: true, canCreateOrgs: true } as typeof ME), 'GET /auth/sessions': () => ({ body: [] }), 'POST /orgs': () => ({ status: 201, body: { id: 'o-new', name: 'Sangam' } }), 'POST /auth/switch-org': () => ({ body: { accessToken: 't2' } }) });
+    renderApp('/account');
+    const card = (await screen.findByRole('heading', { name: 'Add a customer' })).closest('.st-card') as HTMLElement;
+    await user.type(within(card).getByLabelText('Organisation name'), 'Sangam');
+    await user.selectOptions(within(card).getByLabelText('Plan'), 'ENTERPRISE');
+    await user.click(within(card).getByRole('button', { name: 'Create and switch' }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.path === '/orgs')?.body).toEqual({ name: 'Sangam', plan: 'ENTERPRISE' }));
+    cleanup();
+    fakeApi({ ...signedIn({ ...ME, operator: false, canCreateOrgs: false } as typeof ME), 'GET /auth/sessions': () => ({ body: [] }) });
+    renderApp('/account');
+    expect(await screen.findByRole('heading', { name: /Account/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Add a customer' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Another organisation' })).toBeNull();
   });
 
   it('SSO: an SSO_REQUIRED sign-in points to single sign-on, and a returned error is shown', async () => {

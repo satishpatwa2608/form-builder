@@ -1,3 +1,5 @@
+import { isOperator } from '../config';
+import type { PlanId } from '../plans/plans';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import * as argon2 from 'argon2';
@@ -68,11 +70,17 @@ export class OrgsService {
   }
 
   /** Another organisation for a signed-in user; they become its owner. */
-  async create(auth: AuthContext, name: string) {
+  async create(auth: AuthContext, name: string, plan?: PlanId) {
+    const me = await this.users.findOne({ id: auth.userId }).select('email').lean();
+    const operator = isOperator(this.config, me?.email);
+    if (this.config.SIGNUP === 'closed' && !operator) throw new ForbiddenException('Only the people who run this installation can add an organisation');
+    // The plan is the operator's to give; anyone else's new organisation starts on the usual one.
+    if (plan && !operator) throw new ForbiddenException('Only the people who run this installation can choose a plan');
     const orgId = newId();
     await this.orgs.create({ id: orgId, name });
     await this.memberships.create({ id: newId(), orgId, userId: auth.userId, role: 'OWNER' });
-    await this.audit.record({ ...actorOf(auth), orgId }, { action: 'org.created', targetType: 'organization', targetId: orgId, after: { name } });
+    if (plan) await this.plans.setPlan(orgId, plan);
+    await this.audit.record({ ...actorOf(auth), orgId }, { action: 'org.created', targetType: 'organization', targetId: orgId, after: { name, ...(plan ? { plan } : {}) } });
     return { id: orgId, name };
   }
 

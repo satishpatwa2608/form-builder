@@ -47,6 +47,12 @@ Changed `compose.yml`, `Caddyfile` or a script: copy it to `s3://fb-pilot-547878
 `aws ssm start-session --profile formbuilder --region ap-south-1 --target i-08cd40934729c192b`, then
 `cd /opt/fb && sudo docker compose ps` / `sudo docker compose logs -f api`.
 
+## Customers
+
+Sign-up is closed on the pilot (`/fb-pilot/SIGNUP=closed`) and new organisations start on the Free plan.
+The addresses in `/fb-pilot/OPERATOR_EMAILS` add each customer from **Account → Add a customer** with the
+plan bought. See "Who may start an organisation" in `docs/operations.md`.
+
 ## Changing a setting
 
 `aws ssm put-parameter --name /fb-pilot/<NAME> --value ... --overwrite`, then run `deploy.sh` with the current tag.
