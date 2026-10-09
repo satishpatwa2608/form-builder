@@ -6,6 +6,8 @@ import { ORG_ROLES, type OrgRole } from '../access/roles';
 export class OrgSecurity {
   /** Everyone must use a second factor to work in this org. */
   @Prop({ type: Boolean, default: false }) require2fa: boolean;
+  /** A form is published only once someone other than its author has approved it. */
+  @Prop({ type: Boolean, default: false }) requireReview: boolean;
 }
 
 /** How public forms look for this org. */

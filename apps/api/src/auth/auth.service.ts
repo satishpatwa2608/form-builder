@@ -263,7 +263,7 @@ export class AuthService implements OnModuleInit {
     const current = orgs.find((o) => o.id === auth.orgId);
     return {
       user: { id: user!.id, name: user!.name, email: user!.email, twoFactorEnabled: !!user!.totpEnabledAt },
-      org: { id: auth.orgId, name: current?.name ?? '', role: auth.role, permissions: permissionsOf(auth.role), require2fa: !!current?.security?.require2fa },
+      org: { id: auth.orgId, name: current?.name ?? '', role: auth.role, permissions: permissionsOf(auth.role), require2fa: !!current?.security?.require2fa, requireReview: !!current?.security?.requireReview },
       session: { mfa: auth.mfa },
       orgs: memberships.map((m) => ({ id: m.orgId, name: orgs.find((o) => o.id === m.orgId)?.name ?? '', role: m.role })),
     };

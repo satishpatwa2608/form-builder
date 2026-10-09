@@ -28,6 +28,8 @@ export class Form {
   @Prop({ type: String, default: '' }) scheduledBy: string;
   /** Why the last scheduled publish did not happen. */
   @Prop({ type: String, default: '' }) scheduleError: string;
+  /** Where the draft stands with its reviewers (see form-review.service.ts). */
+  @Prop({ type: MongooseSchema.Types.Mixed, default: null }) review: Record<string, unknown> | null;
   @Prop({ type: Boolean, default: false }) isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;

@@ -18,6 +18,7 @@ import { JobQueue } from '../jobs/job-queue.service';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { ExtensionsService } from '../extensions/extensions.service';
 import { FragmentsService } from '../fragments/fragments.service';
+import { reviewRefusal } from './form-review';
 import { Membership, type MembershipDocument } from '../orgs/org.schemas';
 
 export interface FormSummary {
@@ -35,6 +36,8 @@ export interface FormSummary {
   publishAt: Date | null;
   /** Why its last scheduled publish did not happen. */
   scheduleError: string;
+  /** Where a draft stands with its reviewers: NONE, REQUESTED, CHANGES_REQUESTED or APPROVED. */
+  review: string;
 }
 
 /** How far ahead a publish can be scheduled. */
@@ -121,6 +124,24 @@ export class FormsService implements OnModuleInit {
     return row;
   }
 
+  /** For the services beside this one (review): the form, if the caller may do `permission` to it. */
+  access(auth: AuthContext, id: string, permission: Permission): Promise<FormDocument> {
+    return this.mustGet(auth, id, permission);
+  }
+
+  /** What the caller may do to this form, from its folder. */
+  async permissionsOn(auth: AuthContext, row: Pick<Form, 'orgId' | 'folderId' | 'code'>): Promise<Permission[]> {
+    return this.permissions.effective(auth, await this.ref(row.orgId, row.folderId, row.code));
+  }
+
+  /** Where an organisation requires it, a draft is published only as approved, by someone else. */
+  private async assertReviewed(row: Form) {
+    const org = await this.forms.db.collection('organizations').findOne({ id: row.orgId }, { projection: { security: 1 } });
+    if (!(org?.security as { requireReview?: boolean } | undefined)?.requireReview) return;
+    const refusal = reviewRefusal(row);
+    if (refusal) throw new FormProblems([{ field: 'review', message: refusal }]);
+  }
+
   private async assertCodeFree(orgId: string, code: string) {
     const clash = await this.forms.findOne({ ...this.live(orgId), code }).lean();
     if (clash) throw new ConflictException({ message: 'The form has problems', errors: [{ field: 'code', message: `Code ${code} is already used by "${clash.name}"` }] });
@@ -133,7 +154,7 @@ export class FormsService implements OnModuleInit {
     const rows = await this.forms
       .find({ ...this.live(auth.orgId), ...(folderId ? { folderId } : {}) })
       .sort({ code: 1, version: -1 })
-      .select('id code name folderId version status updatedAt publishAt scheduleError')
+      .select('id code name folderId version status updatedAt publishAt scheduleError review')
       .lean();
     const latest = new Map<string, (typeof rows)[number]>();
     const published = new Map<string, number>();
@@ -149,7 +170,7 @@ export class FormsService implements OnModuleInit {
       const ref: ResourceRef = { type: 'form', id: r.code, folderPath: paths.get(r.folderId) };
       const perms = (['form.view', 'form.edit', 'form.publish'] as Permission[]).filter((p) => isAllowed(auth.role, grants, p, ref));
       if (!perms.includes('form.view')) continue;
-      out.push({ id: r.id, code: r.code, name: r.name, folderId: r.folderId, version: r.version, status: r.status, publishedVersion: published.get(r.code) ?? null, updatedAt: r.updatedAt, publishAt: r.publishAt ?? null, scheduleError: r.scheduleError ?? '', permissions: perms });
+      out.push({ id: r.id, code: r.code, name: r.name, folderId: r.folderId, version: r.version, status: r.status, publishedVersion: published.get(r.code) ?? null, updatedAt: r.updatedAt, publishAt: r.publishAt ?? null, scheduleError: r.scheduleError ?? '', review: (r.status === 'DRAFT' ? ((r.review as { status?: string } | null)?.status ?? 'NONE') : 'NONE'), permissions: perms });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -218,6 +239,7 @@ export class FormsService implements OnModuleInit {
   async publish(auth: AuthContext, id: string) {
     const row = await this.mustGet(auth, id, 'form.publish');
     if (row.status !== 'DRAFT') throw new ConflictException(`Only drafts can be published (this is ${row.status.toLowerCase()})`);
+    await this.assertReviewed(row);
     const draft = await this.withSharedWorkflow(auth.orgId, FormsService.toDefinition(row));
     // Custom APIs (HANDLER steps) are code; none are deployed in this product yet. Tasks were a Sangam app.
     const steps = (draft.automations ?? []).flatMap((a) => a.actions);

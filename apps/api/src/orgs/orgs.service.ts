@@ -35,25 +35,26 @@ export class OrgsService {
 
   async get(auth: AuthContext) {
     const org = await this.orgs.findOne({ id: auth.orgId }).lean();
-    return { id: org!.id, name: org!.name, security: { require2fa: !!org!.security?.require2fa } };
+    return { id: org!.id, name: org!.name, security: { require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview } };
   }
 
-  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean } }) {
+  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean; requireReview?: boolean } }) {
     const org = await this.orgs.findOne({ id: auth.orgId });
-    const before = { name: org!.name, require2fa: !!org!.security?.require2fa };
+    const before = { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview };
     if (body.security?.require2fa === true && !auth.mfa) {
       // Otherwise the admin locks themselves out on the next request.
       throw new BadRequestException('Turn on two-factor sign-in for yourself first');
     }
     if (body.name !== undefined) org!.set({ name: body.name });
     if (body.security?.require2fa !== undefined) org!.set({ 'security.require2fa': body.security.require2fa });
+    if (body.security?.requireReview !== undefined) org!.set({ 'security.requireReview': body.security.requireReview });
     await org!.save();
     await this.audit.record(actorOf(auth), {
       action: 'org.updated',
       targetType: 'organization',
       targetId: auth.orgId,
       before,
-      after: { name: org!.name, require2fa: !!org!.security?.require2fa },
+      after: { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview },
     });
     return this.get(auth);
   }

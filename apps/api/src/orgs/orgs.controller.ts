@@ -11,7 +11,7 @@ import { idParam } from '../common/id-param';
 import { OrgsService } from './orgs.service';
 
 const orgName = z.string().trim().min(1).max(100);
-const updateOrgBody = z.object({ name: orgName.optional(), security: z.object({ require2fa: z.boolean().optional() }).optional() });
+const updateOrgBody = z.object({ name: orgName.optional(), security: z.object({ require2fa: z.boolean().optional(), requireReview: z.boolean().optional() }).optional() });
 const createOrgBody = z.object({ name: orgName });
 const memberBody = z
   .object({
