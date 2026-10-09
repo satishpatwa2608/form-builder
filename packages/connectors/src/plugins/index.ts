@@ -4,17 +4,19 @@ import { mongodbPlugin } from './mongodb';
 import { restPlugin } from './rest';
 import { mssqlPlugin, mysqlPlugin, postgresPlugin } from './sql';
 import { odataPlugin } from './odata';
+import { salesforcePlugin } from './salesforce';
 import { supabasePlugin } from './supabase';
 
 export { buildSql } from './sql';
 export { parseResources } from './rest';
 export { odataLiteral, parseMetadata } from './odata';
+export { buildSoql, soqlLiteral } from './salesforce';
 export { assertPublicHost, isPrivateAddress, mongoHosts, safeFetch } from './shared';
 export { setAwsFactories, setStsFactory } from './aws';
 export { closeMongoConnections } from './mongodb';
 export { closeSqlConnections } from './sql';
 
-export const ALL_PLUGINS = [mongodbPlugin, postgresPlugin, mysqlPlugin, mssqlPlugin, supabasePlugin, restPlugin, odataPlugin, s3Plugin, cloudWatchPlugin];
+export const ALL_PLUGINS = [mongodbPlugin, postgresPlugin, mysqlPlugin, mssqlPlugin, supabasePlugin, restPlugin, odataPlugin, salesforcePlugin, s3Plugin, cloudWatchPlugin];
 
 /** A registry with every connector type of the first release. */
 export function defaultRegistry(): ConnectorRegistry {

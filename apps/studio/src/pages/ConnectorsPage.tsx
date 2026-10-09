@@ -5,7 +5,7 @@ import { API_URL, api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 
-type ConnectorType = 'mongodb' | 'postgres' | 'mysql' | 'mssql' | 'supabase' | 'rest' | 'odata' | 'aws-s3' | 'aws-cloudwatch';
+type ConnectorType = 'mongodb' | 'postgres' | 'mysql' | 'mssql' | 'supabase' | 'rest' | 'odata' | 'salesforce' | 'aws-s3' | 'aws-cloudwatch';
 type Op = 'list' | 'get' | 'lookup' | 'insert' | 'update' | 'upload' | 'log';
 
 interface ExposedEntity {
@@ -151,6 +151,15 @@ export const SPECS: Record<ConnectorType, { label: string; blurb: string; fields
       { name: 'token', label: 'Token / API key', secret: true, kind: 'password', showFor: ['bearer', 'apiKey'] },
     ],
   },
+  salesforce: {
+    label: 'Salesforce',
+    blurb: 'Leads, contacts, cases and your own objects. Their fields are found for you.',
+    fields: [
+      { name: 'instanceUrl', label: 'Your Salesforce address', hint: 'e.g. https://yourcompany.my.salesforce.com (Setup → My Domain)' },
+      { name: 'clientId', label: 'Consumer key', hint: 'From a connected app with the client credentials flow switched on and a "run as" user chosen' },
+      { name: 'clientSecret', label: 'Consumer secret', secret: true, kind: 'password' },
+    ],
+  },
   'aws-s3': { label: 'Amazon S3', blurb: "Save answers as JSON files in your bucket (your account, your role).", fields: [...ROLE, { name: 'bucket', label: 'Bucket' }, { name: 'prefix', label: 'Key prefix', optional: true, hint: 'e.g. forms/' }] },
   'aws-cloudwatch': { label: 'CloudWatch Logs', blurb: 'Send form events to your log group.', fields: [...ROLE, { name: 'logGroup', label: 'Log group', hint: 'e.g. /acme/forms' }] },
 };
@@ -164,6 +173,7 @@ const OPS_BY_TYPE: Record<ConnectorType, Op[]> = {
   supabase: ['list', 'get', 'lookup', 'insert', 'update'],
   rest: ['list', 'get', 'lookup', 'insert', 'update'],
   odata: ['list', 'get', 'lookup', 'insert', 'update'],
+  salesforce: ['list', 'get', 'lookup', 'insert', 'update'],
   'aws-s3': ['list', 'upload'],
   'aws-cloudwatch': ['log'],
 };
