@@ -16,6 +16,7 @@ import { Form, type FormDocument } from './form.schema';
 import { checkDefinitionSecurity } from './payload-guard';
 import { JobQueue } from '../jobs/job-queue.service';
 import { WorkflowsService } from '../workflows/workflows.service';
+import { ExtensionsService } from '../extensions/extensions.service';
 import { Membership, type MembershipDocument } from '../orgs/org.schemas';
 
 export interface FormSummary {
@@ -85,6 +86,7 @@ export class FormsService implements OnModuleInit {
     @InjectModel(Membership.name) private readonly memberships: Model<MembershipDocument>,
     private readonly jobs: JobQueue,
     private readonly workflows: WorkflowsService,
+    private readonly extensions: ExtensionsService,
   ) {}
 
   private live(orgId: string) {
@@ -221,8 +223,17 @@ export class FormsService implements OnModuleInit {
     // Custom API steps must be runnable here: a code handler or an exposed, writable connector operation.
     for (const step of steps) {
       if (step.type === 'HANDLER' && !(step.key && (await this.handlers.exists(auth.orgId, step.key)))) {
-        const why = step.key?.startsWith('c-') ? 'its connector or operation was removed, or writes are off' : "it isn't installed on this server";
+        const why = step.key?.startsWith('c-')
+          ? 'its connector or operation was removed, or writes are off'
+          : step.key?.startsWith('x-')
+            ? 'your extension was removed, or no longer offers it'
+            : "it isn't installed on this server";
         throw new FormProblems([{ field: 'automations', message: `Custom API step "${step.label || step.key}" isn't available: ${why}` }]);
+      }
+    }
+    for (const key of draft.submitChecks ?? []) {
+      if (!(await this.extensions.checkExists(auth.orgId, key))) {
+        throw new FormProblems([{ field: 'submitChecks', message: 'A check this form runs before accepting a submission is no longer offered by your extension. Remove it in the form settings.' }]);
       }
     }
     // Freeze the library styles this version uses into it: later edits to a style don't change live forms.

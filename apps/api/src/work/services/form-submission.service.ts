@@ -30,6 +30,7 @@ import { FormSubmission, FormSubmissionDocument } from '../schemas/form-submissi
 import type { FormUpload } from '../schemas/upload.schema';
 import { FormDefinitionService } from './form-definition.service';
 import { DataSourceQueryService } from './data-source-query.service';
+import { ExtensionsService } from '../../extensions/extensions.service';
 import { CaptchaVerifierService } from './captcha-verifier.service';
 import { FormUploadService } from './form-upload.service';
 import { FormContextService, type OptionalUser } from './form-context.service';
@@ -77,6 +78,7 @@ export class FormSubmissionService {
     private readonly events: EventEmitter2,
     private readonly context: FormContextService,
     private readonly records: FormRecordService,
+    private readonly extensions: ExtensionsService,
   ) {}
 
   /** The published form a public caller may open (sign-in-only forms need a user of the same org). */
@@ -203,6 +205,12 @@ export class FormSubmissionService {
       if (!chosen.every((v) => allowed.has(String(v)))) optionIssues.push({ field: f.name, message: 'Select a valid option' });
     }
     if (optionIssues.length) throw reject(optionIssues);
+
+    // 6b. The organisation's own checks (its extension), once everything the form itself can judge has passed.
+    if (def.submitChecks?.length) {
+      const objection = await this.extensions.runChecks(orgId, def, values);
+      if (objection) throw reject(objection.errors, objection.message || 'Please check the form');
+    }
 
     // 7. Files: every reference must be a verified upload for this form + field.
     const pendingFiles: FormUpload[] = [];

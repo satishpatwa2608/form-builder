@@ -72,6 +72,9 @@ import { Job, JobSchema } from './jobs/job.schema';
 import { SharedWorkflowRow, SharedWorkflowSchema } from './workflows/workflow.schema';
 import { WorkflowsService } from './workflows/workflows.service';
 import { WorkflowsController } from './workflows/workflows.controller';
+import { ExtensionRow, ExtensionSchema } from './extensions/extension.schema';
+import { ExtensionsService } from './extensions/extensions.service';
+import { ExtensionsController } from './extensions/extensions.controller';
 import { JobQueue } from './jobs/job-queue.service';
 import { FormCalendarService } from './work/services/form-calendar.service';
 import { FormContextService } from './work/services/form-context.service';
@@ -141,6 +144,7 @@ export class AppModule {
           { name: SsoState.name, schema: SsoStateSchema },
           { name: Job.name, schema: JobSchema },
           { name: SharedWorkflowRow.name, schema: SharedWorkflowSchema },
+          { name: ExtensionRow.name, schema: ExtensionSchema },
         ]),
         JwtModule.register({ secret: config.JWT_SECRET, signOptions: { algorithm: 'HS256' }, verifyOptions: { algorithms: ['HS256'] } }),
         ThrottlerModule.forRootAsync({
@@ -170,6 +174,7 @@ export class AppModule {
         FormsController,
         StylesController,
         WorkflowsController,
+        ExtensionsController,
         FormPublicController,
         SitePublicController,
         FormRecordController,
@@ -224,6 +229,7 @@ export class AppModule {
         FormRecordService,
         JobQueue,
         WorkflowsService,
+        ExtensionsService,
         FormAutomationService,
         FormHandlerRegistry,
         WorkItemService,

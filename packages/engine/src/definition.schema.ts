@@ -870,6 +870,7 @@ const formDefinitionShapeObject = z.object({
   events: z.array(eventSchema).max(MAX_EVENTS).optional(),
   timeZone: z.string().max(64).optional(),
   saveForLater: z.boolean().optional(),
+  submitChecks: z.array(z.string().regex(/^x-[a-z0-9]{8}-[a-z0-9-]{1,40}$/)).max(5).optional(),
   opensAt: z.string().max(40).optional(),
   closesAt: z.string().max(40).optional(),
   closedMessage: z.string().max(500).optional(),

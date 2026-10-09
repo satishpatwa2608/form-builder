@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap, SetMetadata } from '@nestjs/common';
 import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 import { ACTION_KEY, ConnectorsService } from '../../connectors/connectors.service';
+import { EXT_STEP_KEY, ExtensionsService } from '../../extensions/extensions.service';
 import type { AutomationTrigger, FormDefinition, FormValues } from '@fb/engine';
 import type { FormSubmission } from '../schemas/form-submission.schema';
 
@@ -63,6 +64,7 @@ export class FormHandlerRegistry implements OnApplicationBootstrap {
     private readonly discovery: DiscoveryService,
     private readonly scanner: MetadataScanner,
     private readonly connectors: ConnectorsService,
+    private readonly extensions: ExtensionsService,
   ) {}
 
   onApplicationBootstrap() {
@@ -87,17 +89,31 @@ export class FormHandlerRegistry implements OnApplicationBootstrap {
   get(key: string): FormHandler | undefined {
     // Connector write steps are configuration, resolved per org when they run.
     if (ACTION_KEY.test(key)) return (ctx) => this.connectors.runAction(ctx.orgId, key, { ...ctx.values, ...((ctx.record.work as Record<string, unknown>) ?? {}) }, ctx.definition.code);
-    return this.handlers.get(key)?.run;
+    const own = this.handlers.get(key)?.run;
+    // The organisation's own code, in its extension: found per org when the step runs.
+    if (!own && EXT_STEP_KEY.test(key)) {
+      return ({ orgId, trigger, definition, record, values, steps, stepKey }) =>
+        this.extensions.runStep(orgId, key, {
+          trigger,
+          form: { code: definition.code, version: definition.version, name: definition.name },
+          record: { id: record.uuid, ref: record.ref, status: record.status, priority: record.priority, assigneeId: record.assigneeId, submittedAt: record.createdAt },
+          values,
+          work: record.work ?? {},
+          steps,
+          stepKey,
+        });
+    }
+    return own;
   }
 
-  /** Code handlers plus this org's connector write steps (for the builder's step picker). */
+  /** Code handlers, this org's connector write steps and what its extensions offer (for the builder's step picker). */
   async listFor(orgId: string): Promise<FormWorkflowInfo[]> {
-    return [...this.list(), ...(await this.connectors.actions(orgId))].sort((a, b) => a.label.localeCompare(b.label));
+    return [...this.list(), ...(await this.connectors.actions(orgId)), ...(await this.extensions.steps(orgId))].sort((a, b) => a.label.localeCompare(b.label));
   }
 
   /** Is this step key runnable for the org (a code handler, or an existing connector write)? */
   async exists(orgId: string, key: string): Promise<boolean> {
-    return this.handlers.has(key) || (ACTION_KEY.test(key) && (await this.connectors.actionExists(orgId, key)));
+    return this.handlers.has(key) || (ACTION_KEY.test(key) && (await this.connectors.actionExists(orgId, key))) || (EXT_STEP_KEY.test(key) && (await this.extensions.stepExists(orgId, key)));
   }
 
   list(): FormWorkflowInfo[] {

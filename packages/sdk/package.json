@@ -1,0 +1,21 @@
+{
+  "name": "@fb/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "What a customer's extension is written against: custom workflow steps, dropdown lists and submission checks. No dependencies.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.2"
+  },
+  "files": [
+    "dist"
+  ]
+}

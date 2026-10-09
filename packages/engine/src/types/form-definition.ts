@@ -29,6 +29,11 @@ export interface FormDefinition {
    */
   saveForLater?: boolean;
   /**
+   * Checks the organisation's extension runs before a submission is accepted
+   * (x-<ref>-<check>), after the form's own rules have passed.
+   */
+  submitChecks?: string[];
+  /**
    * When the form starts and stops taking answers (ISO date-times). Outside
    * that window the public sees a notice instead of the form, and the server
    * refuses submissions. Staff can still raise items from inside.

@@ -4,7 +4,7 @@ module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/test'],
   testRegex: '\\.(spec|e2e-spec)\\.ts$',
   transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.json' }] },
-  moduleNameMapper: { '^@fb/(engine|connectors)$': '<rootDir>/../../packages/$1/src', '^@fb/gateway$': '<rootDir>/../gateway/src' },
+  moduleNameMapper: { '^@fb/(engine|connectors|sdk)$': '<rootDir>/../../packages/$1/src', '^@fb/gateway$': '<rootDir>/../gateway/src' },
   testTimeout: 30000,
   maxWorkers: 4,
 };
