@@ -26,6 +26,9 @@ const PLANS: { value: Customer['plan']; label: string }[] = [
 ];
 const day = (at: string | null) => (at ? new Date(at).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—');
 
+/** What the button under a customer's owner says, by what that customer needs. */
+export const ownerAction = (c: Pick<Customer, 'owners' | 'invitedOwners'>) => (c.owners.length ? 'Replace a lost owner' : c.invitedOwners.length ? 'Send the invitation again' : 'Invite an owner');
+
 /** How long ago, in the words someone scanning a list wants: today, yesterday, 12 days ago. */
 export function ago(at: string | null, now = Date.now()): string {
   if (!at) return 'Never';
@@ -172,9 +175,11 @@ export default function CustomersPage() {
                           </Button>
                         </form>
                       ) : (
+                        // Offered where it is needed: nobody owns the customer yet. Once someone does, further owners are
+                        // theirs to add under Members; the smaller link is for when their only owner has gone.
                         <div>
-                          <Button size="sm" variant="ghost" onClick={() => (setInviting(c.id), setInviteEmail(''))} aria-label={`Invite an owner to ${c.name}`}>
-                            Invite an owner
+                          <Button size="sm" variant="ghost" onClick={() => (setInviting(c.id), setInviteEmail(c.owners.length ? '' : (c.invitedOwners[0] ?? '')))} aria-label={`${ownerAction(c)} (${c.name})`}>
+                            {ownerAction(c)}
                           </Button>
                         </div>
                       )}

@@ -232,6 +232,9 @@ describe('studio', () => {
     expect(await screen.findByText('Newco was added on the Team plan. An invitation to own it has gone to boss@newco.test.')).toBeInTheDocument();
     expect(calls.find((c) => c.method === 'POST' && c.path === '/operator/customers')?.body).toEqual({ name: 'Newco', plan: 'TEAM', ownerEmail: 'boss@newco.test' });
     expect(within(screen.getByRole('row', { name: /Newco/ })).getByText('Invited')).toBeInTheDocument();
+    // The button under the owner says what that customer needs: sending again where nobody has accepted yet.
+    expect(within(screen.getByRole('row', { name: /Newco/ })).getByRole('button', { name: /Send the invitation again/ })).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /Sangam/ })).queryByRole('button', { name: /Invite an owner/ })).toBeNull();
 
     await user.selectOptions(screen.getByLabelText('Plan for Sangam'), 'BUSINESS');
     expect(await screen.findByText('Sangam is now on the Business plan.')).toBeInTheDocument();
