@@ -1,5 +1,5 @@
 import type { Automation, Condition, FormDefinition, FormField, RecipientRef, SelectOption, WorkflowConfig } from './types';
-import { fieldLabel, isValueField } from './field-kinds';
+import { fieldLabel, isOptionField, isValueField } from './field-kinds';
 import { answerFields } from './repeat';
 
 /**
@@ -138,6 +138,13 @@ export interface WorkflowFieldMatch {
   by?: 'name' | 'choice';
 }
 
+/** The fields of a form that could supply one answer a shared workflow needs. */
+export function workflowFieldChoices(fields: FormField[], need: Pick<SharedWorkflowField, 'type'>): FormField[] {
+  const all = answerFields(fields).filter(isValueField);
+  if (need.type === 'EMAIL') return all.filter((f) => f.type === 'EMAIL');
+  return isOptionField(need) ? all.filter(isOptionField) : all;
+}
+
 /**
  * For each answer a shared workflow needs: which field of this form supplies
  * it. A field with the same name does, unless the form has chosen another.
@@ -161,7 +168,7 @@ export function matchWorkflowFields(shared: Pick<SharedWorkflow, 'fields'>, fiel
 export function resolveSharedWorkflow<T extends Pick<FormDefinition, 'fields' | 'workflow' | 'automations'> & { workflowRef?: WorkflowRef }>(
   def: T,
   shared: SharedWorkflow,
-): { definition: T; missing: SharedWorkflowField[] } {
+): { definition: T & { workflow: WorkflowConfig; automations: Automation[] }; missing: SharedWorkflowField[] } {
   const matches = matchWorkflowFields(shared, def.fields, def.workflowRef?.map);
   const to = new Map(matches.filter((m) => m.field).map((m) => [m.need.name, m.field!.name]));
   const { workflow, automations } = mapWorkflow(shared.workflow, shared.automations, (name) => to.get(name) ?? name);
@@ -169,5 +176,35 @@ export function resolveSharedWorkflow<T extends Pick<FormDefinition, 'fields' | 
   return {
     definition: { ...def, workflow: { ...workflow, ...(refPrefix ? { refPrefix } : {}) }, automations },
     missing: matches.filter((m) => !m.field).map((m) => m.need),
+  };
+}
+
+/**
+ * A stand-in form that has exactly the fields a library workflow says it
+ * needs. Editing or checking the workflow against it applies every rule a
+ * form's own workflow must meet, and offers only the answers it has declared.
+ */
+export function sharedWorkflowForm(shared: Pick<SharedWorkflow, 'name' | 'fields'> & { workflow?: unknown; automations?: unknown }): FormDefinition {
+  const fields: FormField[] = shared.fields.map((f) => {
+    const field: FormField = { id: `need_${f.name}`, type: f.type, name: f.name, label: f.label };
+    // A choice field cannot stand without choices; a placeholder keeps the form valid until some are given.
+    return isOptionField(field) ? { ...field, dataSource: { type: 'STATIC', options: f.options?.length ? f.options : [{ label: 'Option', value: 'OPTION' }] } } : field;
+  });
+  if (!fields.length) fields.push({ id: 'need_none', type: 'TEXT', name: 'anAnswer', label: 'An answer' });
+  return {
+    id: 'library',
+    orgId: 'library',
+    businessId: '',
+    name: shared.name,
+    code: 'LIBRARY',
+    version: 1,
+    status: 'DRAFT',
+    access: 'PUBLIC',
+    submission: { method: 'POST', endpointId: 'default-submit' },
+    fields,
+    workflow: shared.workflow as WorkflowConfig | undefined,
+    automations: (Array.isArray(shared.automations) ? shared.automations : []) as Automation[],
+    createdBy: 'library',
+    updatedBy: 'library',
   };
 }

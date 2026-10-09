@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { usedStyleIds, validateFormDefinition, type FormDefinition, type FormStyle } from '@fb/engine';
+import { resolveSharedWorkflow, usedStyleIds, validateFormDefinition, type FormDefinition, type FormStyle } from '@fb/engine';
 import type { Model } from 'mongoose';
 import { Grant, type GrantDocument } from '../access/access.schemas';
 import { PermissionService } from '../access/permission.service';
@@ -15,6 +15,7 @@ import { PlansService } from '../plans/plans.service';
 import { Form, type FormDocument } from './form.schema';
 import { checkDefinitionSecurity } from './payload-guard';
 import { JobQueue } from '../jobs/job-queue.service';
+import { WorkflowsService } from '../workflows/workflows.service';
 import { Membership, type MembershipDocument } from '../orgs/org.schemas';
 
 export interface FormSummary {
@@ -83,6 +84,7 @@ export class FormsService implements OnModuleInit {
     @InjectModel(Grant.name) private readonly grants: Model<GrantDocument>,
     @InjectModel(Membership.name) private readonly memberships: Model<MembershipDocument>,
     private readonly jobs: JobQueue,
+    private readonly workflows: WorkflowsService,
   ) {}
 
   private live(orgId: string) {
@@ -212,7 +214,7 @@ export class FormsService implements OnModuleInit {
   async publish(auth: AuthContext, id: string) {
     const row = await this.mustGet(auth, id, 'form.publish');
     if (row.status !== 'DRAFT') throw new ConflictException(`Only drafts can be published (this is ${row.status.toLowerCase()})`);
-    const draft = FormsService.toDefinition(row);
+    const draft = await this.withSharedWorkflow(auth.orgId, FormsService.toDefinition(row));
     // Custom APIs (HANDLER steps) are code; none are deployed in this product yet. Tasks were a Sangam app.
     const steps = (draft.automations ?? []).flatMap((a) => a.actions);
     if (steps.some((x) => x.type === 'CREATE_TASK')) throw new FormProblems([{ field: 'automations', message: "Task steps aren't available in Form Builder" }]);
@@ -242,6 +244,22 @@ export class FormsService implements OnModuleInit {
     return this.get(auth, id);
   }
 
+  /**
+   * A form that uses a workflow from the library gets a copy of it as it is
+   * now, naming this form's own fields. That copy is what is published, so a
+   * later change to the library reaches this form only when it is next published.
+   */
+  private async withSharedWorkflow(orgId: string, draft: FormDefinition): Promise<FormDefinition> {
+    if (!draft.workflowRef) return draft;
+    const shared = await this.workflows.find(orgId, draft.workflowRef.id);
+    if (!shared) throw new FormProblems([{ field: 'workflowRef', message: 'The shared workflow this form uses is no longer in the library. Choose another, or give the form its own.' }]);
+    const { definition, missing } = resolveSharedWorkflow(draft, shared);
+    if (missing.length) {
+      throw new FormProblems(missing.map((m) => ({ field: 'workflowRef', message: `"${shared.name}" needs "${m.label}". Choose which of this form's fields that is.` })));
+    }
+    return definition;
+  }
+
   // ------------------------------------------------------- scheduled publishing
 
   onModuleInit() {
@@ -260,7 +278,7 @@ export class FormsService implements OnModuleInit {
     if (Number.isNaN(at.getTime())) throw new BadRequestException('Choose a date and time');
     if (at.getTime() <= Date.now()) throw new BadRequestException('Choose a time in the future, or publish now');
     if (at.getTime() > Date.now() + MAX_SCHEDULE_DAYS * 86_400_000) throw new BadRequestException(`Choose a time within ${MAX_SCHEDULE_DAYS} days`);
-    this.validate({ ...FormsService.toDefinition(row), status: 'PUBLISHED' }, 'publish');
+    this.validate({ ...(await this.withSharedWorkflow(auth.orgId, FormsService.toDefinition(row))), status: 'PUBLISHED' }, 'publish');
 
     row.set({ publishAt: at, scheduledBy: auth.userId, scheduleError: '' });
     await row.save();
@@ -441,6 +459,10 @@ export class FormsService implements OnModuleInit {
     const version = (existing?.version ?? 0) + 1;
     const id = newId();
     const def = this.validate({ ...pkg.definition, code, id, orgId: auth.orgId, version, status: 'DRAFT', createdBy: auth.userId, updatedBy: auth.userId }, 'shape');
+
+    // A shared workflow from the other organisation's library is not in ours: the copy that came
+    // inside the form becomes this form's own workflow.
+    if (def.workflowRef && !(await this.workflows.find(auth.orgId, def.workflowRef.id))) delete def.workflowRef;
 
     // Styles: create the missing ones (validated by the engine schema), keep ours when the key exists.
     const wanted = usedStyleIds(def);

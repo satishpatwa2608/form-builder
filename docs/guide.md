@@ -144,6 +144,36 @@ for the public until the restored draft is published.
 - Forms with a workflow create **work items**: Work inbox, Dashboard,
   statuses, actions, approvals, SLA with working time, emails and webhooks.
 
+### One workflow for several forms
+
+A workflow can belong to one form, or sit in the **Workflows** library and be
+used by any number of forms, so that a complaint form, a returns form and a
+warranty form all follow the same steps.
+
+- **To put one in the library** (admins): either open **Workflows → New
+  workflow**, or open a form that already has the workflow you want, choose
+  **Workflow → Save to library** and give it a name. That form then uses it
+  from the library too.
+- **To use one on a form** (anyone who can design the form): open the form's
+  **Workflow** and pick it under *Workflow for this form*.
+- **Answers it reads.** A workflow may need a few of the form's answers, for
+  example the requester's email or how urgent it is. Fields with the same name
+  are matched for you. For the rest, you choose the field from a list. The
+  form cannot be published until each one has a field, and the message says
+  which is missing.
+- **Reference prefix** is set per form, so each form keeps its own numbering
+  (RET-000001, CMP-000001) while sharing the process.
+- **Changing a library workflow** changes nothing that is already live. Each
+  form picks the change up the next time it is published. Work items already
+  in progress carry on with the version they started with.
+- **Copy into this form to change it** gives the form its own copy and stops
+  it following the library.
+- A workflow that a form uses cannot be deleted; the page says which forms.
+- A rule that tests a choice ("Severity is Serious") compares the stored value
+  of that choice. Forms that share the workflow should offer the same choices.
+- A form exported to another organisation takes its workflow with it as the
+  form's own.
+
 ## 5. Your data (connectors)
 
 - **Connectors → New connector** (Connector managers): MongoDB, PostgreSQL,

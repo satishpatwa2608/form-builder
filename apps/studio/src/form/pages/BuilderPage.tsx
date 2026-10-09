@@ -27,6 +27,7 @@ import { FieldConfigPanel } from '../builder/components/FieldConfigPanel';
 import { FormSettingsPanel } from '../builder/components/FormSettingsPanel';
 import { PreviewDialog } from '../builder/components/PreviewDialog';
 import { WorkflowDialog } from '../builder/workflow/WorkflowDialog';
+import { useSharedWorkflows } from '../adapters/shared-workflows';
 import { RulesDialog } from '../builder/rules/RulesDialog';
 import { IssuesList } from '../builder/components/IssuesList';
 import { ConfirmDialog, type ConfirmRequest } from '../builder/components/ConfirmDialog';
@@ -76,7 +77,7 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
   // The form's other versions (their workflow status keys must keep their meaning).
   const { data: family = [] } = useFormFamily(formId);
   const store = useFormBuilderStore();
-  const { me } = useAuth();
+  const { me, can } = useAuth();
   // Rights come from the form's folder (docs/plan.md, section 4).
   const permissions = { canDesign: !!doc?.permissions.includes('form.edit'), canPublish: !!doc?.permissions.includes('form.publish') };
   const { form, selectedFieldId, isDirty } = store;
@@ -107,7 +108,9 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
   const readOnly = !form || form.status !== 'DRAFT' || !permissions.canDesign;
   // The code is fixed once other versions exist.
   const codeLocked = family.length > 0;
-  const issues = useMemo(() => (form ? publishIssues(form) : []), [form]);
+  // The library, for a form that uses a shared workflow: its problems are found with the workflow written in.
+  const { data: library } = useSharedWorkflows(!!form?.workflowRef);
+  const issues = useMemo(() => (form ? publishIssues(form, library) : []), [form, library]);
   const selectedField = form?.fields.find((f) => f.id === selectedFieldId);
 
   const doSave = useCallback(async (): Promise<FormDefinition | null> => {
@@ -357,6 +360,7 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
         form={form}
         versions={family}
         readOnly={readOnly}
+        canManageLibrary={can('org.manage')}
         open={workflowOpen}
         onOpenChange={setWorkflowOpen}
         onChange={store.updateForm}

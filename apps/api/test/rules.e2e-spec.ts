@@ -119,7 +119,10 @@ describe('Form rules are enforced by the server (e2e)', () => {
     // No zone on the form: the person's own zone decides what "the future" is.
     await send('EXPENSE', dateIn(ahead), ahead).expect(201);
     await send('EXPENSE', dateIn(ahead), behind).expect(422);
-    await send('EXPENSE', dateIn(ahead), 'Not/AZone').expect(422); // unknown zone: UTC
+    // An unknown zone counts as UTC. (Tomorrow by UTC, not the date in `ahead`: for ten hours a day those two zones share a date.)
+    const utcTomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    await send('EXPENSE', dateIn('UTC'), 'Not/AZone').expect(201);
+    await send('EXPENSE', utcTomorrow, 'Not/AZone').expect(422);
 
     const fixed = { ...claim(rules), code: 'EXPENSE_FIXED', timeZone: behind };
     const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: fixed }).expect(201)).body.definition.id;

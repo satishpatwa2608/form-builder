@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeWorkflowFields, matchWorkflowFields, resolveSharedWorkflow, validateFormDefinition, workflowFormFields } from '../src';
+import { describeWorkflowFields, matchWorkflowFields, resolveSharedWorkflow, sharedWorkflowForm, workflowFieldChoices, validateFormDefinition, workflowFormFields } from '../src';
 import type { Automation, FormField, SharedWorkflow, WorkflowConfig } from '../src';
 import base from './fixtures/customer-complaint-basic.json';
 
@@ -138,5 +138,32 @@ describe('a form using a shared workflow', () => {
       field({ type: 'NUMBER', name: 'amount', parentId: 'lines' }),
     ];
     expect(matchWorkflowFields(shared, fields).filter((m) => m.field).map((m) => m.need.name)).toEqual([]);
+  });
+
+  it('offers only fields that can play the part: an email for an email, a choice for a choice', () => {
+    const fields = [
+      field({ type: 'TEXT', name: 'fullName' }),
+      field({ type: 'EMAIL', name: 'contactEmail' }),
+      field({ type: 'RADIO', name: 'urgency', dataSource: { type: 'STATIC', options: levels } }),
+      field({ type: 'SECTION', name: 'block' }),
+    ];
+    const names = (type: 'EMAIL' | 'DROPDOWN' | 'TEXT') => workflowFieldChoices(fields, { type }).map((f) => f.name);
+    expect(names('EMAIL')).toEqual(['contactEmail']);
+    expect(names('DROPDOWN')).toEqual(['urgency']);
+    expect(names('TEXT')).toEqual(['fullName', 'contactEmail', 'urgency']);
+  });
+
+  it('a library workflow is checked on a stand-in form that has exactly the answers it declares', () => {
+    const standIn = sharedWorkflowForm(shared);
+    expect(standIn.fields.map((f) => f.name)).toEqual(shared.fields.map((f) => f.name));
+    const ok = validateFormDefinition(standIn, 'publish');
+    expect(ok.success ? [] : ok.issues).toEqual([]);
+    // Without one of them, the rule that reads it is a problem, just as on a form.
+    const short = validateFormDefinition(sharedWorkflowForm({ ...shared, fields: shared.fields.filter((f) => f.name !== 'email') }), 'publish');
+    expect(short.success).toBe(false);
+    // A choice with no choices yet, and a workflow that reads nothing, still make a valid form.
+    const bare = sharedWorkflowForm({ name: 'Bare', fields: [{ name: 'kind', label: 'Kind', type: 'DROPDOWN' }], workflow: { enabled: true, statuses: [{ key: 'NEW', label: 'New', category: 'OPEN' }, { key: 'DONE', label: 'Done', category: 'DONE' }] } });
+    expect(validateFormDefinition(bare, 'publish').success).toBe(true);
+    expect(sharedWorkflowForm({ name: 'None', fields: [] }).fields).toHaveLength(1);
   });
 });

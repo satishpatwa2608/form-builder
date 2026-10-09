@@ -16,6 +16,8 @@ interface ProcessEditorProps {
   people: Person[];
   /** Status keys earlier versions published - records may carry them, so their keys never change. */
   publishedKeys: ReadonlySet<string>;
+  /** In the library: record numbers belong to each form that uses the workflow, not to the workflow. */
+  shared?: boolean;
   onChange: (workflow: WorkflowConfig | undefined) => void;
 }
 
@@ -28,7 +30,7 @@ const CATEGORIES: { label: string; value: StatusCategory }[] = [
 type RuleType = AssignmentRule['type'];
 
 /** Statuses, allowed moves and who new records go to. */
-export function ProcessEditor({ form, people, publishedKeys, onChange }: ProcessEditorProps) {
+export function ProcessEditor({ form, people, publishedKeys, shared = false, onChange }: ProcessEditorProps) {
   const wf = form.workflow;
   const optionFields = form.fields.filter((f) => isOptionField(f) && f.dataSource?.type === 'STATIC');
 
@@ -57,13 +59,15 @@ export function ProcessEditor({ form, people, publishedKeys, onChange }: Process
         onChange={() => onChange({ ...wf, enabled: false })}
         hint="Turning this off keeps your statuses here, but new submissions won't get a status or owner."
       />
-      <TextSetting
-        label="Reference prefix"
-        value={wf.refPrefix}
-        placeholder={refPrefixOf({ code: form.code })}
-        hint={`Records are numbered ${wf.refPrefix || refPrefixOf({ code: form.code })}-000001, -000002, ...`}
-        onChange={(v) => set({ ...wf, refPrefix: v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || undefined })}
-      />
+      {!shared && (
+        <TextSetting
+          label="Reference prefix"
+          value={wf.refPrefix}
+          placeholder={refPrefixOf({ code: form.code })}
+          hint={`Records are numbered ${wf.refPrefix || refPrefixOf({ code: form.code })}-000001, -000002, ...`}
+          onChange={(v) => set({ ...wf, refPrefix: v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || undefined })}
+        />
+      )}
 
       <div className="fb-panel__title">Statuses</div>
       <p className="fb-muted">New records start in the first status. A "Done" status closes a record and stops its SLA clock.</p>

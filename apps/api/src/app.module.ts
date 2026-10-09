@@ -69,6 +69,9 @@ import { CaptchaVerifierService } from './work/services/captcha-verifier.service
 import { DataSourceQueryService } from './work/services/data-source-query.service';
 import { FormAutomationService } from './work/services/form-automation.service';
 import { Job, JobSchema } from './jobs/job.schema';
+import { SharedWorkflowRow, SharedWorkflowSchema } from './workflows/workflow.schema';
+import { WorkflowsService } from './workflows/workflows.service';
+import { WorkflowsController } from './workflows/workflows.controller';
 import { JobQueue } from './jobs/job-queue.service';
 import { FormCalendarService } from './work/services/form-calendar.service';
 import { FormContextService } from './work/services/form-context.service';
@@ -137,6 +140,7 @@ export class AppModule {
           { name: FormDraft.name, schema: FormDraftSchema },
           { name: SsoState.name, schema: SsoStateSchema },
           { name: Job.name, schema: JobSchema },
+          { name: SharedWorkflowRow.name, schema: SharedWorkflowSchema },
         ]),
         JwtModule.register({ secret: config.JWT_SECRET, signOptions: { algorithm: 'HS256' }, verifyOptions: { algorithms: ['HS256'] } }),
         ThrottlerModule.forRootAsync({
@@ -165,6 +169,7 @@ export class AppModule {
         AuditController,
         FormsController,
         StylesController,
+        WorkflowsController,
         FormPublicController,
         SitePublicController,
         FormRecordController,
@@ -218,6 +223,7 @@ export class AppModule {
         FormCalendarService,
         FormRecordService,
         JobQueue,
+        WorkflowsService,
         FormAutomationService,
         FormHandlerRegistry,
         WorkItemService,
