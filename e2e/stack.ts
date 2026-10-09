@@ -91,6 +91,8 @@ export async function startStack(): Promise<StackState> {
       STORAGE_PROVIDER: 'local',
       LOCAL_STORAGE_DIR: join(dir, 'uploads'),
       DEFAULT_PLAN: 'ENTERPRISE',
+      // Lets a test point an organisation's own mail at a mail server on this machine (never honoured in production).
+      MAIL_ALLOW_INSECURE: 'true',
       JOBS_ROLE: 'all',
       // Rate limits are off under "test", but jobs due later (a scheduled publish, a retry) must still run by themselves.
       JOBS_POLL: 'true',

@@ -281,6 +281,14 @@ Each one follows the existing connector contract and security rules in plan.md s
 
 **Testing:** Each connector passes the shared contract suite (discover, read, write off by default, limits, error mapping) and the SSRF and injection tests from plan.md section 5.3, against a real instance in a container where one exists.
 
+**Status, 9 October 2026: two items done; the connectors themselves are not started.**
+
+| Item | State |
+|---|---|
+| SAML sign-in | Done, beside OpenID Connect (Organisation → Single sign-on). Set up from the provider's metadata file. An answer is accepted only if signed with the saved certificate, from that provider, for this organisation, in time, and answering the request the same browser made. Tested against a stand-in provider, including forged, replayed, wrapped and cross-organisation answers; not yet tried against Entra ID or Okta themselves. |
+| An organisation's own mail server (asked for on 9 October, not in the original list) | Done (Organisation → Email sending): Microsoft 365 through its Graph API as an application, Google by app password, or any SMTP server. Saved, proven with a test email to the admin, then switched on; any change means testing again. Used for emails to respondents (workflow emails, messages to a requester, signing invitations, portal links). A failure fails the step with a plain reason and is never covered by sending from our address. Private addresses are refused, the connection is always encrypted. Tested with a real mail server on the test machine and a stand-in for Microsoft; not yet tried against Microsoft 365 or Google themselves. Google through its own API (service account) is not built. |
+| MS SQL, Oracle, SOAP, OData, Salesforce, Dynamics, SAP, SharePoint, OneDrive, Azure Blob, Google Drive, Power Automate, Zapier, Make, Google Sheets, Excel | Not started. Each needs an account or a running instance of the other side to be built against honestly. |
+
 ### Phase 12 – Beyond AEM (6+ weeks, pick by demand)
 
 - Payment field (Razorpay, Stripe).

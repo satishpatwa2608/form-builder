@@ -6,7 +6,7 @@ import { isSignature } from '@fb/engine';
 import type { Model } from 'mongoose';
 import { PDFDocument } from 'pdf-lib';
 import { hashToken, newId, randomToken } from '../common/crypto';
-import { MAILER, type Mailer } from '../common/mailer';
+import { OrgMailService } from '../mail/org-mail.service';
 import { OBJECT_STORE, type ObjectStore } from '../common/object-store';
 import { DocumentsService } from '../documents/documents.service';
 import { renderDocument, type DocumentRow } from '../documents/submission-pdf';
@@ -50,7 +50,7 @@ export class SignaturesService implements OnModuleInit {
     private readonly jobs: JobQueue,
     private readonly documents: DocumentsService,
     private readonly events: EventEmitter2,
-    @Inject(MAILER) private readonly mailer: Mailer,
+    private readonly mail: OrgMailService,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @InjectModel(SignatureRequest.name) private readonly requests: Model<SignatureRequestDocument>,
     @InjectModel(FormSubmission.name) private readonly submissions: Model<FormSubmissionDocument>,
@@ -74,8 +74,8 @@ export class SignaturesService implements OnModuleInit {
     await this.requests.updateOne({ id: request.id }, { $set: { [`signers.${index}`]: next } });
     const org = await this.orgName(request.orgId);
     const days = Math.max(1, Math.ceil((request.expiresAt.getTime() - Date.now()) / 86_400_000));
-    await this.mailer
-      .send({
+    await this.mail
+      .send(request.orgId, {
         to: signer.email,
         subject: oneLine(`${reminder ? 'Reminder: ' : ''}${org || 'Form Builder'} asks you to sign: ${request.title}`, 200),
         text: [
@@ -239,7 +239,7 @@ export class SignaturesService implements OnModuleInit {
               ...(signed && signed.length <= MAX_ATTACHMENT_BYTES ? { attachments: [{ fileName, contentType: 'application/pdf', content: signed }] } : {}),
             }
           : { subject: oneLine(`No longer to be signed: ${request.title}`, 200), text: `One of the signers declined "${request.title}", so it will not be signed and your link no longer works. ${org} has been told.` };
-      await this.mailer.send({ to: s.email, ...mail }).catch((e: Error) => this.logger.warn(`could not tell a signer of ${request.id} how it ended: ${e.name}`));
+      await this.mail.send(request.orgId, { to: s.email, ...mail }).catch((e: Error) => this.logger.warn(`could not tell a signer of ${request.id} how it ended: ${e.name}`));
     }
   }
 

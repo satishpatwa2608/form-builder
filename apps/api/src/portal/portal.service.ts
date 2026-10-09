@@ -1,9 +1,9 @@
-import { ForbiddenException, HttpException, Inject, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, HttpException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { findStatus, formAvailability, workflowOf } from '@fb/engine';
 import type { Model } from 'mongoose';
 import { hashToken, randomToken } from '../common/crypto';
-import { MAILER, type Mailer } from '../common/mailer';
+import { OrgMailService } from '../mail/org-mail.service';
 import { Organization, type OrganizationDocument } from '../orgs/org.schemas';
 import { Form, type FormDocument } from '../forms/form.schema';
 import { FormSubmission, type FormSubmissionDocument } from '../work/schemas/form-submission.schema';
@@ -39,7 +39,7 @@ export class PortalService {
     @InjectModel(FormSubmission.name) private readonly submissions: Model<FormSubmissionDocument>,
     @InjectModel(PortalPass.name) private readonly passes: Model<PortalPassDocument>,
     private readonly definitions: FormDefinitionService,
-    @Inject(MAILER) private readonly mailer: Mailer,
+    private readonly mail: OrgMailService,
   ) {}
 
   private async org(orgId: string) {
@@ -78,8 +78,8 @@ export class PortalService {
     if (recent < LINKS_PER_HOUR) {
       const token = `fbportal_${randomToken()}`;
       await this.passes.create({ tokenHash: hashToken(token), orgId, email, kind: 'LINK', expiresAt: new Date(Date.now() + LINK_MS) });
-      await this.mailer
-        .send({
+      await this.mail
+        .send(orgId, {
           to: email,
           subject: `Your link to ${org.name}: ${org.title}`.slice(0, 200),
           text: [

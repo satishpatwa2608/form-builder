@@ -75,6 +75,26 @@ through the person's browser. Three things to know when hosting it:
   Answers nobody asked for (provider-started sign-in) are refused. Requests
   are not signed and encrypted statements are not accepted: neither is set up.
 
+## An organisation's own mail server
+
+Each organisation sets this up itself (Organisation → Email sending). What
+the hosting has to allow:
+
+- The API and the worker connect **out** to the organisation's mail server
+  on port 587, 465, 25 or 2525, and to `login.microsoftonline.com` and
+  `graph.microsoft.com` on 443. Many cloud networks block outbound port 25
+  by default; 587 is the one nearly everyone uses.
+- The server's name is looked up and checked before connecting: private and
+  loopback addresses are refused, the connection is always encrypted, and
+  the certificate must be valid. `MAIL_ALLOW_INSECURE=true` lifts those
+  three for a mail server on a developer's machine; it is ignored when
+  `NODE_ENV=production`.
+- Passwords and client secrets are sealed with `SECRET_KEY`, like connector
+  credentials, and never returned by the API.
+- A failed send is logged as `own mail failed for org <id>: <reason>` with a
+  reason word only (`SIGN_IN`, `CONNECT`, `SECURITY`, `REFUSED`, `ADDRESS`),
+  never the message or the server's reply.
+
 ## Gateways
 
 Agents connect to `wss://<api>/gateway/connect`. The load balancer must allow

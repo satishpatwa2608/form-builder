@@ -1,12 +1,17 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { MAILER, type Mailer, type MailAttachment } from '../../common/mailer';
+import { Injectable } from '@nestjs/common';
+import type { MailAttachment } from '../../common/mailer';
+import { OrgMailService } from '../../mail/org-mail.service';
+import { MailSendError } from '../../mail/transports';
 
-/** Sangam's MailService call shape (`template` is HTML) over this product's mailer. */
+/**
+ * Sangam's MailService call shape (`template` is HTML) over this product's mail. These are emails to the people
+ * who fill in forms, so they go through the organisation's own mail server when it has one in use.
+ */
 @Injectable()
 export class MailService {
-  constructor(@Inject(MAILER) private readonly mailer: Mailer) {}
+  constructor(private readonly mail: OrgMailService) {}
 
-  async sendMail(mail: { to: string; subject: string; template: string; fromName?: string; attachments?: MailAttachment[]; [key: string]: unknown }): Promise<{ success: boolean; message?: string }> {
+  async sendMail(mail: { to: string; subject: string; template: string; orgId?: string; fromName?: string; attachments?: MailAttachment[]; [key: string]: unknown }): Promise<{ success: boolean; message?: string }> {
     const text = mail.template
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<[^>]+>/g, '')
@@ -16,10 +21,10 @@ export class MailService {
       .replace(/&#39;/g, "'")
       .replace(/&amp;/g, '&');
     try {
-      await this.mailer.send({ to: mail.to, subject: mail.subject, text, html: mail.template, fromName: mail.fromName, ...(mail.attachments?.length ? { attachments: mail.attachments } : {}) });
+      await this.mail.send(mail.orgId, { to: mail.to, subject: mail.subject, text, html: mail.template, fromName: mail.fromName, ...(mail.attachments?.length ? { attachments: mail.attachments } : {}) });
       return { success: true };
     } catch (e) {
-      return { success: false, message: (e as Error).name };
+      return { success: false, message: e instanceof MailSendError ? e.message : (e as Error).name };
     }
   }
 }

@@ -5,6 +5,7 @@ import { Alert, Button, Card, PageHead, TextField, useSubmit } from '../componen
 import { PlanUsageCard } from '../components/PlanUsage';
 import { BrandingCard, DomainsCard, PortalCard } from '../components/SiteSettings';
 import { SsoCard } from '../components/SsoSettings';
+import { MailCard } from '../components/MailSettings';
 
 export default function SettingsPage() {
   const { me, reload } = useAuth();
@@ -48,6 +49,7 @@ export default function SettingsPage() {
         <BrandingCard />
         <DomainsCard />
         <PortalCard />
+        <MailCard />
         <Card title="Security" subtitle="Protect every account in the organisation.">
           <div className="st-stack">
             <div className="st-row" style={{ justifyContent: 'space-between' }}>

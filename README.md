@@ -65,6 +65,7 @@ on the PATH, or `E2E_MONGODB_URL` pointing at a server that is already running.
 | `10-every-screen-and-templates` | Every builder screen opens cleanly; a webhook; each built-in template publishes and opens |
 | `11-lifecycle` | Opening and closing times, the save-for-later switch, scheduled publishing, comparing and restoring versions |
 | `12-start-from-a-file` | A new form from a spreadsheet and from a JSON Schema |
+| `21-own-mail` | An organisation's own mail server: set up, a wrong password said plainly, a test email, switched on; a workflow email then arrives from its address through a real local mail server |
 | `20-portal` | The requests portal: switched on by an admin, a form listed with one switch, a requester signs in by emailed link and follows the status; someone else sees none of it |
 | `19-signatures` | A response sent to two people to sign from emailed links (typed and drawn), the signed PDF on the record, a decline, a link that was never issued |
 | `18-languages-accessibility` | One form in English, Hindi and Arabic (translated on screen and by spreadsheet, right to left); every kind of field through an automated accessibility check |
@@ -85,7 +86,7 @@ Every route needs a signed-in session unless marked public. The guard re-checks 
 |---|---|
 | Auth (public) | `POST /auth/signup`, `/verify-email`, `/resend-verification`, `/login`, `/refresh`, `/forgot-password`, `/reset-password`; `POST /auth/sso/start` (studio origin only), `GET /auth/sso/saml/:org/metadata`, `POST /auth/sso/saml/:org/acs`, `GET /auth/sso/callback` |
 | Auth | `GET /auth/me`, `POST /auth/logout`, `/switch-org`, `/password`, `/2fa/setup`, `/2fa/enable`, `/2fa/disable` |
-| Organisation | `GET/PATCH /org`, `POST /orgs`, `GET /org/usage`, `GET/PUT /org/branding`, `GET/POST /org/domains`, `POST /org/domains/:host/verify`, `DELETE /org/domains/:host`, `GET/PUT /org/sso` |
+| Organisation | `GET/PATCH /org`, `POST /orgs`, `GET /org/usage`, `GET/PUT /org/branding`, `GET/POST /org/domains`, `POST /org/domains/:host/verify`, `DELETE /org/domains/:host`, `GET/PUT /org/sso`, `GET/PUT /org/mail`, `POST /org/mail/test`, `POST /org/mail/use` |
 | Members | `GET /members`, `PATCH/DELETE /members/:userId`, `GET/POST /invitations`, `DELETE /invitations/:id`, `POST /invitations/accept` (public) |
 | Access | `GET/POST /folders`, `PATCH/DELETE /folders/:id`, `GET /folders/:id/permissions`, `GET/POST /grants`, `DELETE /grants/:id` |
 | Forms | `GET/POST /forms`, `POST /forms/import`, `GET/PUT/DELETE /forms/:id`, `GET /forms/:id/versions`, `/export`, `/stats`, `/submissions`, `/submissions/:sid/files/:uploadId`; `POST /forms/:id/publish`, `/new-version`, `/archive`; `PATCH /forms/:id/folder` |

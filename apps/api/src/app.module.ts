@@ -81,6 +81,8 @@ import { DocumentsController } from './documents/documents.controller';
 import { SignatureRequest, SignatureRequestSchema } from './signatures/signature.schema';
 import { SignaturesService } from './signatures/signatures.service';
 import { PortalService } from './portal/portal.service';
+import { OrgMailService } from './mail/org-mail.service';
+import { OrgMailController } from './mail/org-mail.controller';
 import { PortalController } from './portal/portal.controller';
 import { PortalPass, PortalPassSchema } from './portal/portal.schema';
 import { SignaturePublicController, SignaturesController } from './signatures/signatures.controller';
@@ -201,6 +203,7 @@ export class AppModule {
         FragmentsController,
         SignaturePublicController,
         PortalController,
+        OrgMailController,
         SignaturesController,
         DocumentsController,
         FormReviewController,
@@ -263,6 +266,7 @@ export class AppModule {
         FragmentsService,
         SignaturesService,
         PortalService,
+        OrgMailService,
         DocumentsService,
         FormReviewService,
         FormAutomationService,

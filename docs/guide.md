@@ -204,6 +204,31 @@ for the public until the restored draft is published.
 - **Save and continue later**: respondents get a private link valid for 30
   days (attachments must be added again when they come back).
 
+### Sending emails from your own address
+
+Emails to the people who fill in your forms (workflow emails, messages to a
+requester, signing invitations, portal links) come from Form Builder unless
+you set up your own mail server under **Organisation → Email sending**.
+
+1. Choose where they go through:
+   - **Microsoft 365:** in Microsoft Entra, register an application, give it
+     the *Mail.Send* application permission with admin consent, and create a
+     client secret. Paste the directory (tenant) ID, application ID and
+     secret, and the mailbox to send from.
+   - **Google Workspace or Gmail:** the address, and an *app password* made
+     in that Google account (not its own password).
+   - **Another mail server (SMTP):** its name, port, user name and password.
+     The connection is always encrypted.
+2. **Save**, then **Send me a test email**. It goes to your own address
+   through your server. If it fails, the card says why in plain words.
+3. When it has arrived, **Switch it on**.
+
+Changing any setting switches it off until you have tested again. If your
+server later refuses an email, the workflow step that sent it fails and says
+why, and the card shows the last failure; nothing is sent from our address
+in its place. Emails to your own team (invitations, password resets,
+notifications) always come from Form Builder.
+
 ### The requests portal
 
 A page where the people you serve start a form and follow what they sent.

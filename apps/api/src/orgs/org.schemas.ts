@@ -64,6 +64,29 @@ export class OrgSso {
   @Prop({ type: Date, default: null }) lastSuccessAt: Date | null;
 }
 
+/**
+ * The organisation's own mail: emails to the people who fill in its forms go
+ * out through its mail server, from its address, instead of ours.
+ */
+@Schema({ _id: false })
+export class OrgMail {
+  /** DEFAULT = Form Builder's own sending. */
+  @Prop({ type: String, enum: ['DEFAULT', 'SMTP', 'MICROSOFT'], default: 'DEFAULT' }) provider: 'DEFAULT' | 'SMTP' | 'MICROSOFT';
+  /** In use. Only possible once a test email has gone through with the settings as they are. */
+  @Prop({ type: Boolean, default: false }) enabled: boolean;
+  /** The address mail is sent from (for Microsoft 365, the mailbox). */
+  @Prop({ type: String, default: '' }) from: string;
+  @Prop({ type: String, default: '' }) fromName: string;
+  /** SMTP: host, port, STARTTLS or TLS, and a sign-in. The password is SecretBox-sealed. */
+  @Prop({ type: MongooseSchema.Types.Mixed, default: () => ({}) }) smtp: { host?: string; port?: number; security?: 'STARTTLS' | 'TLS'; username?: string; password?: string };
+  /** Microsoft 365 through its Graph API, as an application. The secret is SecretBox-sealed. */
+  @Prop({ type: MongooseSchema.Types.Mixed, default: () => ({}) }) microsoft: { tenantId?: string; clientId?: string; clientSecret?: string };
+  @Prop({ type: Date, default: null }) testedAt: Date | null;
+  /** The last failure, in a few plain words (never the server's own text, which can carry addresses). */
+  @Prop({ type: String, default: '' }) lastError: string;
+  @Prop({ type: Date, default: null }) lastErrorAt: Date | null;
+}
+
 /** The requests portal: where the people this organisation serves find its forms and follow what they sent. */
 @Schema({ _id: false })
 export class OrgPortal {
@@ -86,6 +109,7 @@ export class Organization {
   @Prop({ type: [OrgDomain], default: [] }) domains: OrgDomain[];
   @Prop({ type: OrgSso, default: () => ({}) }) sso: OrgSso;
   @Prop({ type: OrgPortal, default: () => ({}) }) portal: OrgPortal;
+  @Prop({ type: OrgMail, default: () => ({}) }) mail: OrgMail;
 }
 export type OrganizationDocument = HydratedDocument<Organization>;
 export const OrganizationSchema = SchemaFactory.createForClass(Organization);

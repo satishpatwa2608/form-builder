@@ -611,7 +611,8 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
             entityType: 'form-record',
             entityId: record.uuid,
           });
-          if (!sent?.success) throw new Error(`email to ${email} failed`);
+          // With the organisation's own mail server, why: its admin can put it right.
+          if (!sent?.success) throw new Error(`email to ${email} failed${sent?.message && / /.test(sent.message) ? ` - ${sent.message}` : ''}`);
         }
         return { summary: `emailed ${to.length} recipient${to.length === 1 ? '' : 's'}${document ? ' with the PDF' : ''}`, data: { sent: to.length } };
       }
