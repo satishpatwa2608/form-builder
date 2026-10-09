@@ -382,6 +382,7 @@ export default function FormsPage() {
                             </Badge>
                             {f.status === 'DRAFT' && f.publishedVersion && <Badge tone="success">Live v{f.publishedVersion}</Badge>}
                             {f.status === 'DRAFT' && f.publishAt && <Badge tone="accent">Publishes {new Date(f.publishAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</Badge>}
+                            {(f.status === 'PUBLISHED' || f.publishedVersion != null) && !f.publicLink && <Badge>Sign-in only</Badge>}
                             {f.status === 'DRAFT' && f.scheduleError && <Badge tone="danger">Scheduled publish failed</Badge>}
                             {f.status === 'DRAFT' && f.review === 'REQUESTED' && <Badge tone="warn">Waiting for review</Badge>}
                             {f.status === 'DRAFT' && f.review === 'CHANGES_REQUESTED' && <Badge tone="danger">Changes asked</Badge>}
@@ -393,17 +394,26 @@ export default function FormsPage() {
                         </td>
                         <td>
                           <div className="st-row" style={{ justifyContent: 'flex-end', gap: 6 }}>
-                            {f.publicLink && (
+                            {(f.status === 'PUBLISHED' || f.publishedVersion != null) && (
                               <>
-                                <Button variant="secondary" size="sm" aria-label={`Copy the link to ${f.name}`} title="Copy the form's address, to send to people or put on a page" onClick={() => void copyPublicFormLink(me?.org.id ?? '', f.code)}>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  aria-label={`Copy the link to ${f.name}`}
+                                  title={f.publicLink ? "Copy the form's address, to send to people or put on a page" : "Copy the form's address. Only people signed in to your organisation can open it"}
+                                  onClick={() => void copyPublicFormLink(me?.org.id ?? '', f.code, !f.publicLink)}
+                                >
                                   <Link2 size={14} /> Copy link
                                 </Button>
                                 <a className="st-btn st-btn--ghost st-btn--sm" href={publicFormUrl(me?.org.id ?? '', f.code)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${f.name} as people see it`} title="Open the form as people see it">
                                   <ExternalLink size={14} />
                                 </a>
-                                <Button variant="ghost" size="sm" aria-label={`Copy the embed code for ${f.name}`} title="Copy a line of HTML that puts this form on your own website" onClick={() => void copyEmbedCode(me?.org.id ?? '', f.code)}>
-                                  <Code2 size={14} />
-                                </Button>
+                                {/* Putting it on a website is for forms anyone may fill in. */}
+                                {f.publicLink && (
+                                  <Button variant="ghost" size="sm" aria-label={`Copy the embed code for ${f.name}`} title="Copy a line of HTML that puts this form on your own website" onClick={() => void copyEmbedCode(me?.org.id ?? '', f.code)}>
+                                    <Code2 size={14} />
+                                  </Button>
+                                )}
                               </>
                             )}
                             {(edit || publish) && (

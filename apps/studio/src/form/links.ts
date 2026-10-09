@@ -8,11 +8,12 @@ export const publicFormUrl = (orgId: string, code: string) => `${RUNTIME_URL}/f/
 /** The organisation's requests portal: its forms, and each person's own requests. */
 export const portalUrl = (orgId: string) => `${RUNTIME_URL}/portal/${encodeURIComponent(orgId)}`;
 
-export async function copyPublicFormLink(orgId: string, code: string) {
+/** `signInOnly`: the form is for the organisation's signed-in people, and the link asks anyone else to sign in. */
+export async function copyPublicFormLink(orgId: string, code: string, signInOnly = false) {
   const url = publicFormUrl(orgId, code);
   try {
     await navigator.clipboard.writeText(url);
-    toast.success('Link copied', { description: url });
+    toast.success('Link copied', { description: signInOnly ? `${url} · Only people signed in to your organisation can open it. To let anyone fill it in, set "Who can open it" to Anyone in the form's settings and publish again.` : url });
   } catch {
     toast.info(url);
   }

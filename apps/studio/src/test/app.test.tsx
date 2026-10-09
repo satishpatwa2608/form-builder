@@ -126,8 +126,13 @@ describe('studio', () => {
     expect(screen.getByRole('link', { name: 'Open Plant issue as people see it' })).toHaveAttribute('href', copied[0]);
     await user.click(screen.getByRole('button', { name: 'Copy the embed code for Plant issue' }));
     expect(copied[1]).toContain(`data-org="${ME.org.id}" data-code="PLANT_ISSUE"`);
-    // A form for signed-in people only, and one not yet published, have no address to hand out.
-    expect(screen.queryByRole('button', { name: 'Copy the link to Staff only' })).toBeNull();
+    // A form for signed-in people only has its link too, says who can open it, and is not offered for a website.
+    await user.click(screen.getByRole('button', { name: 'Copy the link to Staff only' }));
+    expect(copied[2]).toMatch(new RegExp(`/f/${ME.org.id}/STAFF_ONLY$`));
+    expect(screen.getByRole('button', { name: 'Copy the link to Staff only' })).toHaveAttribute('title', expect.stringContaining('Only people signed in to your organisation can open it'));
+    expect(within(screen.getByRole('row', { name: /Staff only/ })).getByText('Sign-in only')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy the embed code for Staff only' })).toBeNull();
+    // One not yet published has no address to hand out.
     expect(screen.queryByRole('button', { name: 'Copy the link to Drafted' })).toBeNull();
   });
 
