@@ -1,4 +1,7 @@
-import { isTimeZone } from '../../engine';
+import { useState } from 'react';
+import { Button } from '@ui/button';
+import { isTimeZone, languageName, languagesOf } from '../../engine';
+import { LanguagesDialog } from './LanguagesDialog';
 import type { FontFamily, FormActionConfig, FormDefinition, FormTheme, SubmissionConfig } from '../../types';
 import { Checkbox } from '@ui/checkbox';
 import { useSubmitChecks } from '../../adapters/extensions';
@@ -73,6 +76,7 @@ function SubmitChecks({ form, onChange }: Pick<FormSettingsPanelProps, 'form' | 
 
 /** Shown when no field is selected: everything about the form as a whole. */
 export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: FormSettingsPanelProps) {
+  const [languagesOpen, setLanguagesOpen] = useState(false);
   const submit = form.actions?.submit ?? { enabled: true, label: 'Submit' };
   const cancel = form.actions?.cancel ?? { enabled: false, label: 'Cancel', behavior: 'RESET' as const };
   const success = form.submission.success ?? { type: 'MESSAGE' as const };
@@ -117,6 +121,16 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           onChange={(access) => onChange({ access })}
         />
 
+        <div className="fb-setting">
+          <span className="fb-setting__label">Languages</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span>{languagesOf(form).map(languageName).join(', ')}</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => setLanguagesOpen(true)}>
+              {readOnly ? 'See translations' : 'Languages and translations'}
+            </Button>
+          </div>
+        </div>
+        <LanguagesDialog form={form} readOnly={readOnly} open={languagesOpen} onOpenChange={setLanguagesOpen} onChange={onChange} />
         <TextSetting
           label="Time zone"
           value={form.timeZone}

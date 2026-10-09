@@ -1,3 +1,4 @@
+import { useUi } from '../FormRuntimeContext';
 import { useFormContext } from 'react-hook-form';
 import { FormControl, FormField } from '@ui/form';
 import { FileUploader } from '@ui/file-uploader';
@@ -15,6 +16,7 @@ export const DEFAULT_MAX_SIZE_MB = 5;
  * mock adapter just echoes file metadata.
  */
 export function FileField({ field, required }: FieldComponentProps) {
+  const ui = useUi();
   const { control } = useFormContext();
   const { resetKey } = useFormRuntime();
   const accept = Array.isArray(field.props?.accept) ? (field.props.accept as string[]) : DEFAULT_ACCEPT;
@@ -37,7 +39,7 @@ export function FileField({ field, required }: FieldComponentProps) {
                 maxCount={maxCount}
                 isDragger
                 compact
-                buttonText={field.placeholder ?? (maxCount > 1 ? 'Upload files' : 'Upload a file')}
+                buttonText={field.placeholder ?? (maxCount > 1 ? ui('uploadFiles') : ui('uploadFile'))}
                 onFileUpload={(files) => {
                   rhf.onChange(files ? (Array.isArray(files) ? files : [files]) : []);
                   rhf.onBlur();

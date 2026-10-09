@@ -115,6 +115,27 @@ form.
   live. If the draft cannot be published when the time comes, the reason is
   shown on the form and nothing changes.
 
+### Languages
+
+- **Form settings → Languages and translations.** Choose the language the form
+  is written in, then add the languages it should also be offered in.
+- **Translate on screen:** each piece of the form's wording is listed with a
+  box for its translation, and each language shows how much is done.
+- **Or hand it to a translator:** *Export for a translator* gives a spreadsheet
+  with a row for each piece of wording and a column for each language;
+  *Import translations* reads it back.
+- People pick their language on the form. A link can ask for one
+  (`…?lang=hi`). Arabic and other right-to-left languages are laid out right
+  to left.
+- Whatever is not translated yet is shown in the form's own language, so a
+  form can go live before every word is done.
+- The form's own buttons and messages ("Submit", "is required") are built in
+  for English, Hindi and Arabic. For any other language they appear in the
+  same list to be translated.
+- Answers are stored the same whatever language they were given in. Each
+  response records its language, and its PDF is in that language.
+- Use **Preview → Preview in** to see the form in each language.
+
 ### Review before publishing
 
 - In the builder, **Review** shows where a draft stands and holds its

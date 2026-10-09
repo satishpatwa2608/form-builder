@@ -209,6 +209,19 @@ Limits to know:
 
 **Done when:** one form runs in English, Hindi and Arabic, and the runtime passes an external accessibility audit.
 
+**Status, 9 October 2026: built, short of the external audit.**
+
+| Item | State |
+|---|---|
+| Multi-language forms | Done (Form settings → Languages). A form is written in one language and offered in others; labels, placeholders, help text, choices, messages, rule errors, buttons, the success and closed messages are each translated by key. Missing translations fall back to the form's own language. Answers are stored the same in every language, with the language they were given in. |
+| Language switch, right to left | Done. The public form offers the form's languages, opens in the one a link asks for (`?lang=hi`) or the browser prefers, and sets the page's language and direction. Arabic, Urdu, Hebrew and Persian run right to left. |
+| The form app's own wording | Done for English, Hindi and Arabic, built in. For any other language those phrases are translated with the form. A test fails if a phrase is written into a form screen instead of coming from the catalogue. The Hindi and Arabic wording was written by the developer and should be read by a native speaker before release. |
+| Server messages | Done. The server answers mistakes in the language the form is being filled in. |
+| Translation outside the product | Done, as CSV: export a row per piece of wording with a column per language, import it back. Round-trips exactly; unknown rows and columns are reported and ignored; text a spreadsheet would run as a formula is written as plain text. XLIFF is not built. |
+| Document of record in the language used | Done for left-to-right languages. A response given in a right-to-left language gets its PDF in the form's own language, because the PDF library cannot lay out right-to-left text. |
+| Emails | Not translated: workflow emails are sent as written. |
+| Accessibility | An automated WCAG 2.1 AA check (axe) runs in CI on a form with every kind of field: empty, with mistakes showing, and right to left. It found and we fixed four contrast faults (the Submit button, the page footer, placeholders, error text). **An external audit has not been done**; automated checks find only part of what an audit does. |
+
 ### Phase 10 – Portal, headless and analytics (4 weeks)
 
 - **Forms portal** for end users: list of forms they may fill, their drafts, their submissions and status, on the customer's domain and branding.

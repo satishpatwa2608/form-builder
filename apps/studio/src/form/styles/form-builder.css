@@ -1065,3 +1065,28 @@
 .fb-comments__actions {
   margin-top: 4px;
 }
+
+/* ── Languages ──────────────────────────────────────────────────────────── */
+.fb-translations {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 8px;
+}
+.fb-translations th {
+  text-align: start;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.fb-translations td {
+  padding: 4px 8px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+}
+.fb-translations td:first-child {
+  width: 24%;
+}
+.fb-translations td:nth-child(2) {
+  width: 32%;
+}

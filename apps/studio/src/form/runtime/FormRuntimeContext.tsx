@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { FormDefinition, FormValues, SystemContext } from '../types';
-import type { FieldStates, LayoutIndex } from '../engine';
+import { uiText, type FieldStates, type LayoutIndex, type Say } from '../engine';
 import type { DataSourceAdapter } from '../adapters/data-source/data-source-adapter';
 import type { CaptchaWidget } from '../adapters/captcha/captcha-provider';
 
@@ -30,6 +30,8 @@ export interface FormRuntimeValue {
   resetKey: number;
   /** Where each field sits (containers / columns). */
   layout: LayoutIndex;
+  /** What the form app says itself ("Submit", "Add another"), in the language the form is shown in. */
+  ui: Say;
   /** In steps mode, the SECTION shown as the current step (renders without its own frame). */
   stepSectionId?: string;
 }
@@ -51,3 +53,9 @@ export function useFormRuntime(): FormRuntimeValue {
 const RowContext = createContext<string | null>(null);
 export const RowProvider = RowContext.Provider;
 export const useRowPath = (): string | null => useContext(RowContext);
+
+const ENGLISH = uiText('en');
+/** The form app's own wording. Outside a running form (a loading notice) it is English. */
+export function useUi(): Say {
+  return useContext(FormRuntimeContext)?.ui ?? ENGLISH;
+}

@@ -9,8 +9,8 @@
   --fb-line: #e5e7ef;
   --fb-line-strong: #d4d7e2;
   --fb-text: #0f172a;
-  --fb-soft: #64748b;
-  --fb-danger: #dc2626;
+  --fb-soft: #586579; /* dark enough to read on white and on the light greys behind inputs (4.5:1 and more) */
+  --fb-danger: #c81e1e; /* readable on the pale red behind an error summary as well as on white */
   --fb-danger-soft: #fef2f2;
   --fb-success: #059669;
   --fb-success-soft: #ecfdf5;
@@ -35,12 +35,16 @@
 body {
   margin: 0;
 }
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: inherit;
+/* In a layer, so that a utility class that gives a button its own text colour is not overruled:
+   outside one, this plain rule beat every layered class and left dark text on coloured buttons. */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
 }
 .fb-shell {
   max-width: 880px;

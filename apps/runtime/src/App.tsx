@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { FormDefinition, FormValues, SubmissionResult, SystemContext } from '@fb/engine';
+import { isRtl, languageName, languagesOf, localize, pickLanguage, uiText } from '@fb/engine';
 import { FormContainer } from '@form/runtime/FormContainer/FormContainer';
 import { publicApi, trySession } from './api';
 import { httpSubmissionAdapter, publicDataSourceAdapter } from './adapters';
@@ -166,8 +167,22 @@ export default function App() {
     return () => observer.disconnect();
   }, [embed, target, state.definition]);
 
+  // The language the form is shown in: asked for in the link (?lang=hi), else the browser's, if the form has it.
+  const [chosenLanguage, setChosenLanguage] = useState<string>();
+  const languages = state.definition ? languagesOf(state.definition) : [];
+  const language = state.definition ? pickLanguage(state.definition, chosenLanguage ?? params.get('lang') ?? navigator.language) : undefined;
+  const ui = useMemo(() => uiText(language, state.definition), [language, state.definition]);
+  useEffect(() => {
+    if (!language) return;
+    // For screen readers, and so that text runs the right way.
+    document.documentElement.lang = language;
+    document.documentElement.dir = isRtl(language) ? 'rtl' : 'ltr';
+    if (state.definition) document.title = localize(state.definition, language).name;
+  }, [language, state.definition]);
+
   const systemContext: SystemContext = useMemo(
     () => ({
+      language,
       userId: state.session?.id,
       userEmail: state.session?.email,
       userName: state.session?.name,
@@ -175,7 +190,7 @@ export default function App() {
       // Never the resume token: URL params can end up in the saved submission.
       urlParams: Object.fromEntries([...params.entries()].filter(([k]) => k !== 'resume')),
     }),
-    [state.session, params, embed],
+    [state.session, params, embed, language],
   );
 
   const onSubmitted = (result: SubmissionResult) => {
@@ -197,7 +212,7 @@ export default function App() {
       <Notice title={name}>
         {unavailable === 'NOT_YET'
           ? `This form is not open yet.${when && !Number.isNaN(when.getTime()) ? ` It opens on ${when.toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}.` : ''}`
-          : message?.trim() || 'This form is closed and no longer takes answers.'}
+          : message?.trim() || ui('closedDefault')}
       </Notice>
     );
   } else if (!state.definition) body = <Notice title="This form isn't available">{state.error ?? 'It may have been closed, or the link may be wrong.'}</Notice>;
@@ -210,7 +225,21 @@ export default function App() {
   } else {
     body = (
       <div className="fp-public__card">
-        {state.resumed && <p className="rt-banner">Welcome back - your saved answers are filled in. Attachments need to be added again.</p>}
+        {languages.length > 1 && (
+          <div className="rt-language">
+            <label>
+              <span>{ui('language')}</span>
+              <select value={language} onChange={(e) => setChosenLanguage(e.target.value)}>
+                {languages.map((l) => (
+                  <option key={l} value={l} lang={l}>
+                    {languageName(l)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+        {state.resumed && <p className="rt-banner">{ui('welcomeBack')}</p>}
         {draft.error && <p className="rt-banner rt-banner--error">{draft.error}</p>}
         <FormContainer
           definition={state.definition}
@@ -225,15 +254,15 @@ export default function App() {
           <div className="rt-save">
             {draft.link ? (
               <div className="rt-save__link">
-                <span>Saved. Use this private link to continue on any device within 30 days - anyone with it can see your answers:</span>
-                <input readOnly value={draft.link} aria-label="Link to continue later" onFocus={(e) => e.currentTarget.select()} />
+                <span>{ui('savedLink')}</span>
+                <input readOnly value={draft.link} aria-label={ui('continueLink')} onFocus={(e) => e.currentTarget.select()} />
                 <button type="button" className="rt-save__btn" onClick={() => void navigator.clipboard?.writeText(draft.link!)}>
-                  Copy link
+                  {ui('copyLink')}
                 </button>
               </div>
             ) : (
               <button type="button" className="rt-save__btn" disabled={draft.busy} onClick={() => void saveForLater()}>
-                {draft.busy ? 'Saving…' : 'Save and continue later'}
+                {draft.busy ? ui('saving') : ui('saveLater')}
               </button>
             )}
           </div>

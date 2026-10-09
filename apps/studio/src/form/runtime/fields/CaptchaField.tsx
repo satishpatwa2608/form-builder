@@ -1,3 +1,4 @@
+import { useUi } from '../FormRuntimeContext';
 import { useEffect, useRef, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@ui/form';
@@ -16,6 +17,7 @@ const mockToken = () => `${MOCK_CAPTCHA_TOKEN_PREFIX}${Date.now()}`;
  * tokens, so submit flows behave the same either way.
  */
 export function CaptchaField({ field }: FieldComponentProps) {
+  const ui = useUi();
   const { setValue, control } = useFormContext();
   const { definition, captchaMode, registerCaptcha } = useFormRuntime();
   const config = definition.captcha;
@@ -69,7 +71,7 @@ export function CaptchaField({ field }: FieldComponentProps) {
                   onCheckedChange={(checked) => setToken(checked ? mockToken() : '')}
                 />
               </FormControl>
-              <FormLabel className="font-medium">I'm not a robot</FormLabel>
+              <FormLabel className="font-medium">{ui('notRobot')}</FormLabel>
               <span className="text-xs text-muted-foreground" style={{ marginLeft: 'auto' }}>
                 test mode
               </span>
@@ -78,7 +80,7 @@ export function CaptchaField({ field }: FieldComponentProps) {
             <div ref={container} />
           )}
           {captchaMode === 'mock' && mode !== 'CHECKBOX' && (
-            <p className="text-xs text-muted-foreground">Invisible verification (test mode) runs when you submit.</p>
+            <p className="text-xs text-muted-foreground">{ui('invisibleCheck')}</p>
           )}
           {loadError && (
             <p className="text-xs" style={errorText}>

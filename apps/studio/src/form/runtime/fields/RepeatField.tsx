@@ -1,3 +1,4 @@
+import { useUi } from '../FormRuntimeContext';
 import { useMemo } from 'react';
 import { useFieldArray, useFormContext, useFormState } from 'react-hook-form';
 import { Plus, Trash2 } from 'lucide-react';
@@ -22,6 +23,7 @@ function ownError(error: unknown): string | undefined {
  * (still stacked on phones); `props.totals` names number fields to total.
  */
 export function RepeatField({ field, required }: FieldComponentProps) {
+  const ui = useUi();
   const { control } = useFormContext();
   const { definition, values } = useFormRuntime();
   const { fields: rows, append, remove } = useFieldArray({ control, name: field.name });
@@ -33,7 +35,7 @@ export function RepeatField({ field, required }: FieldComponentProps) {
   const atLeast = Math.max(min ?? 0, required ? 1 : 0);
   const atMost = Math.min(max ?? MAX_ROWS, MAX_ROWS);
   const asTable = field.props?.layout === 'table';
-  const addLabel = typeof field.props?.addLabel === 'string' && field.props.addLabel.trim() ? field.props.addLabel : 'Add another';
+  const addLabel = typeof field.props?.addLabel === 'string' && field.props.addLabel.trim() ? field.props.addLabel : ui('addAnother');
   const problem = ownError(errors[field.name]);
 
   const totals = (Array.isArray(field.props?.totals) ? (field.props.totals as unknown[]) : [])
@@ -65,7 +67,7 @@ export function RepeatField({ field, required }: FieldComponentProps) {
       )}
 
       {rows.map((row, i) => (
-        <div key={row.id} role="group" aria-label={`${title} row ${i + 1}`} className="fp-repeat__row">
+        <div key={row.id} role="group" aria-label={ui('row', { label: title, n: i + 1 })} className="fp-repeat__row">
           <div className="fp-repeat__fields">
             <RowProvider value={`${field.name}.${i}`}>
               <FieldList parentId={field.id} column={0} />
@@ -74,8 +76,8 @@ export function RepeatField({ field, required }: FieldComponentProps) {
           <button
             type="button"
             className="fp-repeat__remove"
-            aria-label={`Remove row ${i + 1} of ${title}`}
-            title="Remove this row"
+            aria-label={ui('removeRow', { label: title, n: i + 1 })}
+            title={ui('removeThisRow')}
             disabled={field.disabled || rows.length <= atLeast}
             onClick={() => remove(i)}
           >
@@ -83,7 +85,7 @@ export function RepeatField({ field, required }: FieldComponentProps) {
           </button>
         </div>
       ))}
-      {!rows.length && <p className="text-sm text-muted-foreground">Nothing added yet.</p>}
+      {!rows.length && <p className="text-sm text-muted-foreground">{ui('nothingAdded')}</p>}
 
       {totals.length > 0 && rows.length > 0 && (
         <dl className="fp-repeat__totals">

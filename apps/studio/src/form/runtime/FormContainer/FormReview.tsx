@@ -1,3 +1,4 @@
+import { useUi } from '../FormRuntimeContext';
 import { Button } from '@ui/button';
 import type { FormDefinition, FormField, FormValues } from '../../types';
 import { answerFields, answerText, fieldLabel, formShape, isSignature, rowKey, rowsOf, type FormState } from '../../engine';
@@ -12,13 +13,14 @@ interface FormReviewProps {
   onEdit: (name: string) => void;
 }
 
-const NOT_ANSWERED = 'Not answered';
 
 /** One answer as people would read it back. Files are known by name; a signature is shown. */
 function Answer({ field, value }: { field: FormField; value: unknown }) {
+  const ui = useUi();
+  const NOT_ANSWERED = ui('notAnswered');
   if (field.type === 'SIGNATURE') {
     // Checked to be a PNG data URL, so it is safe as an image source.
-    return isSignature(value) ? <img className="fp-review__signature" src={value} alt="Your signature" /> : <>{NOT_ANSWERED}</>;
+    return isSignature(value) ? <img className="fp-review__signature" src={value} alt={ui('yourSignature')} /> : <>{NOT_ANSWERED}</>;
   }
   if (field.type === 'FILE') {
     const names = (Array.isArray(value) ? value : []).map((f) => (f as { name?: unknown })?.name).filter((n): n is string => typeof n === 'string');
@@ -32,12 +34,13 @@ function Answer({ field, value }: { field: FormField; value: unknown }) {
  * with a way back to change it. Nothing is sent until the person confirms.
  */
 export function FormReview({ definition, state, values, onEdit }: FormReviewProps) {
+  const ui = useUi();
   const shape = formShape(definition.fields);
   const fields = answerFields(definition.fields).filter((f) => f.type !== 'HIDDEN' && f.type !== 'CAPTCHA' && state.states.get(f.name)?.visible);
   return (
-    <section className="fp-review" aria-label="Check your answers">
-      <h3 className="fp-review__title">Check your answers</h3>
-      <p className="text-sm text-muted-foreground">Nothing has been sent yet. Change anything that is not right, then submit.</p>
+    <section className="fp-review" aria-label={ui('checkAnswers')}>
+      <h3 className="fp-review__title">{ui('checkAnswers')}</h3>
+      <p className="text-sm text-muted-foreground">{ui('checkAnswersHint')}</p>
       <dl className="fp-review__list">
         {fields.map((f) => {
           const label = fieldLabel(f);
@@ -50,7 +53,7 @@ export function FormReview({ definition, state, values, onEdit }: FormReviewProp
                 {f.type !== 'REPEAT' ? (
                   <Answer field={f} value={f.type === 'FILE' ? values[f.name] : state.values[f.name]} />
                 ) : !rows.length ? (
-                  'None added'
+                  ui('noneAdded')
                 ) : (
                   <ol className="fp-review__rows">
                     {rows.map((row, i) => (
@@ -69,8 +72,8 @@ export function FormReview({ definition, state, values, onEdit }: FormReviewProp
                 )}
               </dd>
               <dd className="fp-review__edit">
-                <Button type="button" variant="outline" size="sm" aria-label={`Change ${label}`} onClick={() => onEdit(f.name)}>
-                  Change
+                <Button type="button" variant="outline" size="sm" aria-label={ui('change', { label })} onClick={() => onEdit(f.name)}>
+                  {ui('changeShort')}
                 </Button>
               </dd>
             </div>

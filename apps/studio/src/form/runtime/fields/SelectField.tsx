@@ -1,3 +1,4 @@
+import { useUi } from '../FormRuntimeContext';
 import { useFormContext } from 'react-hook-form';
 import { FormControl, FormField } from '@ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ui/select';
@@ -12,11 +13,12 @@ import type { FieldComponentProps } from './types';
 export const SEARCHABLE_THRESHOLD = 10;
 
 export function SelectField({ field, required }: FieldComponentProps) {
+  const ui = useUi();
   const { control } = useFormContext();
   const state = useFieldOptions(field);
   const { options, status } = state;
   const blocked = status !== 'ready' || !options.length;
-  const placeholder = optionsPlaceholder(state, field.placeholder ?? 'Select...');
+  const placeholder = optionsPlaceholder(state, field.placeholder ?? ui('select'));
 
   return (
     <FormField

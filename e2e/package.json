@@ -10,6 +10,7 @@
     "e2e:docker": "playwright test -c playwright.docker.config.ts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10",
     "@playwright/test": "^1.58.0",
     "@types/node": "^20.10.0",
     "mongodb": "^6.12.0",

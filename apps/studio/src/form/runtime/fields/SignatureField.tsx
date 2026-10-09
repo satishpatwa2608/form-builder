@@ -1,3 +1,4 @@
+import { useUi } from '../FormRuntimeContext';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { FormControl, FormField } from '@ui/form';
@@ -28,6 +29,7 @@ interface PadProps extends FieldComponentProps {
 }
 
 function Pad({ field, required, value, onChange, onBlur }: PadProps) {
+  const ui = useUi();
   const { resetKey } = useFormRuntime();
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -126,7 +128,7 @@ function Pad({ field, required, value, onChange, onBlur }: PadProps) {
             height={HEIGHT}
             className="fp-signature__pad"
             role="img"
-            aria-label={`${name}: ${isSignature(value) ? 'signed' : 'not signed yet'}`}
+            aria-label={`${name}: ${isSignature(value) ? ui('signed') : ui('notSigned')}`}
             onPointerDown={start}
             onPointerMove={move}
             onPointerUp={end}
@@ -136,17 +138,17 @@ function Pad({ field, required, value, onChange, onBlur }: PadProps) {
         </FormControl>
         <div className="flex items-center gap-2">
           <Input
-            aria-label={`Or type your name to sign ${name}`}
+            aria-label={ui('typeToSign', { label: name })}
             className={VISIBLE_BORDER}
             value={typed}
             maxLength={80}
-            placeholder="Or type your name"
+            placeholder={ui('typeName')}
             disabled={field.disabled}
             aria-required={required}
             onChange={(e) => type(e.target.value)}
           />
           <Button type="button" variant="outline" disabled={field.disabled || !isSignature(value)} onClick={clear}>
-            Clear
+            {ui('clear')}
           </Button>
         </div>
       </div>

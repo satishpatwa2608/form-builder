@@ -28,12 +28,15 @@ import {
   systemContextFor,
   valueAt,
   isRepeat,
+  localize,
+  pickLanguage,
+  uiText,
 } from '../../engine';
 import { defaultSubmissionAdapter, type SubmissionAdapter } from '../../adapters/submission/submission-adapter';
 import { defaultDataSourceAdapter, type DataSourceAdapter } from '../../adapters/data-source/data-source-adapter';
 import type { CaptchaWidget } from '../../adapters/captcha/captcha-provider';
 import { usePublishedForm } from '../../adapters/registry/useFormRegistry';
-import { FormRuntimeProvider, type CaptchaMode } from '../FormRuntimeContext';
+import { FormRuntimeProvider, useUi, type CaptchaMode } from '../FormRuntimeContext';
 import { FieldList } from '../FieldRenderer/FieldRenderer';
 import { REVEAL_EVENT } from '../fields/ContainerFields';
 import '../../styles/form-runtime.css';
@@ -76,7 +79,6 @@ export interface FormContainerProps extends FormRuntimeProps {
   formCode?: string;
 }
 
-const DEFAULT_SUCCESS_MESSAGE = 'Thank you. Your response has been submitted.';
 const FOCUSABLE = 'input:not([type="hidden"]), textarea, select, button, [tabindex]:not([tabindex="-1"])';
 const fullPageNavigate = (url: string) => window.location.assign(url);
 
@@ -92,9 +94,10 @@ export function FormContainer({ definition, formCode, ...runtime }: FormContaine
 
 function PublishedForm({ formCode, ...runtime }: FormRuntimeProps & { formCode: string }) {
   const { data, isLoading, error } = usePublishedForm(formCode);
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading form…</p>;
-  if (error) return <p style={errorText}>Could not load this form.</p>;
-  if (!data) return <p className="text-sm text-muted-foreground">This form is not available.</p>;
+  const ui = useUi();
+  if (isLoading) return <p className="text-sm text-muted-foreground">{ui('loading')}</p>;
+  if (error) return <p style={errorText}>{ui('loadFailed')}</p>;
+  if (!data) return <p className="text-sm text-muted-foreground">{ui('unavailable')}</p>;
   return <FormRuntime key={`${data.id}@${data.version}`} definition={data} {...runtime} />;
 }
 
@@ -175,7 +178,7 @@ function useRuleValues(form: UseFormReturn<FormValues>, definition: FormDefiniti
 }
 
 function FormRuntime({
-  definition,
+  definition: source,
   systemContext,
   submissionAdapter = defaultSubmissionAdapter,
   dataSourceAdapter = defaultDataSourceAdapter,
@@ -189,8 +192,12 @@ function FormRuntime({
   stayOnSubmit = false,
 }: FormRuntimeProps & { definition: FormDefinition }) {
   const containerRef = useRef<HTMLFormElement>(null);
+  // The form in the language it is being shown in: wording only; names, values and rules are the same in every language.
+  const language = pickLanguage(source, systemContext?.language);
+  const definition = useMemo(() => localize(source, language), [source, language]);
+  const ui = useMemo(() => uiText(language, source), [language, source]);
   // The person's own zone, so `today()` in a rule is their date; the server is told the same zone on submit.
-  const context = useMemo(() => systemContextFor(definition, { timeZone: browserTimeZone(), ...systemContext }), [definition, systemContext]);
+  const context = useMemo(() => systemContextFor(definition, { timeZone: browserTimeZone(), ...systemContext, language }), [definition, systemContext, language]);
   const schema = useMemo(() => buildZodSchema(definition, context), [definition, context]);
   const defaults = useMemo(() => ({ ...buildDefaultValues(definition, context), ...initialValues }), [definition, context, initialValues]);
 
@@ -233,6 +240,14 @@ function FormRuntime({
   const pendingFocus = useRef<string | null>(null);
 
   const skipDependencyReset = useRef(false);
+  // Changing language while mistakes are showing: say them again, in the new language.
+  const shownIn = useRef(language);
+  useEffect(() => {
+    if (shownIn.current === language) return;
+    shownIn.current = language;
+    if (Object.keys(form.formState.errors).length) void form.trigger();
+  }, [language, form]);
+
   useDependencyReset(form, definition, values, skipDependencyReset);
 
   const [result, setResult] = useState<SubmissionResult | null>(null);
@@ -353,15 +368,15 @@ function FormRuntime({
         } else if (action.type === 'FETCH') {
           const { params, unresolved } = resolveParams(action.source.params, current(), context);
           if (unresolved.length) {
-            setNotice('Fill in the fields this looks up by first.');
+            setNotice(ui('lookupNeeds'));
             continue;
           }
           try {
             const [row] = await dataSourceAdapter.fetchRows({ ...action.source, valueField: '', labelField: '' }, params);
-            if (!row) setNotice('Nothing was found.');
+            if (!row) setNotice(ui('lookupNone'));
             else for (const [name, path] of Object.entries(action.set)) fill(name, readOwnPath(row, path));
           } catch {
-            setNotice('That could not be looked up. Please try again.');
+            setNotice(ui('lookupFailed'));
           }
         }
       }
@@ -419,7 +434,7 @@ function FormRuntime({
           setShowSummary(true);
         }
         const told = eventActions(definition, { type: 'SUBMIT_ERROR' }, computed, context).find((a) => a.type === 'SHOW_MESSAGE');
-        setSubmitError(told?.type === 'SHOW_MESSAGE' ? told.message : res.error ?? 'Submission failed. Please try again.');
+        setSubmitError(told?.type === 'SHOW_MESSAGE' ? told.message : res.error ?? ui('submitFailed'));
         captcha.current?.reset();
         return;
       }
@@ -437,7 +452,7 @@ function FormRuntime({
       else if (!stayOnSubmit) setResult(res);
     } catch (e) {
       const told = eventActions(definition, { type: 'SUBMIT_ERROR' }, computed, context).find((a) => a.type === 'SHOW_MESSAGE');
-      setSubmitError(told?.type === 'SHOW_MESSAGE' ? told.message : e instanceof Error ? e.message : 'Submission failed. Please try again.');
+      setSubmitError(told?.type === 'SHOW_MESSAGE' ? told.message : e instanceof Error ? e.message : ui('submitFailed'));
       captcha.current?.reset();
     }
   };
@@ -490,7 +505,7 @@ function FormRuntime({
       try {
         form.setValue(captchaField.name, await captcha.current.execute());
       } catch {
-        setSubmitError('Verification failed. Please try again.');
+        setSubmitError(ui('verifyFailed'));
         return;
       }
     }
@@ -563,9 +578,10 @@ function FormRuntime({
       registerCaptcha,
       resetKey,
       layout,
+      ui,
       stepSectionId: step?.section?.id,
     }),
-    [definition, values, states, readOnly, formState.options, clickable, onButtonClick, context, onNavigate, dataSourceAdapter, resolvedCaptchaMode, registerCaptcha, resetKey, layout, step],
+    [ui, definition, values, states, readOnly, formState.options, clickable, onButtonClick, context, onNavigate, dataSourceAdapter, resolvedCaptchaMode, registerCaptcha, resetKey, layout, step],
   );
 
   if (result) {
@@ -573,7 +589,7 @@ function FormRuntime({
       <div className={`space-y-6 ${scope}`}>
         <style>{css}</style>
         {showHeader && <FormHeader definition={definition} />}
-        <FormSuccess message={successMessage ?? definition.submission.success?.message ?? DEFAULT_SUCCESS_MESSAGE} reference={result.ref} onReset={resetForm} />
+        <FormSuccess message={successMessage ?? definition.submission.success?.message ?? ui('thankYou')} reference={result.ref} onReset={resetForm} />
       </div>
     );
   }

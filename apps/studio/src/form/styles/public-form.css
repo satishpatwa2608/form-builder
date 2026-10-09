@@ -26,7 +26,8 @@
 .fp-public__footer {
   margin-top: 16px;
   font-size: 12px;
-  color: var(--muted-foreground);
+  /* Dark enough to read on the page's grey (4.5:1 and more), which the usual muted grey is not. */
+  color: #475569;
 }
 .fp-public--embed {
   min-height: 0;

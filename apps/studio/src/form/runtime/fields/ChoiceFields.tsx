@@ -1,3 +1,4 @@
+import { useUi } from '../FormRuntimeContext';
 import { useId } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { Minus, Plus } from 'lucide-react';
@@ -96,6 +97,7 @@ export function CheckboxGroupField({ field, required }: FieldComponentProps) {
 
 /** A number with - and + buttons. Typing still works; the buttons stay within min and max. */
 export function StepperField({ field, required }: FieldComponentProps) {
+  const ui = useUi();
   const { control } = useFormContext();
   const step = typeof field.props?.step === 'number' && field.props.step > 0 ? field.props.step : 1;
   const { min, max } = field.validation ?? {};
@@ -116,7 +118,7 @@ export function StepperField({ field, required }: FieldComponentProps) {
         return (
           <FieldShell field={field} required={required}>
             <div className="flex items-center gap-2">
-              <button type="button" className="fp-stepper__btn" aria-label={`Decrease ${name}`} disabled={field.disabled || (value !== undefined && min !== undefined && value <= min)} onClick={() => move(-step)}>
+              <button type="button" className="fp-stepper__btn" aria-label={ui('decrease', { label: name })} disabled={field.disabled || (value !== undefined && min !== undefined && value <= min)} onClick={() => move(-step)}>
                 <Minus size={16} />
               </button>
               <FormControl>
@@ -138,7 +140,7 @@ export function StepperField({ field, required }: FieldComponentProps) {
                   aria-required={required}
                 />
               </FormControl>
-              <button type="button" className="fp-stepper__btn" aria-label={`Increase ${name}`} disabled={field.disabled || (value !== undefined && max !== undefined && value >= max)} onClick={() => move(step)}>
+              <button type="button" className="fp-stepper__btn" aria-label={ui('increase', { label: name })} disabled={field.disabled || (value !== undefined && max !== undefined && value >= max)} onClick={() => move(step)}>
                 <Plus size={16} />
               </button>
             </div>
@@ -151,6 +153,7 @@ export function StepperField({ field, required }: FieldComponentProps) {
 
 /** Terms to read, then a box to accept them. The terms are plain text: never injected markup. */
 export function ConsentField({ field, required }: FieldComponentProps) {
+  const ui = useUi();
   const { control } = useFormContext();
   const text = typeof field.props?.text === 'string' ? field.props.text : '';
   const textId = useId();
@@ -161,7 +164,7 @@ export function ConsentField({ field, required }: FieldComponentProps) {
       render={({ field: rhf }) => (
         <FormItem>
           {text && (
-            <div id={textId} className="fp-consent__text" tabIndex={0} role="region" aria-label="Terms">
+            <div id={textId} className="fp-consent__text" tabIndex={0} role="region" aria-label={ui('terms')}>
               {text}
             </div>
           )}

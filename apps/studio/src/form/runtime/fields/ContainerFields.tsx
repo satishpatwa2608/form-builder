@@ -1,3 +1,4 @@
+import { useUi } from '../FormRuntimeContext';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useFormState } from 'react-hook-form';
 import { columnWeights, descendantFields } from '../../engine';
@@ -112,6 +113,7 @@ function useSectionGroup(field: FormField) {
 
 /** Each SECTION inside is a tab. Panels that are not showing stay mounted, so their values and validation are untouched. */
 export function TabsField({ field }: FieldComponentProps) {
+  const ui = useUi();
   const { sections, open, setChosen, hasError, root } = useSectionGroup(field);
   const id = useId();
   const vertical = field.props?.orientation === 'vertical';
@@ -141,8 +143,8 @@ export function TabsField({ field }: FieldComponentProps) {
               else if (e.key === (vertical ? 'ArrowUp' : 'ArrowLeft')) move(i, -1);
             }}
           >
-            {s.label || `Tab ${i + 1}`}
-            {hasError(s.id) && <span className="fp-tabs__error"> (needs attention)</span>}
+            {s.label || ui('tab', { n: i + 1 })}
+            {hasError(s.id) && <span className="fp-tabs__error"> {ui('needsAttention')}</span>}
           </button>
         ))}
       </div>
@@ -157,6 +159,7 @@ export function TabsField({ field }: FieldComponentProps) {
 
 /** Each SECTION inside is a panel; opening one closes the others. */
 export function AccordionField({ field }: FieldComponentProps) {
+  const ui = useUi();
   const { sections, open, setChosen, hasError, root } = useSectionGroup(field);
   const id = useId();
   const [closed, setClosed] = useState(false);
@@ -179,8 +182,8 @@ export function AccordionField({ field }: FieldComponentProps) {
               }}
             >
               <span>
-                {s.label || `Panel ${i + 1}`}
-                {hasError(s.id) && <span className="fp-tabs__error"> (needs attention)</span>}
+                {s.label || ui('panel', { n: i + 1 })}
+                {hasError(s.id) && <span className="fp-tabs__error"> {ui('needsAttention')}</span>}
               </span>
               <span aria-hidden="true">{isOpen ? '−' : '+'}</span>
             </button>

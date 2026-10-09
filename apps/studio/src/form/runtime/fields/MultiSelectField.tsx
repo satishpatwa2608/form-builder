@@ -1,3 +1,4 @@
+import { useUi } from '../FormRuntimeContext';
 import { useFormContext } from 'react-hook-form';
 import { FormControl, FormField } from '@ui/form';
 import { MultiSelect } from '@ui/multiselect';
@@ -7,6 +8,7 @@ import type { FieldComponentProps } from './types';
 
 /** Holds string[] of option values. */
 export function MultiSelectField({ field, required }: FieldComponentProps) {
+  const ui = useUi();
   const { control } = useFormContext();
   const state = useFieldOptions(field);
 
@@ -24,7 +26,7 @@ export function MultiSelectField({ field, required }: FieldComponentProps) {
                 rhf.onChange(next);
                 rhf.onBlur();
               }}
-              placeholder={optionsPlaceholder(state, field.placeholder ?? 'Search and select...')}
+              placeholder={optionsPlaceholder(state, field.placeholder ?? ui('searchSelect'))}
               disabled={field.disabled || state.status !== 'ready'}
               maxVisibleTags={3}
             />
