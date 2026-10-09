@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import type { AuthContext } from '../auth/auth-context';
 import { Folder, Grant, type FolderDocument, type GrantDocument } from './access.schemas';
-import { isAllowed, PERMISSIONS, type Permission, type ResourceRef } from './roles';
+import { isAllowed, PERMISSIONS, type OrgRole, type Permission, type ResourceRef } from './roles';
 
 /** The single place permission decisions are made (docs/plan.md, section 4.2). */
 @Injectable()
@@ -31,6 +31,12 @@ export class PermissionService {
   async effective(auth: AuthContext, resource: ResourceRef): Promise<Permission[]> {
     const grants = await this.grantsOf(auth);
     return PERMISSIONS.filter((p) => isAllowed(auth.role, grants, p, resource));
+  }
+
+  /** Of these members, the ones who may do `permission` on a resource (for telling the right people about it). */
+  async whoCan(orgId: string, members: readonly { userId: string; role: OrgRole }[], permission: Permission, resource: ResourceRef): Promise<string[]> {
+    const grants = await this.grants.find({ orgId, userId: { $in: members.map((m) => m.userId) } }).lean();
+    return members.filter((m) => isAllowed(m.role, grants.filter((g) => g.userId === m.userId), permission, resource)).map((m) => m.userId);
   }
 
   async folderRef(orgId: string, folderId: string): Promise<ResourceRef> {

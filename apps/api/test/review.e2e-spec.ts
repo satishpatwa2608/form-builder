@@ -1,3 +1,4 @@
+import { MAILER } from '../src/common/mailer';
 import { startApp, type Harness } from './harness';
 
 const form = (code: string, label = 'Your name') => ({
@@ -65,6 +66,43 @@ describe('Review before publish (e2e)', () => {
     expect(approved.review).toMatchObject({ status: 'APPROVED', stale: false, decisionNote: 'Good.' });
     // A review can be taken back only while it is waiting.
     await act(id, 'cancel', designer).expect(409);
+  });
+
+  it('the people who can act are told by email, with the note and a link; nobody is told about their own action', async () => {
+    const id = await draft(form('MAILED'));
+    h.outbox.length = 0;
+    await act(id, 'request', designer, { note: 'Please check the wording.' }).expect(200);
+    // Everyone who may publish it, not the designer who asked and not a viewer.
+    const asked = h.outbox.filter((m) => m.subject === 'Review requested: MAILED');
+    expect(asked.map((m) => m.to).sort()).toEqual(['asha@acme.test', 'pia@acme.test']);
+    expect(asked[0]!.text).toContain('Dev Designer asked for a review of "MAILED" (MAILED, version 1) before it is published.');
+    expect(asked[0]!.text).toContain('Their note: Please check the wording.');
+    expect(asked[0]!.text).toMatch(new RegExp(`Open it: https?://[^ ]+/forms/${id}/edit`));
+
+    h.outbox.length = 0;
+    await act(id, 'changes', publisher, { note: 'Add the employee id.' }).expect(200);
+    expect(h.outbox.map((m) => [m.to, m.subject])).toEqual([['dev@acme.test', 'Changes asked: MAILED']]);
+    expect(h.outbox[0]!.text).toContain('Pia Publisher asked for changes to "MAILED"');
+    expect(h.outbox[0]!.text).toContain('Their note: Add the employee id.');
+
+    h.outbox.length = 0;
+    await act(id, 'request', designer).expect(200);
+    await act(id, 'approve', publisher).expect(200);
+    expect(h.outbox.filter((m) => m.to === 'dev@acme.test').map((m) => m.subject)).toEqual(['Approved: MAILED']);
+    expect(h.outbox.find((m) => m.to === 'dev@acme.test')!.text).toContain('It can be published now.');
+  });
+
+  it('a form\'s name cannot add a header to the mail, and a mail that fails does not undo the review', async () => {
+    const id = await draft({ ...form('ODD'), name: 'Hello\nBcc: thief@evil.test' });
+    h.outbox.length = 0;
+    await act(id, 'request', designer).expect(200);
+    expect(h.outbox[0]!.subject).toBe('Review requested: Hello Bcc: thief@evil.test');
+    const send = jest.spyOn(h.app.get(MAILER), 'send').mockRejectedValue(new Error('mail is down'));
+    try {
+      expect((await act(id, 'approve', publisher).expect(200)).body.review.status).toBe('APPROVED');
+    } finally {
+      send.mockRestore();
+    }
   });
 
   it('review is advice unless the organisation requires it', async () => {

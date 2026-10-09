@@ -129,6 +129,12 @@ export class FormsService implements OnModuleInit {
     return this.mustGet(auth, id, permission);
   }
 
+  /** Who, among the organisation's active members, may do `permission` to this form. */
+  async membersWho(row: Pick<Form, 'orgId' | 'folderId' | 'code'>, permission: Permission): Promise<string[]> {
+    const members = await this.memberships.find({ orgId: row.orgId, status: 'ACTIVE' }).select('userId role').lean();
+    return this.permissions.whoCan(row.orgId, members, permission, await this.ref(row.orgId, row.folderId, row.code));
+  }
+
   /** What the caller may do to this form, from its folder. */
   async permissionsOn(auth: AuthContext, row: Pick<Form, 'orgId' | 'folderId' | 'code'>): Promise<Permission[]> {
     return this.permissions.effective(auth, await this.ref(row.orgId, row.folderId, row.code));

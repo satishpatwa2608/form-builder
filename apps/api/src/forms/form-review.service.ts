@@ -1,10 +1,12 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import { actorOf, AuditService } from '../audit/audit.service';
 import type { AuthContext } from '../auth/auth-context';
 import { User, type UserDocument } from '../auth/auth.schemas';
 import { newId } from '../common/crypto';
+import { MAILER, type Mailer } from '../common/mailer';
+import { APP_CONFIG, type AppConfig } from '../config';
 import { Organization, type OrganizationDocument } from '../orgs/org.schemas';
 import { FormComment, type FormCommentDocument } from './form-comment.schema';
 import { Form, type FormDocument } from './form.schema';
@@ -23,6 +25,8 @@ const clean = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().sli
  */
 @Injectable()
 export class FormReviewService {
+  private readonly logger = new Logger(FormReviewService.name);
+
   constructor(
     private readonly formsService: FormsService,
     private readonly audit: AuditService,
@@ -30,6 +34,8 @@ export class FormReviewService {
     @InjectModel(FormComment.name) private readonly comments: Model<FormCommentDocument>,
     @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
     @InjectModel(User.name) private readonly users: Model<UserDocument>,
+    @Inject(MAILER) private readonly mailer: Mailer,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   async required(orgId: string): Promise<boolean> {
@@ -83,6 +89,23 @@ export class FormReviewService {
     };
   }
 
+  /**
+   * Tells people by email that a review needs them, or has been decided. Never the reason an
+   * action fails: the review itself is already recorded, and the Forms list shows it.
+   */
+  private async tell(userIds: string[], row: Pick<Form, 'id' | 'name' | 'code' | 'version'>, subject: string, lines: string[]) {
+    try {
+      const people = await this.users.find({ id: { $in: [...new Set(userIds.filter(Boolean))] } }).select('email name').lean();
+      const link = `${this.config.APP_URL}/forms/${row.id}/edit`;
+      for (const p of people) {
+        // A subject is one line, whatever a form is called.
+        await this.mailer.send({ to: p.email, subject: subject.replace(/[\r\n]+/g, ' ').slice(0, 200), text: [`Hello ${p.name || ''},`.replace(' ,', ','), '', ...lines, '', `Open it: ${link}`].join('\n') });
+      }
+    } catch (e) {
+      this.logger.warn(`could not send review mail for ${row.code} v${row.version}: ${(e as Error).name}`);
+    }
+  }
+
   private async setReview(row: FormDocument, review: FormReview) {
     row.set({ review });
     row.markModified('review');
@@ -95,6 +118,11 @@ export class FormReviewService {
     if (reviewOf(row).status === 'REQUESTED') throw new ConflictException('A review has already been asked for');
     await this.setReview(row, { ...NO_REVIEW, status: 'REQUESTED', requestedBy: auth.userId, requestedAt: new Date(), note: clean((body as { note?: unknown })?.note, 1000) });
     await this.audit.record(actorOf(auth), { action: 'form.review_requested', targetType: 'form', targetId: row.id, after: { code: row.code, version: row.version } });
+    // Everyone who could approve it, except the one asking.
+    const note = clean((body as { note?: unknown })?.note, 1000);
+    const who = (await this.names([auth.userId])).get(auth.userId) ?? 'A colleague';
+    const reviewers = (await this.formsService.membersWho(row, 'form.publish')).filter((id) => id !== auth.userId);
+    await this.tell(reviewers, row, `Review requested: ${row.name}`, [`${who} asked for a review of "${row.name}" (${row.code}, version ${row.version}) before it is published.`, ...(note ? ['', `Their note: ${note}`] : [])]);
     return this.get(auth, id);
   }
 
@@ -118,6 +146,13 @@ export class FormReviewService {
     }
     await this.setReview(row, { ...review, status: decision, decidedBy: auth.userId, decidedAt: new Date(), decisionNote: note, hash: decision === 'APPROVED' ? definitionHash(row.definition) : '' });
     await this.audit.record(actorOf(auth), { action: decision === 'APPROVED' ? 'form.review_approved' : 'form.review_changes_requested', targetType: 'form', targetId: row.id, after: { code: row.code, version: row.version } });
+    const who = (await this.names([auth.userId])).get(auth.userId) ?? 'The reviewer';
+    await this.tell(
+      [review.requestedBy].filter((id) => id !== auth.userId),
+      row,
+      decision === 'APPROVED' ? `Approved: ${row.name}` : `Changes asked: ${row.name}`,
+      [decision === 'APPROVED' ? `${who} approved "${row.name}" (${row.code}, version ${row.version}). It can be published now.` : `${who} asked for changes to "${row.name}" (${row.code}, version ${row.version}).`, ...(note ? ['', `Their note: ${note}`] : [])],
+    );
     return this.get(auth, id);
   }
 
