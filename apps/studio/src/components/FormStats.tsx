@@ -52,6 +52,62 @@ export function FormStats({ formId }: { formId: string }) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      <FieldStats formId={formId} days={days} />
     </section>
+  );
+}
+
+interface FieldReport {
+  days: number;
+  starts: number;
+  submissions: number;
+  fields: { name: string; label: string; answered: number; mistakes: number; leftAt: number }[];
+}
+
+/** In plain words, where the people who gave up stopped. Nothing to say until someone has. */
+export function whereTheyStop(report: FieldReport): string | null {
+  const left = report.fields.reduce((n, f) => n + f.leftAt, 0);
+  const worst = [...report.fields].sort((a, b) => b.leftAt - a.leftAt)[0];
+  if (!left || !worst) return null;
+  return `Of ${left} ${left === 1 ? 'person who started and left' : 'people who started and left'}, ${worst.leftAt === left ? (left === 1 ? 'they' : 'all') : worst.leftAt} stopped at "${worst.label}".`;
+}
+
+/** Question by question: how many answered it, tripped on it, and left the form at it. */
+function FieldStats({ formId, days }: { formId: string; days: number }) {
+  const { data } = useQuery({ queryKey: ['form-field-stats', formId, days], queryFn: () => api<FieldReport>(`/forms/${formId}/field-stats?days=${days}`) });
+  if (!data || !data.fields.some((f) => f.answered || f.mistakes || f.leftAt)) return null;
+  const of = (n: number) => (data.starts ? ` (${Math.min(100, Math.round((n / data.starts) * 100))}%)` : '');
+  const summary = whereTheyStop(data);
+  return (
+    <div style={{ marginTop: 16 }}>
+      <strong>Question by question</strong>
+      {summary && <p className="st-muted" style={{ margin: '4px 0 8px' }}>{summary}</p>}
+      <div style={{ overflowX: 'auto' }}>
+        <table className="st-table" aria-label="Question by question">
+          <thead>
+            <tr>
+              <th scope="col">Question</th>
+              <th scope="col">Answered</th>
+              <th scope="col">Made a mistake</th>
+              <th scope="col">Left the form here</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.fields.map((f) => (
+              <tr key={f.name}>
+                <th scope="row" style={{ fontWeight: 500, textAlign: 'start' }}>{f.label}</th>
+                <td>
+                  {f.answered.toLocaleString()}
+                  {of(f.answered)}
+                </td>
+                <td>{f.mistakes.toLocaleString()}</td>
+                <td>{f.leftAt.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="st-muted" style={{ marginTop: 6, fontSize: 12 }}>Counts only: nothing about who answered or what they wrote. Percentages are of the people who started.</p>
+    </div>
   );
 }

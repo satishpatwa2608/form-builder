@@ -5,7 +5,7 @@ import type { AuthContext } from '../auth/auth-context';
 import { APP_CONFIG, type AppConfig } from '../config';
 import { Invitation, Membership, Organization, type InvitationDocument, type MembershipDocument, type OrganizationDocument } from '../orgs/org.schemas';
 import { PLANS, PLAN_IDS, type CountedResource, type PlanId, type PlanLimits } from './plans';
-import { FormStat, UsageMonth, type FormStatDocument, type UsageMonthDocument } from './usage.schema';
+import { FormFieldStat, FormStat, UsageMonth, type FormFieldStatDocument, type FormStatDocument, type UsageMonthDocument } from './usage.schema';
 
 /** 402 with a message the studio shows as-is. */
 export class PlanLimitException extends HttpException {
@@ -34,6 +34,7 @@ export class PlansService {
     @InjectModel(Invitation.name) private readonly invitations: Model<InvitationDocument>,
     @InjectModel(UsageMonth.name) private readonly months: Model<UsageMonthDocument>,
     @InjectModel(FormStat.name) private readonly stats: Model<FormStatDocument>,
+    @InjectModel(FormFieldStat.name) private readonly fieldStats: Model<FormFieldStatDocument>,
   ) {}
 
   async planOf(orgId: string): Promise<PlanId> {
@@ -117,6 +118,43 @@ export class PlansService {
 
   async recordEvent(orgId: string, code: string, type: 'view' | 'start') {
     await this.stats.updateOne({ orgId, code, day: day() }, { $inc: { [type === 'view' ? 'views' : 'starts']: 1 } }, { upsert: true });
+  }
+
+  /**
+   * One visit's part in the per-field counts, sent by the form page as the
+   * person leaves or submits. `fields` are the form's own answer fields: a
+   * name the form does not have is not counted.
+   */
+  async recordFields(orgId: string, code: string, fields: string[], visit: { answered: string[]; mistakes: string[]; leftAt?: string }) {
+    const known = new Set(fields);
+    const inc = new Map<string, { answered?: 1; mistakes?: 1; leftAt?: 1 }>();
+    const add = (name: unknown, key: 'answered' | 'mistakes' | 'leftAt') => {
+      if (typeof name === 'string' && known.has(name)) inc.set(name, { ...inc.get(name), [key]: 1 });
+    };
+    for (const name of visit.answered.slice(0, 500)) add(name, 'answered');
+    for (const name of visit.mistakes.slice(0, 500)) add(name, 'mistakes');
+    add(visit.leftAt, 'leftAt');
+    if (!inc.size) return;
+    const today = day();
+    await this.fieldStats.bulkWrite(
+      [...inc].map(([field, $inc]) => ({ updateOne: { filter: { orgId, code, day: today, field }, update: { $inc }, upsert: true } })),
+      { ordered: false },
+    );
+  }
+
+  /** Per field over the last `days` days, in the form's order: answered, mistakes, and where people left. */
+  async fieldReport(orgId: string, code: string, days: number, fields: { name: string; label: string }[]) {
+    const from = day(new Date(Date.now() - (days - 1) * 86_400_000));
+    const [sums, funnel] = await Promise.all([
+      this.fieldStats.aggregate<{ _id: string; answered: number; mistakes: number; leftAt: number }>([
+        { $match: { orgId, code, day: { $gte: from } } },
+        { $group: { _id: '$field', answered: { $sum: '$answered' }, mistakes: { $sum: '$mistakes' }, leftAt: { $sum: '$leftAt' } } },
+      ]),
+      this.formStats(orgId, code, days),
+    ]);
+    const by = new Map(sums.map((s) => [s._id, s]));
+    const rows = fields.map((f) => ({ name: f.name, label: f.label, answered: by.get(f.name)?.answered ?? 0, mistakes: by.get(f.name)?.mistakes ?? 0, leftAt: by.get(f.name)?.leftAt ?? 0 }));
+    return { days, starts: funnel.totals.starts, submissions: funnel.totals.submissions, fields: rows };
   }
 
   /** Plan, limits and what is used now, for the organisation's settings page. */

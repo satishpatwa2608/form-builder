@@ -27,3 +27,22 @@ export class FormStat {
 export type FormStatDocument = HydratedDocument<FormStat>;
 export const FormStatSchema = SchemaFactory.createForClass(FormStat);
 FormStatSchema.index({ orgId: 1, code: 1, day: 1 }, { unique: true });
+
+/**
+ * Per field, per day: how many visits answered it, saw a mistake on it, or
+ * left the form with it as the last thing touched. Counts only.
+ */
+@Schema({ collection: 'form_field_stats' })
+export class FormFieldStat {
+  @Prop({ required: true }) orgId: string;
+  @Prop({ required: true }) code: string;
+  /** YYYY-MM-DD (UTC). */
+  @Prop({ required: true }) day: string;
+  @Prop({ required: true }) field: string;
+  @Prop({ type: Number, default: 0 }) answered: number;
+  @Prop({ type: Number, default: 0 }) mistakes: number;
+  @Prop({ type: Number, default: 0 }) leftAt: number;
+}
+export type FormFieldStatDocument = HydratedDocument<FormFieldStat>;
+export const FormFieldStatSchema = SchemaFactory.createForClass(FormFieldStat);
+FormFieldStatSchema.index({ orgId: 1, code: 1, day: 1, field: 1 }, { unique: true });

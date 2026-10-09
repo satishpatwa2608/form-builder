@@ -69,6 +69,13 @@ export class FormsController {
     return this.plans.formStats(auth.orgId, code, Math.min(90, Math.max(1, Number(days) || 30)));
   }
 
+  /** Per question: how many answered it, made a mistake on it, or left the form at it (counts only). */
+  @Get(':id/field-stats')
+  async fieldStats(@Auth() auth: AuthContext, @Param('id') formId: string, @Query('days') days?: string) {
+    const { code, fields } = await this.forms.liveFieldsFor(auth, idParam(formId));
+    return this.plans.fieldReport(auth.orgId, code, Math.min(90, Math.max(1, Number(days) || 30)), fields);
+  }
+
   @Get(':id/versions')
   versions(@Auth() auth: AuthContext, @Param('id') formId: string) {
     return this.forms.versions(auth, idParam(formId));

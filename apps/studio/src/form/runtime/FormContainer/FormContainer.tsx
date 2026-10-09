@@ -57,6 +57,8 @@ export interface FormRuntimeProps {
   /** Called after the adapter accepts a submission. */
   onSubmitted?: (result: SubmissionResult) => void;
   onValuesChange?: (values: FormValues) => void;
+  /** Called with the questions at fault when the person tries to go on or submit and cannot. */
+  onProblems?: (fields: string[]) => void;
   /** Used for cancel/success redirects and BUTTON links. Defaults to a full page load. */
   onNavigate?: (url: string) => void;
   showHeader?: boolean;
@@ -185,6 +187,7 @@ function FormRuntime({
   captchaMode,
   onSubmitted,
   onValuesChange,
+  onProblems,
   onNavigate = fullPageNavigate,
   showHeader = true,
   liveStyles,
@@ -473,6 +476,7 @@ function FormRuntime({
       setStepIndex((i) => Math.min(i + 1, steps.length - 1));
       containerRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     } else {
+      onProblems?.(Object.keys(form.formState.errors));
       setRecheck(true);
       // Go to the first mistake on this step, opening the tab or panel it is in if that is closed.
       const first = problemsOf(definition, form.formState.errors).find((p) => onStep.has(p.key.split('.')[0]));
@@ -509,7 +513,8 @@ function FormRuntime({
         return;
       }
     }
-    await form.handleSubmit(onValid, () => {
+    await form.handleSubmit(onValid, (errors) => {
+      onProblems?.(Object.keys(errors));
       setReviewing(false);
       setShowSummary(true);
     })();

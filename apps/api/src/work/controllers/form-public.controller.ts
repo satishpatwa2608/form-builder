@@ -7,6 +7,7 @@ import apiResponse from '../response';
 import { THROTTLE } from '../constants';
 import { FormFieldErrorsFilter } from '../security/form-http';
 import { isPlainObject } from '../../forms/payload-guard';
+import { countedFields } from '../../forms/counted-fields';
 import { FormContextService } from '../services/form-context.service';
 import { DataSourceQueryService } from '../services/data-source-query.service';
 import { FormSubmissionService, SubmitBody } from '../services/form-submission.service';
@@ -115,16 +116,20 @@ export class FormPublicController {
     }
   }
 
-  /** Funnel analytics from the form page: opened / started. Counts only, for published forms. */
+  /** Analytics from the form page: opened, started, and a visit's per-question summary. Counts only, for published forms. */
   @Post('forms/:code/events')
   @HttpCode(204)
   @Throttle({ default: THROTTLE.read })
   async event(@Query('org') org: string, @Param('code') code: string, @Body() body: Record<string, unknown>) {
     const orgId = await this.context.resolveOrgId(org);
     const type = body?.type;
-    if ((type !== 'view' && type !== 'start') || !/^[A-Z0-9_]{1,100}$/.test(code)) return;
-    if (!(await this.definitions.findPublished(orgId, code))) throw new NotFoundException('Form not found');
-    await this.plans.recordEvent(orgId, code, type);
+    if ((type !== 'view' && type !== 'start' && type !== 'fields') || !/^[A-Z0-9_]{1,100}$/.test(code)) return;
+    const def = await this.definitions.findPublished(orgId, code);
+    if (!def) throw new NotFoundException('Form not found');
+    if (type !== 'fields') return this.plans.recordEvent(orgId, code, type);
+    // One visit's summary, sent as the person leaves: which questions they answered, where a mistake showed, where they stopped.
+    const names = (v: unknown) => (Array.isArray(v) ? v.filter((n): n is string => typeof n === 'string') : []);
+    await this.plans.recordFields(orgId, code, countedFields(def).map((f) => f.name), { answered: names(body.answered), mistakes: names(body.mistakes), leftAt: typeof body.leftAt === 'string' ? body.leftAt : undefined });
   }
 
   /** Save and continue later: returns a token the respondent keeps (it's the only way back in). */

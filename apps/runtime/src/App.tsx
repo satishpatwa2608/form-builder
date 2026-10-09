@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { FormDefinition, FormValues, SubmissionResult, SystemContext } from '@fb/engine';
 import { isRtl, languageName, languagesOf, localize, pickLanguage, uiText } from '@fb/engine';
 import { FormContainer } from '@form/runtime/FormContainer/FormContainer';
-import { publicApi, trySession } from './api';
+import { API_URL, publicApi, trySession } from './api';
+import { createVisit } from './visit';
 import { httpSubmissionAdapter, publicDataSourceAdapter } from './adapters';
 
 /** Messages an embedding page can listen for when the form runs in an iframe (`?embed=1`). */
@@ -47,6 +48,14 @@ function brandStyle(color: string | null | undefined): CSSProperties | undefined
   return { '--fb-accent': color, '--primary': color, '--ring': color, '--accent-foreground': color, '--fb-accent-soft': soft, '--accent': soft } as CSSProperties;
 }
 
+/**
+ * A visit's per-question summary, sent as the person leaves the page or submits.
+ * `keepalive` lets it finish after the page has gone.
+ */
+function trackFields(org: string, code: string, summary: object) {
+  void fetch(`${API_URL}/public/forms/${code}/events?org=${encodeURIComponent(org)}`, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fields', ...summary }) }).catch(() => undefined);
+}
+
 /** Counts only (opened / started), once per page load. Failures never bother the respondent. */
 function track(org: string, code: string, type: 'view' | 'start') {
   void publicApi(`/forms/${code}/events?org=${encodeURIComponent(org)}`, { method: 'POST', body: { type } }).catch(() => undefined);
@@ -87,6 +96,9 @@ export default function App() {
   const pageRef = useRef<HTMLDivElement>(null);
   const values = useRef<FormValues>({});
   const started = useRef(false);
+  // Which questions this visit answered, tripped on and stopped at: counted once, when the person submits or leaves.
+  const visit = useRef(createVisit());
+  const visitSent = useRef(false);
   // `token` is only ever one this page got from its own save; a token from the link is used to load, never to save
   // (it could have been planted by someone who wants to read what gets saved next).
   const [draft, setDraft] = useState<{ token?: string; busy?: boolean; link?: string; error?: string }>({});
@@ -133,13 +145,38 @@ export default function App() {
   const onValuesChange = useCallback(
     (v: FormValues) => {
       values.current = v;
-      if (!started.current && target && state.definition) {
+      const focused = (document.activeElement as HTMLElement | null)?.closest?.<HTMLElement>('[data-field-name]')?.dataset.fieldName?.split('.')[0];
+      // Started means the person answered something, not that the form filled in its own defaults.
+      if (visit.current.values(v, focused) && !started.current && target && state.definition) {
         started.current = true;
         track(target.org, target.code, 'start');
       }
     },
     [target, state.definition],
   );
+
+  const sendVisit = useCallback(
+    (submitted: boolean) => {
+      const summary = visit.current.summary(submitted);
+      if (!target || !summary || visitSent.current) return;
+      visitSent.current = true;
+      trackFields(target.org, target.code, summary);
+    },
+    [target],
+  );
+  useEffect(() => {
+    const interact = () => visit.current.interact();
+    // `pagehide` is the last thing a page is told on phones as well as desktops.
+    const leave = () => sendVisit(false);
+    // Typing, choosing, pasting, autofill and dictation all end in one of these; the form's own changes never do.
+    const signs = ['pointerdown', 'keydown', 'input', 'change'] as const;
+    for (const sign of signs) document.addEventListener(sign, interact, true);
+    window.addEventListener('pagehide', leave);
+    return () => {
+      for (const sign of signs) document.removeEventListener(sign, interact, true);
+      window.removeEventListener('pagehide', leave);
+    };
+  }, [sendVisit]);
 
   const saveForLater = async () => {
     if (!target || !state.definition) return;
@@ -194,6 +231,7 @@ export default function App() {
   );
 
   const onSubmitted = (result: SubmissionResult) => {
+    sendVisit(true);
     for (const token of new Set([draft.token, resumeToken].filter(Boolean))) {
       if (target) void publicApi(`/forms/${target.code}/drafts/discard?org=${encodeURIComponent(target.org)}`, { method: 'POST', body: { token } }).catch(() => undefined);
     }
@@ -248,6 +286,7 @@ export default function App() {
           dataSourceAdapter={publicDataSourceAdapter(state.definition)}
           onSubmitted={onSubmitted}
           onValuesChange={onValuesChange}
+          onProblems={(fields) => visit.current.problems(fields)}
           initialValues={state.initialValues}
         />
         {!embed && state.definition.saveForLater !== false && (

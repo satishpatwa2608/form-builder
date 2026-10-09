@@ -142,6 +142,64 @@ test.describe('branding, analytics, embedding and raising work from inside', () 
       .toEqual([1, 1, 1]);
   });
 
+  test('question by question: where one person gave up and another tripped is counted and shown', async ({ page, context }) => {
+    const id = await publishForm(org, {
+      name: 'Callback',
+      code: 'CALLBACK',
+      fields: [
+        { id: 'a', type: 'TEXT', name: 'name', label: 'Your name', required: true },
+        { id: 'b', type: 'EMAIL', name: 'email', label: 'Email', required: true },
+        { id: 'c', type: 'TEXTAREA', name: 'about', label: 'What about' },
+        // Filled in by the form itself: never somebody's answer.
+        { id: 'd', type: 'HIDDEN', name: 'source', defaultValue: 'web' },
+      ],
+    });
+    const report = () => call<{ starts: number; submissions: number; fields: { name: string; answered: number; mistakes: number; leftAt: number }[] }>(200, `/forms/${id}/field-stats`, { token: org.token });
+
+    // Someone only looks: opened, never started, nothing counted against any question.
+    const looker = await context.newPage();
+    await looker.goto(formUrl(org, 'CALLBACK'));
+    await expect(looker.getByLabel(label('Your name'))).toBeVisible();
+    await looker.close();
+
+    // Someone gives their name, starts on the email, and leaves.
+    const quitter = await context.newPage();
+    await quitter.goto(formUrl(org, 'CALLBACK'));
+    await quitter.getByLabel(label('Your name')).fill('Gone Soon');
+    await quitter.getByLabel(label('Email')).pressSequentially('gone@');
+    await quitter.close({ runBeforeUnload: true });
+    await expect.poll(async () => (await report()).fields.find((f) => f.name === 'email')?.leftAt).toBe(1);
+
+    // Someone trips on the email, puts it right, and submits.
+    const finisher = await context.newPage();
+    await finisher.goto(formUrl(org, 'CALLBACK'));
+    await finisher.getByLabel(label('Your name')).fill('Asha Rao');
+    await finisher.getByLabel(label('Email')).fill('not-an-address');
+    await finisher.getByRole('button', { name: 'Submit' }).click();
+    await expect(finisher.getByRole('alert').first()).toBeVisible();
+    await finisher.getByLabel(label('Email')).fill('asha@example.com');
+    await finisher.getByRole('button', { name: 'Submit' }).click();
+    await expect(finisher.getByText(/Thank you|submitted|received/i).first()).toBeVisible();
+
+    await expect.poll(async () => (await report()).submissions).toBe(1);
+    const counted = await report();
+    // Two people started; the looker did not.
+    expect(counted.starts).toBe(2);
+    expect(counted.fields).toEqual([
+      { name: 'name', label: 'Your name', answered: 2, mistakes: 0, leftAt: 0 },
+      { name: 'email', label: 'Email', answered: 2, mistakes: 1, leftAt: 1 },
+      { name: 'about', label: 'What about', answered: 0, mistakes: 0, leftAt: 0 },
+    ]);
+    // Everyone who left is accounted for: started = submitted + left somewhere.
+    expect(counted.submissions + counted.fields.reduce((n, f) => n + f.leftAt, 0)).toBe(counted.starts);
+
+    await signIn(page, org.email);
+    await page.goto(`/forms/${id}/submissions`);
+    const table = page.getByRole('table', { name: 'Question by question' });
+    await expect(table.getByRole('row', { name: /Email/ })).toContainText('2 (100%)');
+    await expect(page.getByText('Of 1 person who started and left, they stopped at "Email".')).toBeVisible();
+  });
+
   test('embedded in another page, the form tells that page its height and when it was submitted', async ({ page }) => {
     // Someone else's website (a different origin from the form's), with our form in a frame.
     const html = `<h1>Host page</h1><script>window.heard = []; window.addEventListener('message', (e) => window.heard.push(e.data));</script>

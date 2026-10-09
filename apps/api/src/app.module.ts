@@ -7,7 +7,7 @@ import { DNS_TXT, SiteService, systemTxtResolver } from './site/site.service';
 import { SiteController, SitePublicController } from './site/site.controller';
 import { PlansController } from './plans/plans.controller';
 import { PlansService } from './plans/plans.service';
-import { FormStat, FormStatSchema, UsageMonth, UsageMonthSchema } from './plans/usage.schema';
+import { FormStat, FormStatSchema, UsageMonth, UsageMonthSchema, FormFieldStat, FormFieldStatSchema } from './plans/usage.schema';
 import { Module, type DynamicModule } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_GUARD, DiscoveryModule } from '@nestjs/core';
@@ -154,6 +154,7 @@ export class AppModule {
           { name: GatewayCall.name, schema: GatewayCallSchema },
           { name: UsageMonth.name, schema: UsageMonthSchema },
           { name: FormStat.name, schema: FormStatSchema },
+          { name: FormFieldStat.name, schema: FormFieldStatSchema },
           { name: FormDraft.name, schema: FormDraftSchema },
           { name: SsoState.name, schema: SsoStateSchema },
           { name: Job.name, schema: JobSchema },

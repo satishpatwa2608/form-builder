@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { countedFields } from './counted-fields';
 import { resolveSharedWorkflow, usedStyleIds, validateFormDefinition, type FormDefinition, type FormStyle, fragmentUse, fragmentUseProblems, syncFragments } from '@fb/engine';
 import type { Model } from 'mongoose';
 import { Grant, type GrantDocument } from '../access/access.schemas';
@@ -562,6 +563,13 @@ export class FormsService implements OnModuleInit {
   /** The code of a form the caller may view (for its analytics). */
   async codeFor(auth: AuthContext, id: string) {
     return (await this.mustGet(auth, id, 'form.view')).code;
+  }
+
+  /** The questions of a form's live version, in order, for its per-field counts. Unpublished: none. */
+  async liveFieldsFor(auth: AuthContext, id: string) {
+    const code = await this.codeFor(auth, id);
+    const live = await this.definitions.findPublished(auth.orgId, code);
+    return { code, fields: live ? countedFields(live) : [] };
   }
 
   /** For folder deletion: a folder with forms in it can't go. */
