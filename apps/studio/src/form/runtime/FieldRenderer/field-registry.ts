@@ -9,6 +9,7 @@ import { CheckboxField } from '../fields/CheckboxField';
 import { ButtonField, ContentField, HiddenField, ImageField } from '../fields/SimpleFields';
 import { CheckboxGroupField, ConsentField, StepperField, SwitchField } from '../fields/ChoiceFields';
 import { SignatureField } from '../fields/SignatureField';
+import { CustomField } from '../fields/CustomField';
 import { RepeatField } from '../fields/RepeatField';
 import { MultiSelectField } from '../fields/MultiSelectField';
 import { FileField } from '../fields/FileField';
@@ -42,6 +43,7 @@ const registry: Partial<Record<FieldType, FieldComponent>> = {
   STEPPER: StepperField,
   CONSENT: ConsentField,
   SIGNATURE: SignatureField,
+  CUSTOM: CustomField,
   IMAGE: ImageField,
   COLUMNS: ColumnsField,
   SECTION: SectionField,

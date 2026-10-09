@@ -1,4 +1,4 @@
-import { createExtension, type CheckResult } from '@fb/sdk';
+import { createExtension, fieldPage, type CheckResult } from '@fb/sdk';
 
 /**
  * Your organisation's own code for Form Builder.
@@ -59,6 +59,39 @@ ext.check({ key: 'gstin', label: 'GST number is genuine', description: 'Checks t
   if (!wellFormed || gstinCheckDigit(gstin.slice(0, 14)) !== gstin[14]) return { errors: { gstin: 'This is not a valid GST number. Please check it against your certificate.' } };
   return undefined;
 });
+
+// ── A field of your own ────────────────────────────────────────────────────
+// Designers add it from the palette under "Your extension". The page runs in
+// a locked frame on the form: it can draw and react, and tell the form its
+// answer as text with fb.setValue. It cannot load anything from the network,
+// so everything it needs is in the page itself.
+ext.field(
+  { key: 'stars', label: 'Star rating', description: 'One to five stars; the answer is the number', height: 48 },
+  fieldPage({
+    style: `
+      .stars { display: flex; gap: 4px; }
+      .stars button { font-size: 26px; line-height: 1; padding: 4px; border: 0; background: none; color: #c4c4c4; cursor: pointer; }
+      .stars button[aria-pressed="true"] { color: #e0a100; }
+      .stars button:disabled { cursor: default; opacity: 0.6; }`,
+    body: '<div class="stars" role="group" aria-label="Stars"></div>',
+    script: `
+      var box = document.querySelector('.stars'), current = 0;
+      var draw = function () {
+        Array.prototype.forEach.call(box.children, function (b, i) { b.setAttribute('aria-pressed', String(i < current)); });
+      };
+      for (var n = 1; n <= 5; n++) (function (n) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = '\\u2605';
+        b.setAttribute('aria-label', n + (n === 1 ? ' star' : ' stars'));
+        b.onclick = function () { current = current === n ? 0 : n; draw(); fb.setValue(current ? String(current) : ''); };
+        box.appendChild(b);
+      })(n);
+      var lock = function (readOnly) { Array.prototype.forEach.call(box.children, function (b) { b.disabled = readOnly; }); };
+      fb.onInit(function (state) { current = Number(state.value) || 0; draw(); lock(state.readOnly); });
+      fb.onReadOnly(lock);`,
+  }),
+);
 
 // The secret comes from FB_EXTENSION_SECRET, the port from PORT (default 8080).
 if (require.main === module) {

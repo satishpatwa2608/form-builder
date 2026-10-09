@@ -19,6 +19,11 @@ const BOOLEAN_TYPES: ReadonlySet<FieldType> = new Set(['CHECKBOX', 'SWITCH', 'CO
 const LIST_TYPES: ReadonlySet<FieldType> = new Set(['MULTI_SELECT', 'CHECKBOX_GROUP']);
 const NUMBER_TYPES: ReadonlySet<FieldType> = new Set(['NUMBER', 'STEPPER']);
 
+/** How a form names a field its organisation's extension draws. */
+export const CUSTOM_FIELD_KEY = /^x-[a-z0-9]{8}-[a-z0-9-]{1,40}$/;
+/** The longest answer a custom field may give. */
+export const MAX_CUSTOM_LENGTH = 10_000;
+
 /** Stored as true/false. */
 export const isBooleanField = (field: Pick<FormField, 'type'>): boolean => BOOLEAN_TYPES.has(field.type);
 /** Stored as a list of option values. */

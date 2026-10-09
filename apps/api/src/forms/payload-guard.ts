@@ -1,5 +1,5 @@
 /* Ported from Sangam form-platform security/payload-guard.ts (unchanged rules). */
-import { answerFields, formShape, isRepeat, isSignature, MAX_ROWS, type FormDefinition, type FormField } from '@fb/engine';
+import { answerFields, formShape, isRepeat, isSignature, MAX_CUSTOM_LENGTH, MAX_ROWS, type FormDefinition, type FormField } from '@fb/engine';
 import { LIMITS } from './limits';
 
 /**
@@ -49,6 +49,8 @@ function checkValue(field: FormField, value: unknown): string | null {
     case 'SWITCH':
     case 'CONSENT':
       return typeof value === 'boolean' ? null : 'Must be true or false';
+    case 'CUSTOM':
+      return typeof value === 'string' && value.length <= MAX_CUSTOM_LENGTH ? null : 'Must be text';
     case 'SIGNATURE':
       // A PNG data URL and nothing else: it is later shown as an image.
       return isSignature(value) ? null : 'Must be a signature';

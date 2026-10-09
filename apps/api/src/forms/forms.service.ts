@@ -231,6 +231,12 @@ export class FormsService implements OnModuleInit {
         throw new FormProblems([{ field: 'automations', message: `Custom API step "${step.label || step.key}" isn't available: ${why}` }]);
       }
     }
+    for (const f of draft.fields) {
+      // One that names nothing yet is the validator's to report, in its own words.
+      if (f.type === 'CUSTOM' && f.props?.custom && !(await this.extensions.fieldExists(auth.orgId, String(f.props.custom)))) {
+        throw new FormProblems([{ field: 'fields', message: `"${f.label || f.name}" is a field your extension no longer offers. Choose another, or remove it.` }]);
+      }
+    }
     for (const key of draft.submitChecks ?? []) {
       if (!(await this.extensions.checkExists(auth.orgId, key))) {
         throw new FormProblems([{ field: 'submitChecks', message: 'A check this form runs before accepting a submission is no longer offered by your extension. Remove it in the form settings.' }]);

@@ -185,6 +185,8 @@ only. See [extensions.md](extensions.md) for developers.
 - **Workflow steps** it offers are picked under Workflow → Automations →
   Custom API, and what a step returns can steer the steps after it.
 - **Lists** it offers can be chosen as where a dropdown's options come from.
+- **Fields** it draws appear in the builder's palette under *Your extension*.
+  They run in a locked frame on the form and store their answer as text.
 - **Checks** it offers are ticked in a form's settings. They run before a
   submission is accepted. If a check objects, or cannot be run, the
   submission is refused and the person is asked to try again.

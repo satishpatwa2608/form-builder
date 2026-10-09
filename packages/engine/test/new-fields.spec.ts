@@ -144,3 +144,23 @@ describe('answers as text', () => {
     expect(renderTemplate('Signed? {{sign}}', { values: { sign: PNG }, record: {}, form: {} } as never, false)).toBe('Signed? Signed');
   });
 });
+
+describe("a field drawn by the organisation's own code", () => {
+  const rating = field({ type: 'CUSTOM', name: 'rating', label: 'Rate us', props: { custom: 'x-abcd1234-stars' } });
+  it('holds text of a sane size, and can be required', () => {
+    expect(isValueField(rating)).toBe(true);
+    expect(errors([rating], { rating: '4' })).toEqual({});
+    expect(errors([rating], { rating: 'x'.repeat(10_001) })).toEqual({ rating: 'This answer is too long' });
+    expect(errors([{ ...rating, required: true }], { rating: '' })).toEqual({ rating: 'Rate us is required' });
+  });
+  it('must say which of the extension\'s fields it is before the form is published', () => {
+    const problems = (props: Record<string, unknown>) => {
+      const result = validateFormDefinition({ ...base, fields: [{ ...rating, props }] }, 'publish');
+      return result.success ? [] : result.issues.map((i) => i.message);
+    };
+    expect(problems({ custom: 'x-abcd1234-stars' })).toEqual([]);
+    expect(problems({})).toEqual(['Choose which of your extension\'s fields "Rate us" is']);
+    expect(problems({ custom: 'https://evil.test/field.html' })).toEqual(['Choose which of your extension\'s fields "Rate us" is']);
+  });
+});
+

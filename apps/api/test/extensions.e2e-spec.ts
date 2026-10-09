@@ -1,6 +1,6 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { createExtension, type CheckContext, type CheckResult, type StepContext } from '@fb/sdk';
+import { createExtension, fieldPage, type CheckContext, type CheckResult, type StepContext } from '@fb/sdk';
 import { ExtensionsService } from '../src/extensions/extensions.service';
 import { PlansService } from '../src/plans/plans.service';
 import { startApp, type Harness } from './harness';
@@ -23,6 +23,7 @@ function acme(secret: string, orgId: string, seen: { steps: StepContext[]; check
       ];
       return params.city ? all.filter((b) => b.city === params.city) : all;
     })
+    .field({ key: 'stars', label: 'Star rating', description: 'One to five stars', height: 60 }, fieldPage({ body: '<div id="stars"></div>', script: 'fb.onInit(function (s) { document.getElementById("stars").textContent = s.value; })' }))
     .check({ key: 'one-claim-per-invoice', label: 'One claim per invoice' }, (ctx): CheckResult => {
       seen.checks.push(ctx);
       if (ctx.values.invoice === 'INV-1') return { errors: { invoice: 'This invoice has already been claimed' } };
@@ -155,6 +156,7 @@ describe('Extensions: an organisation\'s own code, beside the product (e2e)', ()
       steps: [{ key: 'credit-check', label: 'Check credit', description: 'Asks the credit bureau', outputs: ['score', 'verdict'] }],
       lists: [{ key: 'branches', label: 'Branches', params: ['city'] }],
       checks: [{ key: 'one-claim-per-invoice', label: 'One claim per invoice' }],
+      fields: [{ key: 'stars', label: 'Star rating', description: 'One to five stars', height: 60 }],
     });
 
     // It appears in the same pickers as what is built in.
@@ -219,6 +221,41 @@ describe('Extensions: an organisation\'s own code, beside the product (e2e)', ()
     const stored = (await h.api().get('/forms').set(h.bearer(owner)).expect(200)).body.find((f: { code: string }) => f.code === 'CLAIM');
     const list = (await h.api().get(`/forms/${stored.id}/submissions`).set(h.bearer(owner)).expect(200)).body;
     expect((list.rows ?? list.data?.rows).map((s: { payload: { invoice: string } }) => s.payload.invoice)).toEqual(['INV-2']);
+  });
+
+  it('a field drawn by the organisation\'s code: offered to designers, served locked down, stored as text', async () => {
+    expect((await h.api().get('/extensions/fields').set(h.bearer(designer)).expect(200)).body).toEqual([{ key: `x-${ref}-stars`, label: 'Acme rules: Star rating', description: 'One to five stars', height: 60 }]);
+
+    const page = await h.api().get(`/public/extensions/${orgId}/fields/x-${ref}-stars`).expect(200);
+    expect(page.headers['content-type']).toContain('text/html');
+    expect(page.text).toContain('<div id="stars"></div>');
+    // What the browser is told: its own inline code and nothing else; no origin, no network, no storage.
+    const policy = page.headers['content-security-policy'] as string;
+    expect(policy).toContain('sandbox allow-scripts;');
+    expect(policy).not.toContain('allow-same-origin');
+    expect(policy).toContain("default-src 'none'");
+    expect(policy).not.toMatch(/connect-src|https?:/);
+    expect(page.headers['x-frame-options']).toBeUndefined();
+    expect(page.headers['set-cookie']).toBeUndefined();
+    // Only a field this organisation's extension offers, and only for this organisation.
+    await h.api().get(`/public/extensions/${orgId}/fields/x-${ref}-nope`).expect(404);
+    await h.api().get(`/public/extensions/${orgId}/fields/..%2Fsecrets`).expect(404);
+    await h.api().get(`/public/extensions/00000000-0000-0000-0000-000000000000/fields/x-${ref}-stars`).expect(404);
+
+    const rating = { id: 'r', type: 'CUSTOM', name: 'rating', label: 'Rate us', required: true, props: { custom: `x-${ref}-stars` } };
+    const fields = [{ id: 'a', type: 'TEXT', name: 'customer', label: 'Customer' }, rating];
+    expect((await publish({ ...form('REVIEW', ref), fields, automations: [] })).res.status).toBe(200);
+    await submit('REVIEW', { customer: 'Ravi', rating: '4' }).expect(201);
+    expect((await submit('REVIEW', { customer: 'Ravi' }).expect(422)).body.errors).toEqual([{ field: 'rating', message: 'Rate us is required' }]);
+    // Text of a sane size and nothing else.
+    expect((await submit('REVIEW', { customer: 'Ravi', rating: { stars: 4 } }).expect(422)).body.errors[0]).toMatchObject({ field: 'rating' });
+    expect((await submit('REVIEW', { customer: 'Ravi', rating: 'x'.repeat(10_001) }).expect(422)).body.errors[0]).toMatchObject({ field: 'rating' });
+
+    // A custom field must say which one it is, and it must be one the extension offers.
+    const unnamed = (await publish({ ...form('REVIEW_A', ref), fields: [{ ...rating, props: {} }], automations: [] })).res;
+    expect(unnamed.body.errors[0].message).toBe('Choose which of your extension\'s fields "Rate us" is');
+    const gone = (await publish({ ...form('REVIEW_B', ref), fields: [{ ...rating, props: { custom: `x-${ref}-hearts` } }], automations: [] })).res;
+    expect(gone.body.errors[0].message).toBe('"Rate us" is a field your extension no longer offers. Choose another, or remove it.');
   });
 
   it('a form cannot be published with a step or a check the extension does not offer', async () => {

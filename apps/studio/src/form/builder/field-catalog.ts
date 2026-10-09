@@ -18,6 +18,7 @@ import {
   MousePointerClick,
   PanelsTopLeft,
   PenLine,
+  Puzzle,
   Rows3,
   ScrollText,
   SquarePlus,
@@ -96,7 +97,10 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
   },
 ];
 
-const ITEMS = new Map(PALETTE_GROUPS.flatMap((g) => g.items).map((i) => [i.type, i]));
+/** Offered only when the organisation's extension draws fields (see FieldPalette), so not part of the fixed groups. */
+export const CUSTOM_PALETTE_GROUP: PaletteGroup = { title: 'Your extension', items: [{ type: 'CUSTOM', label: 'Custom field', icon: Puzzle }] };
+
+const ITEMS = new Map([...PALETTE_GROUPS, CUSTOM_PALETTE_GROUP].flatMap((g) => g.items).map((i) => [i.type, i]));
 
 export const paletteItem = (type: FieldType): PaletteItem | undefined => ITEMS.get(type);
 
@@ -120,6 +124,7 @@ const DEFAULT_LABEL: Partial<Record<FieldType, string>> = {
   CHECKBOX_GROUP: 'Choose any',
   SWITCH: 'Yes / no',
   SIGNATURE: 'Signature',
+  CUSTOM: 'Custom field',
   CONSENT: 'I accept the terms',
   REPEAT: 'Items',
 };
@@ -135,9 +140,9 @@ export function uniqueFieldName(base: string, taken: Iterable<string>): string {
 }
 
 /** Palette groups with per-form availability applied (one CAPTCHA per form). */
-export function paletteFor(fields: FormField[]): PaletteGroup[] {
+export function paletteFor(fields: FormField[], withCustom = false): PaletteGroup[] {
   const hasCaptcha = fields.some((f) => f.type === 'CAPTCHA');
-  return PALETTE_GROUPS.map((g) => ({
+  return [...PALETTE_GROUPS, ...(withCustom ? [CUSTOM_PALETTE_GROUP] : [])].map((g) => ({
     ...g,
     items: g.items.map((item) =>
       item.type === 'CAPTCHA' && hasCaptcha ? { ...item, unavailable: 'This form already has a CAPTCHA' } : item,

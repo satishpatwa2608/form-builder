@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { FormDefinition, FormField, FormValues, SystemContext } from './types';
-import { fieldLabel, isBooleanField, isEmptyValue, isRepeat, isSignature, isValueField } from './field-kinds';
+import { fieldLabel, isBooleanField, isEmptyValue, isRepeat, isSignature, isValueField, MAX_CUSTOM_LENGTH } from './field-kinds';
 import { formShape, MAX_ROWS, rowKey, rowsOf } from './repeat';
 import { computeFormState } from './form-state';
 
@@ -65,6 +65,9 @@ export function buildFieldValueSchema(field: FormField): z.ZodType | null {
     }
     case 'SIGNATURE':
       return z.string().refine(isSignature, 'Sign again');
+    case 'CUSTOM':
+      // What it means is the organisation's own business (a check in its extension can judge it); here it is text of a sane size.
+      return z.string().max(MAX_CUSTOM_LENGTH, 'This answer is too long');
     case 'DATE':
     case 'DATETIME':
       return z.string().refine(isValidDate, 'Enter a valid date');

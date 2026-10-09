@@ -22,6 +22,7 @@ export interface ExtensionInfo {
   steps: ExtensionOffer[];
   lists: ExtensionOffer[];
   checks: ExtensionOffer[];
+  fields?: ExtensionOffer[];
 }
 
 /** A check a form can run before a submission is accepted, as the form stores it. */
@@ -31,10 +32,18 @@ export interface SubmitCheck {
   description?: string;
 }
 
+/** A field the organisation's own code draws, as a form names it. */
+export interface CustomFieldOffer {
+  key: string;
+  label: string;
+  description?: string;
+  height: number;
+}
+
 /** Without the API (tests, local storage only) there are no extensions unless a test seeds them. */
-let local: { extensions: ExtensionInfo[]; checks: SubmitCheck[] } = { extensions: [], checks: [] };
-export const seedLocalExtensions = (extensions: ExtensionInfo[], checks: SubmitCheck[] = []) => {
-  local = { extensions, checks };
+let local: { extensions: ExtensionInfo[]; checks: SubmitCheck[]; fields: CustomFieldOffer[] } = { extensions: [], checks: [], fields: [] };
+export const seedLocalExtensions = (extensions: ExtensionInfo[], checks: SubmitCheck[] = [], fields: CustomFieldOffer[] = []) => {
+  local = { extensions, checks, fields };
 };
 
 const KEY = ['form-platform', 'extensions'] as const;
@@ -58,6 +67,16 @@ export function useSubmitChecks() {
   return useQuery({
     queryKey: [...KEY, 'checks'],
     queryFn: async () => (USE_API ? unwrap<SubmitCheck[]>(await adminApi.get('/extensions/checks')) : local.checks),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** For designers: the fields the organisation's own code draws. */
+export function useCustomFields() {
+  return useQuery({
+    queryKey: [...KEY, 'fields'],
+    queryFn: async () => (USE_API ? unwrap<CustomFieldOffer[]>(await adminApi.get('/extensions/fields')) : local.fields),
     staleTime: 60_000,
     retry: false,
   });

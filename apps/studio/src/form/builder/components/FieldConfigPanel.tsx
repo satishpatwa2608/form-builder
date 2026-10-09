@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ui/tabs';
 import { MultiSelect } from '@ui/multiselect';
 import type { CaptchaConfig, FieldType, FormDefinition, FormField, SystemFieldSource, UserPrefillSource, ValidationConfig } from '../../types';
 import { formShape, isRepeat, isRowField, MAX_ROWS, columnWeights, isBooleanField, isContainerField, isListField, isNumberField, isOptionField, isSectionGroup, isValueField, paramReferences, safeImageUrl } from '../../engine';
 import { COLUMN_PRESETS, DEFAULT_CAPTCHA_CONFIG, paletteItem } from '../field-catalog';
+import { useCustomFields } from '../../adapters/extensions';
 import { useStyles } from '../../adapters/styles/style-master';
 import { ConditionEditor, defaultCondition } from './ConditionEditor';
 import { DataSourceEditor } from './DataSourceEditor';
@@ -216,6 +218,31 @@ function SectionSettings({ field, onChange }: Pick<PanelProps, 'field' | 'onChan
 }
 
 /** A repeating section: its title, how many rows, how rows are laid out and which numbers are totalled. */
+/** Which of the fields the organisation's extension draws this one is. With only one on offer it is chosen already. */
+function CustomFieldSetting({ field, onChange }: Pick<PanelProps, 'field' | 'onChange'>) {
+  const { data: offered = [], isSuccess } = useCustomFields();
+  const chosen = typeof field.props?.custom === 'string' ? field.props.custom : '';
+  const choose = (key: string) => {
+    const offer = offered.find((o) => o.key === key);
+    onChange({ props: { ...field.props, custom: key, ...(offer ? { height: offer.height } : {}) } });
+  };
+  useEffect(() => {
+    if (!chosen && offered.length === 1) choose(offered[0].key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chosen, offered]);
+  const gone = isSuccess && !!chosen && !offered.some((o) => o.key === chosen);
+  return (
+    <SelectSetting
+      label="Which field"
+      value={chosen || undefined}
+      options={[...offered.map((o) => ({ label: o.label, value: o.key })), ...(gone ? [{ label: 'No longer offered', value: chosen }] : [])]}
+      placeholder={offered.length ? 'Choose a field' : 'Your extension offers no fields'}
+      onChange={choose}
+      hint={gone ? 'Your extension no longer offers this field. Choose another, or remove it.' : (offered.find((o) => o.key === chosen)?.description ?? 'Drawn by your own code. Its answer is stored as text.')}
+    />
+  );
+}
+
 function RepeatSettings({ field, form, onChange }: Pick<PanelProps, 'field' | 'form' | 'onChange'>) {
   const props = field.props ?? {};
   const v = field.validation ?? {};
@@ -317,6 +344,7 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns }: Panel
   const source: SystemFieldSource | 'FIXED' = field.systemSource ?? 'FIXED';
   return (
     <div className="fb-settings">
+      {field.type === 'CUSTOM' && <CustomFieldSetting field={field} onChange={onChange} />}
       {!hidden && (
         <TextSetting
           label={field.type === 'BUTTON' ? 'Button text' : field.type === 'HTML' ? 'Heading' : field.type === 'IMAGE' ? 'Caption' : field.type === 'CONSENT' ? 'Tick-box text' : 'Label'}

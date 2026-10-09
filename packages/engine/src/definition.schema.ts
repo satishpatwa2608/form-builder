@@ -5,7 +5,7 @@ import { checkExpression, expressionFields, MAX_EXPRESSION_LENGTH } from './expr
 import { isExpressionCondition } from './form-state';
 import { isTimeZone, safeLinkUrl } from './form-events';
 import { formShape, MAX_ROWS, ROW_FIELD_TYPES } from './repeat';
-import { isContainerField, isNumberField, isOptionField, isRepeat, isSectionGroup, isValueField } from './field-kinds';
+import { CUSTOM_FIELD_KEY, isContainerField, isNumberField, isOptionField, isRepeat, isSectionGroup, isValueField } from './field-kinds';
 import { columnCount } from './layout';
 import { isHexColor, safeImageUrl, usedStyleIds } from './style-css';
 import { fieldParents, paramReferences } from './resolve-params';
@@ -131,6 +131,7 @@ const fieldSchema = z.object({
     'CHECKBOX_GROUP',
     'STEPPER',
     'SIGNATURE',
+    'CUSTOM',
     'CONSENT',
     'IMAGE',
     'COLUMNS',
@@ -632,6 +633,9 @@ function checkFields(fields: FormField[], ctx: z.RefinementCtx) {
       if (parent && isContainerField(parent)) layoutEdges.set(f.id, [parent.id]);
     }
     // Like a button with no link, a picture with no address yet is allowed: it shows nothing.
+    if (f.type === 'CUSTOM' && !(typeof f.props?.custom === 'string' && CUSTOM_FIELD_KEY.test(f.props.custom))) {
+      issue(i, 'props', `Choose which of your extension's fields "${f.label || f.name}" is`);
+    }
     if (f.type === 'IMAGE' && f.props?.src) {
       if (!safeImageUrl(f.props.src)) issue(i, 'props', 'The picture needs an https:// or site-relative (/…) address');
       else if (typeof f.props?.alt !== 'string' || !f.props.alt.trim()) issue(i, 'props', 'Describe the picture for people who cannot see it');

@@ -29,6 +29,11 @@ export type FieldType =
   | 'SIGNATURE'
   /** Terms to read (`props.text`) with a box to accept them; stored as a boolean. */
   | 'CONSENT'
+  /**
+   * A field drawn by the organisation's own code, in a sandboxed frame
+   * (`props.custom`: x-<ref>-<field>, from its extension). Stored as text.
+   */
+  | 'CUSTOM'
   /** A picture (`props.src`, `props.alt`). Never carries a value. */
   | 'IMAGE'
   /** Layout containers: hold other fields, never carry a value. */

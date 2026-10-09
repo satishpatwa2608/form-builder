@@ -23,6 +23,9 @@ export class ExtensionRow {
   @Prop({ type: MongooseSchema.Types.Mixed, default: [] }) steps: unknown[];
   @Prop({ type: MongooseSchema.Types.Mixed, default: [] }) lists: unknown[];
   @Prop({ type: MongooseSchema.Types.Mixed, default: [] }) checks: unknown[];
+  @Prop({ type: MongooseSchema.Types.Mixed, default: [] }) fields: unknown[];
+  /** The page of each field it draws, by key: copied when read, so a form never waits on the container. */
+  @Prop({ type: MongooseSchema.Types.Mixed, default: {} }) pages: Record<string, string>;
   /** NEW until it has answered once. */
   @Prop({ type: String, default: 'NEW' }) status: 'NEW' | 'OK' | 'UNREACHABLE';
   @Prop({ type: Date, default: null }) lastSyncedAt: Date | null;

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { CONTRACT, MAX_BODY, sign, SIGNATURE_HEADER, type CheckInfo, type ListInfo, type StepInfo } from '@fb/sdk';
+import { CONTRACT, MAX_BODY, MAX_FIELD_PAGE, sign, SIGNATURE_HEADER, type CheckInfo, type FieldInfo, type ListInfo, type StepInfo } from '@fb/sdk';
 import type { FormDefinition, FormValues } from '@fb/engine';
 import type { Model } from 'mongoose';
 import { actorOf, AuditService } from '../audit/audit.service';
@@ -40,6 +40,7 @@ export interface ExtensionView {
   steps: StepInfo[];
   lists: ListInfo[];
   checks: CheckInfo[];
+  fields: FieldInfo[];
 }
 
 const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -51,7 +52,7 @@ const names = (v: unknown, max: number, what: string): string[] => {
 };
 
 /** What an extension says it offers, kept only if every part is well formed: a designer will pick from it. */
-function readManifest(raw: unknown): { name: string; steps: StepInfo[]; lists: ListInfo[]; checks: CheckInfo[] } {
+function readManifest(raw: unknown): { name: string; steps: StepInfo[]; lists: ListInfo[]; checks: CheckInfo[]; fields: FieldInfo[] } {
   const m = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   if (m.contract !== CONTRACT) throw new ExtensionFailure(`It speaks contract ${String(m.contract)}; this server supports ${CONTRACT}. Update the SDK.`);
   const part = <T extends { key: string; label: string; description?: string }>(kind: string, value: unknown, more: (item: Record<string, unknown>, key: string) => Partial<T>): T[] => {
@@ -81,6 +82,12 @@ function readManifest(raw: unknown): { name: string; steps: StepInfo[]; lists: L
       return params.length ? { params } : {};
     }),
     checks: part<CheckInfo>('check', m.checks, () => ({})),
+    // An extension written before fields existed simply offers none.
+    fields: part<FieldInfo>('field', m.fields, (i, key) => {
+      if (i.height === undefined) return {};
+      if (!(typeof i.height === 'number' && Number.isInteger(i.height) && i.height >= 40 && i.height <= 800)) throw new ExtensionFailure(`Height of field "${key}" must be 40 to 800`);
+      return { height: i.height };
+    }),
   };
 }
 
@@ -112,6 +119,7 @@ export class ExtensionsService {
       steps: row.steps as StepInfo[],
       lists: row.lists as ListInfo[],
       checks: row.checks as CheckInfo[],
+      fields: (row.fields ?? []) as FieldInfo[],
     };
   }
 
@@ -218,7 +226,15 @@ export class ExtensionsService {
   private async sync(row: ExtensionRow): Promise<ExtensionView> {
     try {
       const manifest = readManifest(await this.call(row, 'GET', '/fb/manifest', undefined, TIMEOUT.manifest));
-      const set = { ...manifest, status: 'OK' as const, lastSyncedAt: new Date(), lastError: '' };
+      // The page of every field it draws is copied now: forms are served from the copy, never from the container.
+      const pages: Record<string, string> = {};
+      for (const field of manifest.fields) {
+        const html = (await this.call(row, 'GET', `/fb/fields/${field.key}`, undefined, TIMEOUT.manifest)).html;
+        if (typeof html !== 'string' || !html.trim()) throw new ExtensionFailure(`The field "${field.key}" has no page`);
+        if (Buffer.byteLength(html) > MAX_FIELD_PAGE) throw new ExtensionFailure(`The page of field "${field.key}" is larger than ${MAX_FIELD_PAGE / 1000} KB`);
+        pages[field.key] = html;
+      }
+      const set = { ...manifest, pages, status: 'OK' as const, lastSyncedAt: new Date(), lastError: '' };
       await this.rows.updateOne({ id: row.id }, { $set: set });
       return ExtensionsService.view({ ...row, ...set });
     } catch (e) {
@@ -258,7 +274,7 @@ export class ExtensionsService {
     );
   }
 
-  private async offered(orgId: string, key: string, kind: 'steps' | 'checks') {
+  private async offered(orgId: string, key: string, kind: 'steps' | 'checks' | 'fields') {
     const m = EXT_STEP_KEY.exec(key);
     const row = m ? await this.byRef(orgId, m[1]!) : null;
     const item = (row?.[kind] as { key: string; label: string }[] | undefined)?.find((x) => x.key === m![2]);
@@ -297,6 +313,24 @@ export class ExtensionsService {
     const reply = await this.call(row, 'POST', `/fb/lists/${list.key}`, { orgId, params: passed }, TIMEOUT.list);
     const rows = Array.isArray(reply.rows) ? reply.rows : [];
     return rows.slice(0, 1000).filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && !Array.isArray(r));
+  }
+
+  // ── Fields drawn by the organisation's own code ──────────────────────────
+
+  async fields(orgId: string): Promise<{ key: string; label: string; description?: string; height: number }[]> {
+    return (await this.live(orgId)).flatMap((row) =>
+      ((row.fields ?? []) as FieldInfo[]).map((f) => ({ key: `x-${row.ref}-${f.key}`, label: `${row.name || 'Extension'}: ${f.label}`, ...(f.description ? { description: f.description } : {}), height: f.height ?? 120 })),
+    );
+  }
+
+  async fieldExists(orgId: string, key: string): Promise<boolean> {
+    return !!(await this.offered(orgId, key, 'fields'));
+  }
+
+  /** The page of a custom field as a form names it (x-<ref>-<field>), or null. */
+  async fieldPage(orgId: string, key: string): Promise<string | null> {
+    const found = await this.offered(orgId, key, 'fields');
+    return found?.row.pages?.[found.item.key] ?? null;
   }
 
   // ── Checks before a submission is accepted ───────────────────────────────

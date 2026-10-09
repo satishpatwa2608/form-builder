@@ -1,3 +1,4 @@
+import { useCustomFields } from '../../adapters/extensions';
 import { useDraggable } from '@dnd-kit/core';
 import type { FieldType, FormField } from '../../types';
 import { paletteFor, type PaletteItem } from '../field-catalog';
@@ -36,9 +37,11 @@ function PaletteButton({ item, onAdd }: PaletteButtonProps) {
 
 /** Drag a field type onto the canvas, or click it to append. */
 export function FieldPalette({ fields, onAdd }: { fields: FormField[]; onAdd: (type: FieldType) => void }) {
+  // Fields the organisation's own code draws appear only when its extension offers some.
+  const { data: custom = [] } = useCustomFields();
   return (
     <div className="fb-panel" aria-label="Field palette">
-      {paletteFor(fields).map((group) => (
+      {paletteFor(fields, custom.length > 0).map((group) => (
         <div key={group.title}>
           <div className="fb-panel__title">{group.title}</div>
           {group.items.map((item) => (

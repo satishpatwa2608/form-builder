@@ -87,6 +87,7 @@ export default function ExtensionsPage() {
           )}
           <Offers title="Workflow steps" where="In a form's Workflow, under Automations: add a step and choose Custom API." items={ext.steps} />
           <Offers title="Lists for dropdowns" where="In a dropdown's settings, as the place its options come from." items={ext.lists} />
+          <Offers title="Fields of your own" where="In the builder's palette, under Your extension." items={ext.fields ?? []} />
           <Offers title="Checks before a submission is accepted" where="In a form's settings, under Checks from your extension." items={ext.checks} />
           {ext.status === 'NEW' && <p className="fb-muted">It has been registered but has not answered yet. Choose Read again once it is running.</p>}
         </section>

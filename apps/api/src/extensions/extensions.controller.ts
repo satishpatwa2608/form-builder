@@ -31,6 +31,12 @@ export class ExtensionsController {
     return this.extensions.sources(auth.orgId);
   }
 
+  /** Fields the organisation's own code draws, for a designer to place on a form. */
+  @Get('fields')
+  fields(@Auth() auth: AuthContext) {
+    return this.extensions.fields(auth.orgId);
+  }
+
   /** Checks a designer can switch on for a form. */
   @Get('checks')
   checks(@Auth() auth: AuthContext) {

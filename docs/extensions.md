@@ -19,8 +19,7 @@ inside Form Builder's servers.
 | A **workflow step** | Workflow → Automations → add a step → Custom API | In the background, after a submission or a status change |
 | A **list** | A dropdown's settings → Options come from → An API | When someone opens the dropdown |
 | A **check** | Form settings → Checks from your extension | Before a submission is accepted, while the person waits |
-
-Custom field types in the browser are not part of extensions.
+| A **field** | The palette → Your extension → Custom field | In the person's browser, in a locked frame |
 
 ## Writing one
 
@@ -83,6 +82,47 @@ ext.listen();   // PORT (default 8080), FB_EXTENSION_SECRET
   let through unchecked.
 - A check must not change anything: it may run for a submission that is then
   refused for another reason. Do work in a step.
+
+### Fields
+
+A field of your own is a small web page that you supply and the form shows in
+a frame. Use `fieldPage` to build it:
+
+```ts
+import { fieldPage } from '@fb/sdk';
+
+ext.field(
+  { key: 'stars', label: 'Star rating', height: 48 },
+  fieldPage({
+    body: '<div class="stars"></div>',
+    style: '.stars button { font-size: 26px }',
+    script: `
+      fb.onInit(function (state) { /* state.value, state.readOnly, state.label, state.required */ });
+      // ...draw, and when the person answers:
+      fb.setValue('4');`,
+  }),
+);
+```
+
+- **The answer is text**, up to 10,000 characters. For something richer, store
+  JSON as text. An empty string means "not answered", which is what a
+  required field checks.
+- `fb.onInit` gives you the value to show (the saved answer when someone comes
+  back to a draft). `fb.onReadOnly` tells you when a rule switches the field
+  off or on. The frame's height follows your content.
+- **The frame is locked.** Your page cannot read the form around it, cannot
+  use cookies or storage, and **cannot load or send anything over the
+  network**: no scripts, styles, images or fonts from elsewhere, and no calls
+  to any server. Everything it needs must be inside the page (images and
+  fonts as `data:`). A page may be up to 200 KB.
+- To look something up for a field, use a list (for options) or a step or
+  check (for anything else); those run on the server.
+- To judge what was entered, add a check. The form itself only knows the
+  answer is text.
+- Form Builder keeps a copy of your page each time it reads what you offer,
+  and serves forms from the copy. A form does not stop working if your
+  extension is down, and a new version of the page reaches forms when the
+  extension is next read (each deployment does this).
 
 ### Rules for keys
 
@@ -159,11 +199,21 @@ For anyone writing an extension without the SDK, in any language.
 | Request | Body | Reply |
 |---|---|---|
 | `GET /fb/health` (unsigned) | – | `{ "ok": true }` |
-| `GET /fb/manifest` | – | `{ contract: 1, name, steps: [{ key, label, description?, outputs? }], lists: [{ key, label, description?, params? }], checks: [{ key, label, description? }] }` |
+| `GET /fb/manifest` | – | `{ contract: 1, name, steps: [{ key, label, description?, outputs? }], lists: [{ key, label, description?, params? }], checks: [{ key, label, description? }], fields: [{ key, label, description?, height? }] }` |
 | `POST /fb/steps/<key>` | `{ orgId, trigger, form, record, values, work, steps, stepKey }` | `{ summary?, data? }` |
 | `POST /fb/lists/<key>` | `{ orgId, params }` | `{ rows: [{ value, label, ... }] }` |
 | `POST /fb/checks/<key>` | `{ orgId, form, values }` | `{ errors: { field: message }, message }` |
+| `GET /fb/fields/<key>` | – | `{ html }`: a complete page, at most 200 KB |
 
 Signature header: `X-FB-Signature: t=<unix seconds>,v1=<hex>` where `v1` is
 HMAC-SHA256, keyed with the secret, of `<t>.<METHOD>.<path>.<body>`. A failure
 is any status of 400 or above with `{ "error": "message" }`.
+
+A field's page talks to the form with `postMessage`. Every message is an
+object with `fb: 1`. The page sends `{ type: 'ready' }` once, then
+`{ type: 'change', value: '<text>' }` and `{ type: 'height', height: <px> }`;
+the form sends `{ type: 'init', value, readOnly, required, label }` in answer
+to `ready`, and `{ type: 'readOnly', readOnly }` afterwards. The page is
+served with `Content-Security-Policy: sandbox allow-scripts; default-src
+'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;
+font-src data:`.

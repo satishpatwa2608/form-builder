@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
-import { createExtension, sign, SIGNATURE_HEADER, verify } from '../src';
+import { createExtension, fieldPage, sign, SIGNATURE_HEADER, verify } from '../src';
 
 const SECRET = 'a-secret-issued-by-form-builder';
 const build = (options: { orgId?: string } = {}) =>
@@ -11,6 +11,7 @@ const build = (options: { orgId?: string } = {}) =>
       throw new Error('The credit bureau is closed');
     })
     .list({ key: 'branches', label: 'Branches', params: ['city'] }, ({ params }) => [{ value: 'B1', label: `Main (${String(params.city ?? 'any')})`, phone: '100' }])
+    .field({ key: 'stars', label: 'Star rating', height: 60 }, fieldPage({ body: '<div id="s"></div>', script: 'fb.onInit(function(){ fb.setValue("5") })' }))
     .check({ key: 'no-duplicates', label: 'No duplicate invoices' }, ({ values }) => (values.invoice === 'INV-1' ? { errors: { invoice: 'Already claimed' } } : undefined));
 
 const post = (ext: ReturnType<typeof build>, path: string, body: unknown, secret = SECRET, at = Date.now()) => {
@@ -53,6 +54,7 @@ describe('An extension', () => {
         steps: [{ key: 'credit-check', label: 'Check credit', outputs: ['score'] }, { key: 'note', label: 'Note' }, { key: 'broken', label: 'Broken' }],
         lists: [{ key: 'branches', label: 'Branches', params: ['city'] }],
         checks: [{ key: 'no-duplicates', label: 'No duplicate invoices' }],
+        fields: [{ key: 'stars', label: 'Star rating', height: 60 }],
       },
     });
   });
@@ -102,6 +104,29 @@ describe('An extension', () => {
     expect(() => ext.list({ key: 'l', label: 'L', params: ['a-b'] }, () => [])).toThrow(/plain name/);
     expect(() => createExtension({ name: '' })).toThrow(/name/);
     expect(() => createExtension({ name: 'No secret', secret: '' }).listen(0)).toThrow(/FB_EXTENSION_SECRET/);
+  });
+
+  it('serves the page of a field it draws, signed like everything else', async () => {
+    const ext = build();
+    const get = (path: string, secret = SECRET) => ext.handle({ method: 'GET', path, headers: { [SIGNATURE_HEADER]: sign(secret, { method: 'GET', path, body: '' }) }, body: '' });
+    const res = await get('/fb/fields/stars');
+    expect(res.status).toBe(200);
+    const html = (res.body as { html: string }).html;
+    expect(html).toContain('<div id="s"></div>');
+    // The page carries the bridge to the form, and the customer's own script after it.
+    expect(html.indexOf('window.fb =')).toBeGreaterThan(0);
+    expect(html.indexOf('fb.setValue("5")')).toBeGreaterThan(html.indexOf('window.fb ='));
+    expect((await get('/fb/fields/nope')).status).toBe(404);
+    expect((await get('/fb/fields/stars', 'guess')).status).toBe(401);
+  });
+
+  it('checks a field when it is declared', () => {
+    const ext = createExtension({ name: 'Acme', secret: SECRET });
+    expect(() => ext.field({ key: 'a', label: 'A', height: 10 }, '<p>x</p>')).toThrow(/40 to 800/);
+    expect(() => ext.field({ key: 'a', label: 'A' }, ' ')).toThrow(/needs its page/);
+    expect(() => ext.field({ key: 'a', label: 'A' }, 'x'.repeat(200_001))).toThrow(/larger than 200 KB/);
+    ext.field({ key: 'a', label: 'A' }, '<p>x</p>');
+    expect(() => ext.field({ key: 'a', label: 'Again' }, '<p>x</p>')).toThrow(/declared twice/);
   });
 
   it('serves over HTTP', async () => {

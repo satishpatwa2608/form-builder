@@ -144,6 +144,61 @@ export interface CheckContext {
  */
 export type CheckResult = void | { errors?: Record<string, string>; message?: string };
 
+// ── Fields drawn by your own code ──────────────────────────────────────────
+
+export interface FieldInfo {
+  key: string;
+  /** What a designer sees when choosing which custom field this is. */
+  label: string;
+  description?: string;
+  /** How tall the field is before it has measured itself, in pixels (default 120). */
+  height?: number;
+}
+
+/** The largest page a field may be, in bytes. It must carry its own script and styles. */
+export const MAX_FIELD_PAGE = 200_000;
+
+/**
+ * A complete page for a custom field, from the markup, styles and script you
+ * give. It runs in a locked frame on the form: it cannot read the rest of the
+ * page, cannot load anything from the network and cannot reach anyone's
+ * session. It talks to the form through `fb`:
+ *
+ *   fb.onInit(({ value, readOnly, label, required }) => { ... })   // once, when the form is ready
+ *   fb.setValue('text')                                             // the field's answer, as text (up to 10,000 characters)
+ *   fb.onReadOnly((readOnly) => { ... })                            // a rule switched the field off or on
+ *
+ * The frame grows and shrinks with its content by itself.
+ */
+export function fieldPage(parts: { body: string; script?: string; style?: string }): string {
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html,body{margin:0;padding:0;font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;background:transparent}${parts.style ?? ''}</style>
+</head><body>${parts.body}
+<script>
+(function () {
+  var send = function (m) { m.fb = 1; parent.postMessage(m, '*'); };
+  var onInit = [], onReadOnly = [], state = null;
+  window.fb = {
+    onInit: function (cb) { if (state) cb(state); else onInit.push(cb); },
+    onReadOnly: function (cb) { onReadOnly.push(cb); },
+    setValue: function (value) { send({ type: 'change', value: String(value == null ? '' : value) }); }
+  };
+  addEventListener('message', function (e) {
+    if (e.source !== parent || !e.data || e.data.fb !== 1) return;
+    if (e.data.type === 'init') { state = e.data; onInit.splice(0).forEach(function (cb) { cb(state); }); }
+    if (e.data.type === 'readOnly') onReadOnly.forEach(function (cb) { cb(!!e.data.readOnly); });
+  });
+  var report = function () { send({ type: 'height', height: Math.ceil(document.documentElement.scrollHeight) }); };
+  if (window.ResizeObserver) new ResizeObserver(report).observe(document.body);
+  addEventListener('load', report);
+  send({ type: 'ready' });
+})();
+</script>
+${parts.script ? `<script>${parts.script}</script>` : ''}
+</body></html>`;
+}
+
 // ── The extension ──────────────────────────────────────────────────────────
 
 export interface Manifest {
@@ -152,6 +207,7 @@ export interface Manifest {
   steps: StepInfo[];
   lists: ListInfo[];
   checks: CheckInfo[];
+  fields: FieldInfo[];
 }
 
 export interface ExtensionOptions {
@@ -189,6 +245,7 @@ export class Extension {
   private readonly steps = new Map<string, { info: StepInfo; run: Handler<StepContext, StepResult> }>();
   private readonly lists = new Map<string, { info: ListInfo; run: Handler<ListContext, ListRow[]> }>();
   private readonly checks = new Map<string, { info: CheckInfo; run: Handler<CheckContext, CheckResult> }>();
+  private readonly fields = new Map<string, { info: FieldInfo; page: string }>();
 
   constructor(private readonly options: ExtensionOptions) {
     if (!options.name?.trim()) throw new Error('Give the extension a name');
@@ -217,9 +274,24 @@ export class Extension {
     return this;
   }
 
+  /**
+   * A field your own code draws on the form: `page` is a complete HTML page
+   * (use `fieldPage`). Designers add it from the palette under "Your
+   * extension". Form Builder keeps a copy of the page when it reads what you
+   * offer, so the form does not depend on this service being up.
+   */
+  field(info: FieldInfo, page: string): this {
+    describe('Field', info, this.fields);
+    if (info.height !== undefined && !(Number.isInteger(info.height) && info.height >= 40 && info.height <= 800)) throw new Error(`Field "${info.key}": height is a whole number of pixels from 40 to 800`);
+    if (typeof page !== 'string' || !page.trim()) throw new Error(`Field "${info.key}" needs its page`);
+    if (Buffer.byteLength(page) > MAX_FIELD_PAGE) throw new Error(`Field "${info.key}": the page is larger than ${MAX_FIELD_PAGE / 1000} KB`);
+    this.fields.set(info.key, { info, page });
+    return this;
+  }
+
   manifest(): Manifest {
     const infos = <T>(m: Map<string, { info: T }>) => [...m.values()].map((x) => x.info);
-    return { contract: CONTRACT, name: this.options.name.trim(), steps: infos(this.steps), lists: infos(this.lists), checks: infos(this.checks) };
+    return { contract: CONTRACT, name: this.options.name.trim(), steps: infos(this.steps), lists: infos(this.lists), checks: infos(this.checks), fields: infos(this.fields) };
   }
 
   private get secret(): string {
@@ -243,6 +315,12 @@ export class Extension {
       return { status: 401, body: { error: 'This request was not signed by Form Builder' } };
     }
     if (method === 'GET' && path === '/fb/manifest') return { status: 200, body: this.manifest() };
+
+    const page = /^\/fb\/fields\/([a-z0-9-]{1,40})$/.exec(path);
+    if (method === 'GET' && page) {
+      const field = this.fields.get(page[1]!);
+      return field ? { status: 200, body: { html: field.page } } : { status: 404, body: { error: `No field "${page[1]}"` } };
+    }
 
     const m = /^\/fb\/(steps|lists|checks)\/([a-z0-9-]{1,40})$/.exec(path);
     if (method !== 'POST' || !m) return { status: 404, body: { error: 'Not found' } };

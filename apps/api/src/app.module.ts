@@ -75,6 +75,7 @@ import { WorkflowsController } from './workflows/workflows.controller';
 import { ExtensionRow, ExtensionSchema } from './extensions/extension.schema';
 import { ExtensionsService } from './extensions/extensions.service';
 import { ExtensionsController } from './extensions/extensions.controller';
+import { ExtensionPublicController } from './extensions/extension-public.controller';
 import { JobQueue } from './jobs/job-queue.service';
 import { FormCalendarService } from './work/services/form-calendar.service';
 import { FormContextService } from './work/services/form-context.service';
@@ -175,6 +176,7 @@ export class AppModule {
         StylesController,
         WorkflowsController,
         ExtensionsController,
+        ExtensionPublicController,
         FormPublicController,
         SitePublicController,
         FormRecordController,
