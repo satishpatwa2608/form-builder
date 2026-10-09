@@ -21,6 +21,8 @@ export interface FormHandlerContext {
   steps: Readonly<Record<string, unknown>>;
   /** This step's key - its output lands at steps[key] for the steps below. */
   stepKey: string;
+  /** For a step that writes to another system: which answer fills which of its fields, where the designer chose. */
+  map?: Record<string, string>;
 }
 
 /**
@@ -38,6 +40,8 @@ export interface FormWorkflowInfo {
   description?: string;
   /** Output fields it returns in `data`, so the builder can offer {{$steps.<key>.<field>}} and conditions on them. */
   outputs?: string[];
+  /** For a step that writes to another system: the fields it fills, so the builder can show what goes where. */
+  inputs?: string[];
 }
 
 const FORM_WORKFLOW = 'form-platform:workflow';
@@ -88,7 +92,7 @@ export class FormHandlerRegistry implements OnApplicationBootstrap {
 
   get(key: string): FormHandler | undefined {
     // Connector write steps are configuration, resolved per org when they run.
-    if (ACTION_KEY.test(key)) return (ctx) => this.connectors.runAction(ctx.orgId, key, { ...ctx.values, ...((ctx.record.work as Record<string, unknown>) ?? {}) }, ctx.definition.code);
+    if (ACTION_KEY.test(key)) return (ctx) => this.connectors.runAction(ctx.orgId, key, { ...ctx.values, ...((ctx.record.work as Record<string, unknown>) ?? {}) }, ctx.definition.code, ctx.map);
     const own = this.handlers.get(key)?.run;
     // The organisation's own code, in its extension: found per org when the step runs.
     if (!own && EXT_STEP_KEY.test(key)) {

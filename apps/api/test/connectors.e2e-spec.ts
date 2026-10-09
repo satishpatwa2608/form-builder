@@ -120,6 +120,41 @@ describe('Connectors: a customer database behind forms (e2e)', () => {
     await query({ formCode: 'PLANT_LOOKUP', key, params: { region: 'WEST' } }).expect(404);
   });
 
+  it('a write step fills each field from the answer whose name matches, or the one the designer chose', async () => {
+    const insert = (await h.api().get('/custom-workflows').set(h.bearer(owner)).expect(200)).body.find((a: { label: string }) => a.label === 'Plant CRM: insert Complaints');
+    // The builder is told which fields the step fills.
+    expect(insert.inputs).toEqual(['plant', 'description', 'reporter']);
+    const folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Loose names' }).expect(201)).body[0].id;
+    const definition = {
+      name: 'Issue (other names)',
+      code: 'ISSUE_OTHER_NAMES',
+      businessId: '',
+      access: 'PUBLIC',
+      submission: { method: 'POST', endpointId: 'default-submit' },
+      fields: [
+        { id: 'f1', type: 'TEXT', name: 'Plant_Code', label: 'Plant code', required: true },
+        { id: 'f2', type: 'TEXTAREA', name: 'details', label: 'Details', required: true },
+        // Differs from the connector's "reporter" only by its capital: matched without anyone choosing.
+        { id: 'f3', type: 'TEXT', name: 'Reporter', label: 'Your name', required: true },
+        { id: 'f4', type: 'TEXT', name: 'internal', label: 'Internal' },
+      ],
+      automations: [{ id: 'a1', name: 'Save', enabled: true, when: 'SUBMITTED', actions: [{ id: 's1', type: 'HANDLER', key: insert.key, map: { plant: 'Plant_Code', description: 'details' } }] }],
+    };
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition }).expect(201)).body.definition.id;
+    await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+    await h.api().post(`/public/forms/ISSUE_OTHER_NAMES/submissions?org=${orgId}`).send({ values: { Plant_Code: 'P7', details: 'Valve stuck', Reporter: 'Meera', internal: 'not for the CRM' } }).expect(201);
+    const c = await MongoClient.connect(uri);
+    let saved: Record<string, unknown> | null = null;
+    for (let i = 0; i < 40 && !saved; i++) {
+      saved = await c.db('crm').collection('complaints').findOne({ plant: 'P7' });
+      if (!saved) await new Promise((r) => setTimeout(r, 50));
+    }
+    await c.close();
+    expect(saved).toMatchObject({ plant: 'P7', description: 'Valve stuck', reporter: 'Meera' });
+    expect(saved).not.toHaveProperty('internal');
+    expect(saved).not.toHaveProperty('Plant_Code');
+  });
+
   it('a form bound to it: public reads only through the binding, options checked on submit, answers written by a step', async () => {
     const actions = (await h.api().get('/custom-workflows').set(h.bearer(owner)).expect(200)).body;
     const insert = actions.find((a: { label: string }) => a.label === 'Plant CRM: insert Complaints');

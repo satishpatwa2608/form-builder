@@ -283,7 +283,7 @@ const actionSchema = z.union([
   z.object({ ...stepMeta, type: z.literal('SET_STATUS'), status: z.string().max(40) }),
   z.object({ ...stepMeta, type: z.literal('WEBHOOK'), url: z.string().max(500) }),
   z.object({ ...stepMeta, type: z.literal('FLOW'), service: z.enum(FLOW_SERVICES), url: z.string().max(2000) }),
-  z.object({ ...stepMeta, type: z.literal('HANDLER'), key: z.string().max(60) }),
+  z.object({ ...stepMeta, type: z.literal('HANDLER'), key: z.string().max(60), map: z.record(z.string().max(100), z.string().max(100)).optional() }),
 ]);
 
 export const workflowSchema = z.object({

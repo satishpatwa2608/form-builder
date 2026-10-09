@@ -32,3 +32,4 @@ export * from './fragments';
 export * from './i18n';
 export * from './public-copy';
 export * from './flow-services';
+export * from './field-match';

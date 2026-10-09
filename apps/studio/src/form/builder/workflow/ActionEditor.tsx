@@ -1,4 +1,9 @@
-import { FLOW_SERVICE_INFO, FLOW_SERVICES, isFlowAddress } from '../../engine';
+import { FLOW_SERVICE_INFO, FLOW_SERVICES, guessSource, isFlowAddress } from '../../engine';
+import { answerFields } from './workflow-edits';
+
+/** Choices in the "what goes into each field" lists that are not an answer's name. */
+const AUTO = '__auto__';
+const EMPTY = '__empty__';
 import type { AutomationAction, FormDefinition } from '../../types';
 import type { CustomWorkflow, Person } from '../../adapters/workflow';
 import { NumberSetting, SelectSetting, Setting, TextSetting, SwitchSetting } from '../components/settings';
@@ -144,15 +149,57 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
         const chosen = customWorkflows.find((w) => w.key === action.key);
         const options = customWorkflows.map((w) => ({ label: w.label, value: w.key }));
         if (action.key && !chosen) options.push({ label: `${action.key} (not available on the server)`, value: action.key });
-        return (
+        const picker = (
           <SelectSetting
             label="Custom API"
             value={action.key || undefined}
             options={options}
             placeholder={customWorkflows.length ? 'Choose...' : 'No custom APIs on the server yet'}
             hint={chosen?.description ?? 'Custom logic written by developers for this kind of form. Ask them to add one if nothing here fits.'}
-            onChange={(key) => onChange({ ...action, key })}
+            // Another step fills other fields: the choices made for the last one do not carry over.
+            onChange={(key) => onChange({ id: action.id, if: action.if, continueOnError: action.continueOnError, label: action.label, type: 'HANDLER', key } as typeof action)}
           />
+        );
+        if (!chosen?.inputs?.length) return picker;
+        // A step that writes to another system: each of its fields, and the answer that fills it.
+        const answers = [...answerFields(form), ...(form.workflow?.workFields ?? [])];
+        const names = answers.map((f) => f.name);
+        const setSource = (target: string, source: string) => {
+          const map = { ...(action.map ?? {}) };
+          // Kept only where it differs from what would be matched anyway, so later renames keep working by themselves.
+          if (source === AUTO) delete map[target];
+          else map[target] = source === EMPTY ? '' : source;
+          onChange({ ...action, map: Object.keys(map).length ? map : undefined });
+        };
+        return (
+          <>
+            {picker}
+            <Setting label="What goes into each field" hint="Matched by name where it can be. Change any that are wrong.">
+              {() => (
+                <div className="fb-settings" style={{ gap: 6 }} role="group" aria-label="What goes into each field">
+                  {chosen.inputs!.map((target) => {
+                    const guess = guessSource(target, names);
+                    const picked = action.map?.[target];
+                    const value = picked === undefined || (picked !== '' && !names.includes(picked)) ? AUTO : picked === '' ? EMPTY : picked;
+                    const guessLabel = guess ? (answers.find((f) => f.name === guess)?.label || guess) : undefined;
+                    return (
+                      <SelectSetting
+                        key={target}
+                        label={target}
+                        value={value}
+                        options={[
+                          { label: guessLabel ? `${guessLabel} (matched by name)` : 'Nothing matches: left empty', value: AUTO },
+                          ...answers.map((f) => ({ label: f.label || f.name, value: f.name })),
+                          ...(guess ? [{ label: 'Leave empty', value: EMPTY }] : []),
+                        ]}
+                        onChange={(source) => setSource(target, source)}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </Setting>
+          </>
         );
       }
     }

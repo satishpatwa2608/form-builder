@@ -99,6 +99,8 @@ function mapWorkflow(workflow: WorkflowConfig, automations: Automation[], rename
           return { ...base, to: mapRecipients(base.to, rename), title: mapText(base.title, rename), ...(base.message ? { message: mapText(base.message, rename) } : {}) };
         case 'CREATE_TASK':
           return { ...base, to: mapRecipients(base.to, rename), title: mapText(base.title, rename), ...(base.description ? { description: mapText(base.description, rename) } : {}) };
+        case 'HANDLER':
+          return base.map ? { ...base, map: Object.fromEntries(Object.entries(base.map).map(([to, from]) => [to, from ? rename(from) : from])) } : base;
         default:
           return base;
       }

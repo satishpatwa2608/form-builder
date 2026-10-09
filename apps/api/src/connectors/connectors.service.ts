@@ -1,3 +1,4 @@
+import { mappedValues } from '@fb/engine';
 import { BadRequestException, ForbiddenException, HttpException, Inject, Injectable, NotFoundException, type OnModuleDestroy } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { createHash, randomBytes } from 'node:crypto';
@@ -60,6 +61,8 @@ export interface ConnectorAction {
   label: string;
   description: string;
   outputs: string[];
+  /** The fields it fills, for the builder to show which answer goes into each. */
+  inputs?: string[];
 }
 
 const LIMITS = { timeoutMs: 15_000, maxRows: 1000 };
@@ -381,6 +384,8 @@ export class ConnectorsService implements OnModuleDestroy {
             label: `${c.name}: ${op} ${e.label}`,
             description: `Sends the answers to ${e.label} (fields: ${e.fields.join(', ')})`,
             outputs: ['id'],
+            // A file or a log line takes the whole response; a row takes one answer per field.
+            ...(op === 'insert' || op === 'update' ? { inputs: e.fields } : {}),
           })),
       ),
     );
@@ -391,15 +396,19 @@ export class ConnectorsService implements OnModuleDestroy {
   }
 
   /** Run a write step: the form's answers (and work fields) go to the exposed fields with the same names. */
-  async runAction(orgId: string, key: string, values: Record<string, unknown>, formCode: string) {
+  async runAction(orgId: string, key: string, values: Record<string, unknown>, formCode: string, map?: Record<string, string>) {
     const m = ACTION_KEY.exec(key);
     const c = m ? await this.byRef(orgId, m[1]!) : null;
     if (!c || !c.writable) throw new Error('This connector step is not available any more');
     for (const e of c.entities) {
       for (const op of e.operations) {
         if (WRITE_OPERATIONS.includes(op) && actionHash(e.key, op) === m![2]) {
-          const res = await this.run(c, e, op, op === 'upload' || op === 'log' ? { data: values } : values, `automation:${formCode}`);
-          return { summary: `${op} ${e.label} in ${c.name}`, data: { id: (res.rows[0]?.id as string | undefined) ?? '' } };
+          // Each exposed field takes the answer the designer chose for it, or the one whose name matches.
+          const res = await this.run(c, e, op, op === 'upload' || op === 'log' ? { data: values } : mappedValues(e.fields, values, map), `automation:${formCode}`);
+          // The new row's identifier, whatever that system calls it.
+          const row = res.rows[0] ?? {};
+          const id = row.id ?? row.Id ?? (e.keyField ? row[e.keyField] : undefined);
+          return { summary: `${op} ${e.label} in ${c.name}`, data: { id: typeof id === 'string' || typeof id === 'number' ? String(id) : '' } };
         }
       }
     }

@@ -44,6 +44,8 @@ export interface CustomWorkflow {
   description?: string;
   /** Fields its output has - offered to later steps as {{$steps.<step>.<field>}}. */
   outputs?: string[];
+  /** For a step that writes to another system: the fields it fills. */
+  inputs?: string[];
 }
 
 export interface RecordRow {
@@ -144,6 +146,8 @@ export const INBOX_PAGE_SIZE = 20;
 /** Offered in local mode so the builder's dropdown can be tried offline. */
 const LOCAL_WORKFLOWS: CustomWorkflow[] = [
   { key: 'example-log-submission', label: 'Example: log the submission', description: 'Writes the form and reference to the server log.', outputs: ['loggedAt', 'fields'] },
+  // What a step that writes to another system looks like (a connector's "insert"): it names the fields it fills.
+  { key: 'c-example1-0a1b2c3d', label: 'Example CRM: insert Leads', description: 'Sends the answers to Leads', outputs: ['id'], inputs: ['Email', 'LastName', 'Description', 'Phone'] },
 ];
 
 export function useCustomWorkflows(enabled = true) {

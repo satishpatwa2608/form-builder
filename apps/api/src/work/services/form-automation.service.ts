@@ -660,7 +660,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       case 'HANDLER': {
         const handler = this.handlers.get(action.key);
         if (!handler) throw new Error(`no handler registered as "${action.key}"`);
-        return fromHandler(action.key, await handler(ctx));
+        return fromHandler(action.key, await handler(action.map ? { ...ctx, map: action.map } : ctx));
       }
     }
   }

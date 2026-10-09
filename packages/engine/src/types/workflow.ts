@@ -209,7 +209,7 @@ export type AutomationAction = StepMeta &
    */
   | { type: 'FLOW'; service: FlowService; url: string }
   /** Code registered on the server under this key, for logic that can't be configured. */
-  | { type: 'HANDLER'; key: string }
+  | { type: 'HANDLER'; key: string; /** For a step that writes to another system: its field -> the answer that fills it ('' = leave empty). Unlisted fields are matched by name. */ map?: Record<string, string> }
   );
 
 /**

@@ -169,6 +169,38 @@ describe('Workflow dialog', () => {
     expect(within(diagram).queryByText(/hooks\/catch/)).toBeNull();
   });
 
+  it('a step that writes to another system shows which answer fills each field, matched by name, and lets one be changed', async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    render(<Harness initial={{ ...basic, automations: [{ id: 'a', name: 'A', enabled: true, when: 'SUBMITTED', actions: [] }] }} spy={spy} />);
+    await user.click(screen.getByRole('tab', { name: /Automations/ }));
+    await user.click(screen.getByRole('button', { name: 'Add a step at the start' }));
+    await user.click(within(screen.getByRole('group', { name: 'Choose a step' })).getByRole('button', { name: /Run a custom API/ }));
+    await user.click(screen.getByRole('combobox', { name: 'Custom API' }));
+    await user.click(await screen.findByRole('option', { name: 'Example CRM: insert Leads' }));
+
+    const fields = screen.getByRole('group', { name: 'What goes into each field' });
+    // The form has "email", "description" and "phone": matched to Email, Description and Phone with nobody choosing.
+    expect(within(fields).getByRole('combobox', { name: 'Email' })).toHaveTextContent(/\(matched by name\)/);
+    expect(within(fields).getByRole('combobox', { name: 'Phone' })).toHaveTextContent(/\(matched by name\)/);
+    // Nothing in the form is called LastName.
+    expect(within(fields).getByRole('combobox', { name: 'LastName' })).toHaveTextContent('Nothing matches: left empty');
+    // Matches are not stored: they keep working if a field is renamed to something that still matches.
+    expect(spy.mock.lastCall![0].automations[0].actions[0].map).toBeUndefined();
+
+    await user.click(within(fields).getByRole('combobox', { name: 'LastName' }));
+    await user.click(await screen.findByRole('option', { name: basic.fields.find((f) => f.name === 'name')!.label! }));
+    expect(spy.mock.lastCall![0].automations[0].actions[0]).toMatchObject({ type: 'HANDLER', key: 'c-example1-0a1b2c3d', map: { LastName: 'name' } });
+
+    await user.click(within(fields).getByRole('combobox', { name: 'Phone' }));
+    await user.click(await screen.findByRole('option', { name: 'Leave empty' }));
+    expect(spy.mock.lastCall![0].automations[0].actions[0].map).toEqual({ LastName: 'name', Phone: '' });
+    // Choosing the match again forgets the choice.
+    await user.click(within(fields).getByRole('combobox', { name: 'Phone' }));
+    await user.click(await screen.findByRole('option', { name: /\(matched by name\)/ }));
+    expect(spy.mock.lastCall![0].automations[0].actions[0].map).toEqual({ LastName: 'name' });
+  });
+
   it('who works the records: switch to a team of people and departments', async () => {
     const user = userEvent.setup();
     const spy = vi.fn();
