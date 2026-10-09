@@ -16,6 +16,7 @@ import { Membership, Organization, type MembershipDocument, type OrganizationDoc
 import { PlansService } from '../plans/plans.service';
 import { DNS_TXT, type TxtResolver } from '../site/site.service';
 import { SsoState, type SsoStateDocument } from './sso.schema';
+import { personFrom, readCertificate, samlAddresses, samlFor } from './saml';
 
 interface Discovery {
   issuer: string;
@@ -26,6 +27,8 @@ interface Discovery {
 
 export interface SsoInput {
   enabled?: boolean;
+  protocol?: 'OIDC' | 'SAML';
+  saml?: { entryPoint?: string; idpIssuer?: string; cert?: string };
   issuer?: string;
   clientId?: string;
   clientSecret?: string;
@@ -44,6 +47,13 @@ const b64url = (b: Buffer) => b.toString('base64url');
 export const SSO_TXT_PREFIX = '_formbuilder-sso';
 
 /**
+ * Single sign-on, by whichever of the two the organisation's provider speaks.
+ *
+ * SAML 2.0: we send the browser to the provider with a request; it posts back
+ * a signed statement of who the person is. The library checks the signature
+ * against the certificate the admin pasted, and that the statement is for
+ * us, from that provider, in time, and answers the request this browser made.
+ *
  * OpenID Connect sign-in (authorization code + PKCE, confidential client).
  * Identity comes from the provider's userinfo endpoint, called with the
  * access token we just got from its token endpoint over TLS - so no ID token
@@ -111,6 +121,15 @@ export class SsoService {
     const s = org?.sso;
     return {
       enabled: !!s?.enabled,
+      protocol: s?.protocol === 'SAML' ? 'SAML' : 'OIDC',
+      saml: {
+        entryPoint: s?.saml?.entryPoint ?? '',
+        idpIssuer: s?.saml?.idpIssuer ?? '',
+        certSet: !!s?.saml?.cert,
+        certExpiresAt: (s?.saml?.cert ? readCertificate(s.saml.cert)?.expiresAt : null) ?? null,
+        // What the admin gives their provider in return.
+        ...samlAddresses(this.config.API_URL, auth.orgId),
+      },
       issuer: s?.issuer ?? '',
       clientId: s?.clientId ?? '',
       clientSecretSet: !!s?.clientSecret,
@@ -135,6 +154,31 @@ export class SsoService {
       await this.discover(issuer);
       org.set('sso.issuer', issuer);
     }
+    if (body.protocol !== undefined && body.protocol !== (org.sso.protocol ?? 'OIDC')) {
+      // The other kind of provider has not been proven to work here: it starts switched off and not required.
+      org.set('sso.protocol', body.protocol);
+      org.set('sso.enabled', false);
+      org.set('sso.enforce', false);
+      org.set('sso.lastSuccessAt', null);
+    }
+    if (body.saml?.entryPoint !== undefined) {
+      const entryPoint = body.saml.entryPoint.trim();
+      let ok = false;
+      try {
+        ok = !entryPoint || new URL(entryPoint).protocol === 'https:' || this.insecureAllowed;
+      } catch {
+        ok = false;
+      }
+      if (!ok) throw new BadRequestException({ message: 'Invalid sign-in address', errors: [{ field: 'saml.entryPoint', message: "Use the https sign-in address from your identity provider" }] });
+      org.set('sso.saml.entryPoint', entryPoint);
+    }
+    if (body.saml?.idpIssuer !== undefined) org.set('sso.saml.idpIssuer', body.saml.idpIssuer.trim());
+    if (body.saml?.cert) {
+      const cert = readCertificate(body.saml.cert);
+      if (!cert) throw new BadRequestException({ message: 'Invalid certificate', errors: [{ field: 'saml.cert', message: "That is not a certificate. Paste the signing certificate from your identity provider, including its BEGIN and END lines." }] });
+      if (cert.expiresAt.getTime() < Date.now()) throw new BadRequestException({ message: 'Invalid certificate', errors: [{ field: 'saml.cert', message: `That certificate ran out on ${cert.expiresAt.toISOString().slice(0, 10)}. Get the current one from your identity provider.` }] });
+      org.set('sso.saml.cert', cert.pem);
+    }
     if (body.clientId !== undefined) org.set('sso.clientId', body.clientId.trim());
     if (body.clientSecret) org.set('sso.clientSecret', this.box.seal(body.clientSecret));
     if (body.domains !== undefined) {
@@ -153,7 +197,9 @@ export class SsoService {
       org.set('sso.defaultRole', body.defaultRole);
     }
     if (body.enabled !== undefined) {
-      if (body.enabled && (!org.sso.issuer || !org.sso.clientId || !org.sso.clientSecret)) throw new BadRequestException('Fill in the issuer, client ID and client secret first');
+      const saml = org.sso.protocol === 'SAML';
+      if (body.enabled && saml && (!org.sso.saml?.entryPoint || !org.sso.saml.idpIssuer || !org.sso.saml.cert)) throw new BadRequestException("Fill in your provider's sign-in address, issuer and certificate first");
+      if (body.enabled && !saml && (!org.sso.issuer || !org.sso.clientId || !org.sso.clientSecret)) throw new BadRequestException('Fill in the issuer, client ID and client secret first');
       if (body.enabled && !org.sso.domains.length) throw new BadRequestException('Verify at least one email domain first');
       org.set('sso.enabled', body.enabled);
     }
@@ -167,7 +213,7 @@ export class SsoService {
       action: 'org.sso_updated',
       targetType: 'organization',
       targetId: auth.orgId,
-      after: { enabled: org.sso.enabled, issuer: org.sso.issuer, domains: org.sso.domains, autoProvision: org.sso.autoProvision, defaultRole: org.sso.defaultRole, enforce: org.sso.enforce, secretChanged: !!body.clientSecret },
+      after: { enabled: org.sso.enabled, protocol: org.sso.protocol ?? 'OIDC', samlChanged: !!body.saml, issuer: org.sso.issuer, domains: org.sso.domains, autoProvision: org.sso.autoProvision, defaultRole: org.sso.defaultRole, enforce: org.sso.enforce, secretChanged: !!body.clientSecret },
     });
     return this.settings(auth);
   }
@@ -207,10 +253,11 @@ export class SsoService {
   }
 
   /** Where to send the browser to sign in (the provider's authorize URL). */
-  async start(email: string): Promise<{ url: string; browserKey: string }> {
+  async start(email: string): Promise<{ url: string; browserKey: string; crossSite?: boolean }> {
     const org = await this.orgForEmail(email);
     if (!org) throw new SsoError('Single sign-on is not set up for that email domain');
     if (!(await this.plans.limitsOf(org.id)).sso) throw new SsoError('Single sign-on is not available for this organisation');
+    if (org.sso.protocol === 'SAML') return this.samlStart(org);
     const d = await this.discover(org.sso.issuer);
     const state = randomToken();
     const verifier = b64url(randomBytes(32));
@@ -231,13 +278,60 @@ export class SsoService {
     return { url: url.toString(), browserKey };
   }
 
+  // ---------------------------------------------------------------- SAML
+
+  /** The provider's metadata asks for ours: who we are and where to post the answer. */
+  async samlMetadata(orgId: string): Promise<string> {
+    const org = /^[A-Za-z0-9-]{1,64}$/.test(orgId) ? await this.orgs.findOne({ id: orgId }).select('id sso').lean() : null;
+    if (!org) throw new NotFoundException('Not found');
+    // Nothing of the provider's is needed to describe ourselves; the placeholders are never used to check anything.
+    return samlFor(this.config.API_URL, org.id, { entryPoint: 'https://unused.invalid/', idpIssuer: 'unused', cert: 'unused' }, '').generateServiceProviderMetadata(null, null);
+  }
+
+  private async samlStart(org: { id: string; sso: OrganizationDocument['sso'] }) {
+    const state = randomToken();
+    const browserKey = randomToken();
+    // XML IDs may not start with a digit.
+    const requestId = `_${randomBytes(20).toString('hex')}`;
+    await this.states.create({ stateHash: hashToken(state), browserHash: hashToken(browserKey), orgId: org.id, requestId, expiresAt: new Date(Date.now() + STATE_TTL_MS) });
+    const url = await samlFor(this.config.API_URL, org.id, org.sso.saml, requestId)
+      .getAuthorizeUrlAsync(state, undefined, {})
+      .catch(() => {
+        throw new SsoError('Single sign-on is not set up correctly for this organisation. Ask an admin.');
+      });
+    // The provider answers with a form posted from its own site: the cookie must be allowed to come back with that.
+    return { url, browserKey, crossSite: true };
+  }
+
+  /** The provider posted its answer: check it, read who it is, open a session. */
+  async samlCallback(orgId: string, samlResponse: string, relayState: string, browserKey: string | undefined, meta: RequestMeta): Promise<SignedIn> {
+    const st = relayState ? await this.states.findOneAndDelete({ stateHash: hashToken(relayState), orgId, requestId: { $ne: '' }, expiresAt: { $gt: new Date() } }).lean() : null;
+    // No request of ours behind it: a response the provider sent unasked, or one for another attempt.
+    if (!st) throw new SsoError('That sign-in has expired. Please start again from the sign-in page.');
+    if (!browserKey || hashToken(browserKey) !== st.browserHash) throw new SsoError('Please start single sign-on again from this browser.');
+    const org = await this.orgs.findOne({ id: st.orgId });
+    if (!org?.sso?.enabled || org.sso.protocol !== 'SAML') throw new SsoError('Single sign-on is turned off for this organisation');
+    if (!(await this.plans.limitsOf(org.id)).sso) throw new SsoError('Single sign-on is not available for this organisation');
+    const checked = await samlFor(this.config.API_URL, org.id, org.sso.saml, st.requestId)
+      .validatePostResponseAsync({ SAMLResponse: samlResponse })
+      .catch(() => null);
+    // Whatever was wrong (signature, audience, time, issuer, the request it answers), the person is told one thing.
+    if (!checked?.profile || checked.loggedOut) throw new SsoError('Your identity provider did not accept the sign-in');
+    // The library checks the signature, not who it says it is from. A key shared between a provider's customers
+    // would otherwise let one of them sign in to another's organisation here.
+    if (checked.profile.issuer !== org.sso.saml.idpIssuer) throw new SsoError('Your identity provider did not accept the sign-in');
+    const person = personFrom(checked.profile);
+    if (!person.email) throw new SsoError('Your identity provider did not share an email address');
+    return this.finish(org, person.email, person.name, meta);
+  }
+
   /** The provider sent the browser back: trade the code, read who it is, open a session. */
   async callback(code: string, state: string, browserKey: string | undefined, meta: RequestMeta): Promise<SignedIn> {
-    const st = await this.states.findOneAndDelete({ stateHash: hashToken(state), expiresAt: { $gt: new Date() } }).lean();
+    const st = await this.states.findOneAndDelete({ stateHash: hashToken(state), requestId: { $in: ['', null] }, expiresAt: { $gt: new Date() } }).lean();
     if (!st) throw new SsoError('That sign-in link has expired. Please try again.');
     if (!browserKey || hashToken(browserKey) !== st.browserHash) throw new SsoError('Please start single sign-on again from this browser.');
     const org = await this.orgs.findOne({ id: st.orgId });
-    if (!org?.sso?.enabled) throw new SsoError('Single sign-on is turned off for this organisation');
+    if (!org?.sso?.enabled || org.sso.protocol === 'SAML') throw new SsoError('Single sign-on is turned off for this organisation');
     const d = await this.discover(org.sso.issuer);
 
     const token = await this.providerCall(d.token_endpoint, {
@@ -257,8 +351,17 @@ export class SsoService {
     const info = await this.providerCall(d.userinfo_endpoint, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
     const claims = (info.json ?? {}) as { email?: string; email_verified?: boolean; name?: string };
     const email = (claims.email ?? '').trim().toLowerCase();
-    const domain = email.split('@')[1] ?? '';
     if (info.status !== 200 || !email || claims.email_verified === false) throw new SsoError('Your identity provider did not share a verified email address');
+    return this.finish(org, email, claims.name, meta);
+  }
+
+  /**
+   * The provider has vouched for an address: check it is one this organisation's provider may vouch for,
+   * find or create the member, and open a session. The same for OpenID Connect and SAML.
+   */
+  async finish(org: OrganizationDocument, email: string, name: string | undefined, meta: RequestMeta): Promise<SignedIn> {
+    const domain = email.split('@')[1] ?? '';
+    const claims = { name };
     if (!org.sso.domains.includes(domain)) throw new SsoError(`${domain} addresses can't sign in to ${org.name} with single sign-on`);
 
     let user = await this.users.findOne({ email });

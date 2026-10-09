@@ -13,6 +13,8 @@ import { SsoError, SsoService } from './sso.service';
 
 const settingsBody = z.object({
   enabled: z.boolean().optional(),
+  protocol: z.enum(['OIDC', 'SAML']).optional(),
+  saml: z.object({ entryPoint: z.string().max(1000).optional(), idpIssuer: z.string().max(1000).optional(), cert: z.string().max(12_000).optional() }).optional(),
   issuer: z.string().max(300).optional(),
   clientId: z.string().max(300).optional(),
   clientSecret: z.string().max(1000).optional(),
@@ -64,9 +66,10 @@ export class SsoController {
     const studio = this.config.CORS_ORIGINS.split(',').map((o) => o.trim());
     if (!studio.includes(String(req.headers.origin ?? ''))) throw new ForbiddenException('Start single sign-on from the Form Builder sign-in page');
     try {
-      const { url, browserKey } = await this.sso.start(body.email);
-      // Lax: it must come back on the provider's top-level redirect to the callback.
-      res.cookie(SSO_COOKIE, browserKey, { httpOnly: true, secure: this.config.COOKIE_SECURE, sameSite: 'lax', path: '/auth/sso', maxAge: 10 * 60_000 });
+      const { url, browserKey, crossSite } = await this.sso.start(body.email);
+      // Lax: it must come back on the provider's top-level redirect to the callback. A SAML provider answers with a
+      // form posted from its own site, which only a SameSite=None (and so Secure) cookie comes back with.
+      res.cookie(SSO_COOKIE, browserKey, { httpOnly: true, secure: crossSite ? true : this.config.COOKIE_SECURE, sameSite: crossSite ? 'none' : 'lax', path: '/auth/sso', maxAge: 10 * 60_000 });
       return { url };
     } catch (e) {
       if (e instanceof SsoError) throw new BadRequestException(e.message);
@@ -84,6 +87,33 @@ export class SsoController {
     try {
       if (q.error || !q.code || !q.state) throw new SsoError('Sign-in was cancelled or refused by your identity provider');
       const signed = await this.sso.callback(q.code, q.state, browserKey, meta);
+      setRefreshCookie(res, this.config, signed);
+      res.redirect(302, `${this.config.APP_URL}/sso/complete`);
+    } catch (e) {
+      this.fail(res, e);
+    }
+  }
+
+  /** What an organisation's SAML provider needs to know about us, in the form providers import. */
+  @Public()
+  @Throttle(STRICT)
+  @Get('auth/sso/saml/:org/metadata')
+  async samlMetadata(@Param('org') org: string, @Res() res: Response) {
+    res.status(200).type('application/samlmetadata+xml').send(await this.sso.samlMetadata(org));
+  }
+
+  /** A SAML provider posts its answer here, through the person's browser. */
+  @Public()
+  @Throttle(STRICT)
+  @Post('auth/sso/saml/:org/acs')
+  async samlAcs(@Param('org') org: string, @Body() body: Record<string, unknown>, @Meta() meta: RequestMeta, @Req() req: Request, @Res() res: Response) {
+    const browserKey = req.cookies?.[SSO_COOKIE] as string | undefined;
+    res.clearCookie(SSO_COOKIE, { path: '/auth/sso', secure: true, sameSite: 'none' });
+    try {
+      const response = typeof body?.SAMLResponse === 'string' ? body.SAMLResponse : '';
+      const relay = typeof body?.RelayState === 'string' ? body.RelayState.slice(0, 200) : '';
+      if (!response || response.length > 400_000 || !/^[A-Za-z0-9-]{1,64}$/.test(org)) throw new SsoError('Sign-in was cancelled or refused by your identity provider');
+      const signed = await this.sso.samlCallback(org, response, relay, browserKey, meta);
       setRefreshCookie(res, this.config, signed);
       res.redirect(302, `${this.config.APP_URL}/sso/complete`);
     } catch (e) {

@@ -39,6 +39,7 @@
     "@nestjs/mongoose": "^11.0.3",
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/throttler": "^6",
+    "@node-saml/node-saml": "5.1.0",
     "argon2": "^0.41.1",
     "cookie-parser": "^1.4.7",
     "express": "^4.22.1",
@@ -68,8 +69,10 @@
     "mongodb": "^6.20.0",
     "mongodb-memory-server": "^11.0.1",
     "pdf-parse": "^1.1.1",
+    "selfsigned": "2.4.1",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "xml-crypto": "6.1.2"
   }
 }

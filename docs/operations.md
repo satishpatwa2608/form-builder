@@ -58,6 +58,23 @@ Nothing to operate: each org configures its provider. The callback URL is
 `<API_URL>/auth/sso/callback`. Provider calls use the same SSRF protection as
 connectors (https, public addresses only).
 
+SAML 2.0 is the other choice. Each organisation has its own addresses:
+`<API_URL>/auth/sso/saml/<org>/metadata` (also its identifier) and
+`<API_URL>/auth/sso/saml/<org>/acs`, where the provider posts its answer
+through the person's browser. Three things to know when hosting it:
+
+- The API must be served over **https**. The cookie that ties an answer to
+  the browser that asked is `SameSite=None; Secure`, because the provider
+  posts from its own site; a browser will not keep it on plain http (apart
+  from localhost).
+- Our server never calls the provider: nothing to allow outbound.
+- An answer is accepted only if its statement is signed with the certificate
+  the organisation saved, names that provider and this organisation's
+  identifier, is in time (two minutes of clock difference are allowed, so
+  keep the servers' clocks set), and answers the request that browser made.
+  Answers nobody asked for (provider-started sign-in) are refused. Requests
+  are not signed and encrypted statements are not accepted: neither is set up.
+
 ## Gateways
 
 Agents connect to `wss://<api>/gateway/connect`. The load balancer must allow

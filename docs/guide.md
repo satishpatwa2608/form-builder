@@ -19,6 +19,19 @@ skip to the sections they need.
   3. Optionally add people automatically on first sign-in, with a role.
   4. Turn it on, sign out, and use **Sign in with SSO** once.
   5. Then you may **Require SSO**: password sign-in is refused for those domains.
+- If your provider speaks **SAML 2.0** instead, choose it under **My identity
+  provider uses**:
+  1. In your provider, add a SAML application and give it the **metadata
+     address** the card shows (or the reply address and identifier under it).
+     Have it send the person's email address as the name ID.
+  2. Download your provider's metadata file and choose it with **Fill in from
+     your provider's metadata file**. That fills in its sign-in address,
+     identifier and signing certificate; you can also type them. The file
+     stays on your computer.
+  3. Save, prove your email domains and turn it on, as above.
+  The card shows when the provider's certificate runs out: paste the new one
+  before then. Changing between OpenID Connect and SAML turns single sign-on
+  off until the new one has worked once.
 
 ## 2. Building forms
 

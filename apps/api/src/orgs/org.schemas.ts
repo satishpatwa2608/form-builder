@@ -29,10 +29,24 @@ export class OrgDomain {
   @Prop({ type: Date, default: () => new Date() }) addedAt: Date;
 }
 
-/** Single sign-on through the customer's OpenID Connect provider (Entra ID, Okta, Google Workspace...). */
+/** What a SAML 2.0 identity provider gives the admin to paste in. */
+@Schema({ _id: false })
+export class OrgSaml {
+  /** Where the browser is sent to sign in (the provider's single sign-on address). */
+  @Prop({ type: String, default: '' }) entryPoint: string;
+  /** The provider's own name for itself (entity ID); responses from anyone else are refused. */
+  @Prop({ type: String, default: '' }) idpIssuer: string;
+  /** The certificate the provider signs with (PEM). Public: it checks signatures, it cannot make them. */
+  @Prop({ type: String, default: '' }) cert: string;
+}
+
+/** Single sign-on through the customer's identity provider (Entra ID, Okta, Google Workspace...), by OpenID Connect or SAML 2.0. */
 @Schema({ _id: false })
 export class OrgSso {
   @Prop({ type: Boolean, default: false }) enabled: boolean;
+  /** Which of the two the organisation's provider speaks. */
+  @Prop({ type: String, enum: ['OIDC', 'SAML'], default: 'OIDC' }) protocol: 'OIDC' | 'SAML';
+  @Prop({ type: OrgSaml, default: () => ({}) }) saml: OrgSaml;
   @Prop({ type: String, default: '' }) issuer: string;
   @Prop({ type: String, default: '' }) clientId: string;
   /** SecretBox-sealed. */

@@ -42,7 +42,7 @@ Choices made on 9 October are recorded in [decisions.md](decisions.md).
 - **Save and continue later**: private link valid 30 days.
 - **Print / save as PDF** of a single submission.
 - **Export / import** of forms between orgs or environments (arrives as a draft).
-- **Single sign-on (OpenID Connect)**: Entra ID, Okta, Google Workspace, etc.; email domains proven by DNS; can be made mandatory.
+- **Single sign-on (OpenID Connect or SAML 2.0)**: Entra ID, Okta, Google Workspace, etc.; email domains proven by DNS; can be made mandatory. SAML set-up fills in from the provider's metadata file. Neither has been tried against a real provider yet: both are tested against stand-ins.
 - **Docs**: `README.md`, `docs/guide.md` (customer admins), `docs/operations.md` (running the platform), `apps/gateway/README.md`.
 
 ### Security review
@@ -86,7 +86,6 @@ See the figures in the last hand-over message for the run of 9 October. Suites: 
 ### Engineering work remaining
 - **AEM parity:** more connectors (Phase 11). In Phase 10: drafts in the portal, time per question, GA4/Segment export, a branching flow designer, a chart component, a React renderer package (see the plan for why not). In Phase 7 (e-signature): outside providers (DocuSign, Aadhaar eSign) and certifying the PDF with a certificate. In Phase 9: XLIFF, translated emails, right-to-left PDFs, an outside accessibility audit. In Phase 6: designed document templates, attaching the PDF to an email, PDF operations, more scripts. In Phase 8: a form from a connector entity or a fillable PDF.
 - **Production hosting:** apply and correct the Terraform; a registry for the SDK and customers' images; a build service for customers' repositories; a secrets manager in place of `infra/.state/`.
-- SAML sign-in (only OpenID Connect today).
 - Onboarding tour.
 - Minor hardening: unique index on SSO domains; DNS-rebinding protection in the outbound fetch helper.
 

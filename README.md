@@ -83,7 +83,7 @@ Every route needs a signed-in session unless marked public. The guard re-checks 
 
 | Area | Endpoints |
 |---|---|
-| Auth (public) | `POST /auth/signup`, `/verify-email`, `/resend-verification`, `/login`, `/refresh`, `/forgot-password`, `/reset-password`; `POST /auth/sso/start` (studio origin only), `GET /auth/sso/callback` |
+| Auth (public) | `POST /auth/signup`, `/verify-email`, `/resend-verification`, `/login`, `/refresh`, `/forgot-password`, `/reset-password`; `POST /auth/sso/start` (studio origin only), `GET /auth/sso/saml/:org/metadata`, `POST /auth/sso/saml/:org/acs`, `GET /auth/sso/callback` |
 | Auth | `GET /auth/me`, `POST /auth/logout`, `/switch-org`, `/password`, `/2fa/setup`, `/2fa/enable`, `/2fa/disable` |
 | Organisation | `GET/PATCH /org`, `POST /orgs`, `GET /org/usage`, `GET/PUT /org/branding`, `GET/POST /org/domains`, `POST /org/domains/:host/verify`, `DELETE /org/domains/:host`, `GET/PUT /org/sso` |
 | Members | `GET /members`, `PATCH/DELETE /members/:userId`, `GET/POST /invitations`, `DELETE /invitations/:id`, `POST /invitations/accept` (public) |
