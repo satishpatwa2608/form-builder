@@ -72,6 +72,9 @@ import { Job, JobSchema } from './jobs/job.schema';
 import { SharedWorkflowRow, SharedWorkflowSchema } from './workflows/workflow.schema';
 import { WorkflowsService } from './workflows/workflows.service';
 import { WorkflowsController } from './workflows/workflows.controller';
+import { FragmentRow, FragmentSchema } from './fragments/fragment.schema';
+import { FragmentsService } from './fragments/fragments.service';
+import { FragmentsController } from './fragments/fragments.controller';
 import { ExtensionRow, ExtensionSchema } from './extensions/extension.schema';
 import { ExtensionsService } from './extensions/extensions.service';
 import { ExtensionsController } from './extensions/extensions.controller';
@@ -146,6 +149,7 @@ export class AppModule {
           { name: Job.name, schema: JobSchema },
           { name: SharedWorkflowRow.name, schema: SharedWorkflowSchema },
           { name: ExtensionRow.name, schema: ExtensionSchema },
+          { name: FragmentRow.name, schema: FragmentSchema },
         ]),
         JwtModule.register({ secret: config.JWT_SECRET, signOptions: { algorithm: 'HS256' }, verifyOptions: { algorithms: ['HS256'] } }),
         ThrottlerModule.forRootAsync({
@@ -176,6 +180,7 @@ export class AppModule {
         StylesController,
         WorkflowsController,
         ExtensionsController,
+        FragmentsController,
         ExtensionPublicController,
         FormPublicController,
         SitePublicController,
@@ -232,6 +237,7 @@ export class AppModule {
         JobQueue,
         WorkflowsService,
         ExtensionsService,
+        FragmentsService,
         FormAutomationService,
         FormHandlerRegistry,
         WorkItemService,

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { resolveSharedWorkflow, usedStyleIds, validateFormDefinition, type FormDefinition, type FormStyle } from '@fb/engine';
+import { resolveSharedWorkflow, usedStyleIds, validateFormDefinition, type FormDefinition, type FormStyle, fragmentUse, fragmentUseProblems, syncFragments } from '@fb/engine';
 import type { Model } from 'mongoose';
 import { Grant, type GrantDocument } from '../access/access.schemas';
 import { PermissionService } from '../access/permission.service';
@@ -17,6 +17,7 @@ import { checkDefinitionSecurity } from './payload-guard';
 import { JobQueue } from '../jobs/job-queue.service';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { ExtensionsService } from '../extensions/extensions.service';
+import { FragmentsService } from '../fragments/fragments.service';
 import { Membership, type MembershipDocument } from '../orgs/org.schemas';
 
 export interface FormSummary {
@@ -87,6 +88,7 @@ export class FormsService implements OnModuleInit {
     private readonly jobs: JobQueue,
     private readonly workflows: WorkflowsService,
     private readonly extensions: ExtensionsService,
+    private readonly fragments: FragmentsService,
   ) {}
 
   private live(orgId: string) {
@@ -266,7 +268,21 @@ export class FormsService implements OnModuleInit {
    * now, naming this form's own fields. That copy is what is published, so a
    * later change to the library reaches this form only when it is next published.
    */
-  private async withSharedWorkflow(orgId: string, draft: FormDefinition): Promise<FormDefinition> {
+  /**
+   * The draft as it will be published: every fragment section refreshed from
+   * the library, then the shared workflow written in.
+   */
+  private async withSharedWorkflow(orgId: string, original: FormDefinition): Promise<FormDefinition> {
+    let draft = original;
+    if (draft.fields.some((f) => fragmentUse(f))) {
+      const problems = fragmentUseProblems(draft.fields);
+      if (problems.length) throw new FormProblems(problems.map((message) => ({ field: 'fields', message })));
+      const synced = syncFragments(draft, await this.fragments.all(orgId));
+      if (synced.missing.length) {
+        throw new FormProblems(synced.missing.map((s) => ({ field: 'fields', message: `The fragment "${s.label || s.name}" is no longer in the library. Detach the section to keep its fields, or remove it.` })));
+      }
+      draft = synced.definition;
+    }
     if (!draft.workflowRef) return draft;
     const shared = await this.workflows.find(orgId, draft.workflowRef.id);
     if (!shared) throw new FormProblems([{ field: 'workflowRef', message: 'The shared workflow this form uses is no longer in the library. Choose another, or give the form its own.' }]);
@@ -480,6 +496,14 @@ export class FormsService implements OnModuleInit {
     // A shared workflow from the other organisation's library is not in ours: the copy that came
     // inside the form becomes this form's own workflow.
     if (def.workflowRef && !(await this.workflows.find(auth.orgId, def.workflowRef.id))) delete def.workflowRef;
+    // Likewise a section copied from a fragment we do not have: it stays, as a section of this form's own.
+    for (const f of def.fields) {
+      const use = fragmentUse(f);
+      if (use && !(await this.fragments.exists(auth.orgId, use.id))) {
+        const { fragment: _gone, ...props } = f.props ?? {};
+        f.props = props;
+      }
+    }
 
     // Styles: create the missing ones (validated by the engine schema), keep ours when the key exists.
     const wanted = usedStyleIds(def);
