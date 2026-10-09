@@ -257,6 +257,65 @@ void ext.listen();
     expect((await submit(SHARED, acme, { customer: 'After update', amount: 10, gstin: '27AAPFU0939F1ZV' })).status).toBe(201);
   });
 
+  test("the customer's code may call their own systems once we agree which, and nothing else", async () => {
+    const mine = extName(SHARED, acme);
+    // What their code does: an ordinary fetch, with nothing special in it.
+    const get = (url: string) => {
+      const r = inside(mine, `fetch(${JSON.stringify(url)}).then(async (r) => { console.log(r.status + ' ' + (await r.text()).slice(0, 60)); }, (e) => { console.log('failed ' + (e.cause?.code ?? e.message)); })`);
+      return r.stdout.trim();
+    };
+    const server = (says: string) => `require('http').createServer((q,s)=>s.end('${says} '+q.url)).listen(8080)`;
+
+    // Before anything is agreed there is no way out at all.
+    expect(get('http://fbt-erp:8080/customers/7')).toMatch(/^failed/);
+
+    expect(must('ext', 'allow', SHARED.project, acme.orgId, 'fbt-erp:8080=private', 'example.com')).toContain(`${mine} may call: fbt-erp:8080=private, example.com:443`);
+    // The customer's ERP, and something else that happens to sit beside it, both where the proxy could reach them.
+    for (const [name, says] of [['fbt-erp', 'ERP'], ['fbt-other', 'OTHER']]) {
+      docker('rm', '-f', name);
+      expect(docker('run', '-d', '--name', name, '--network', `${SHARED.project}-egress`, 'node:24-alpine', 'node', '-e', server(says)).status).toBe(0);
+    }
+    try {
+      await expect.poll(() => get('http://fbt-erp:8080/customers/7'), { timeout: 30_000 }).toBe('200 ERP /customers/7');
+      // Not agreed: refused by the proxy, in words.
+      // Not agreed: refused by the proxy. Their code sees a failed call; why is in our record.
+      expect(get('http://fbt-other:8080/x')).toMatch(/^failed/);
+      expect(get('http://fbt-erp:9090/x')).toMatch(/^failed/);
+      // A public address is agreed by name; anything else on the internet is not.
+      const online = await fetch('https://example.com', { signal: AbortSignal.timeout(8000) }).then((r) => r.ok, () => false);
+      if (online) expect(get('https://example.com/')).toMatch(/^200 /);
+      expect(get('https://www.wikipedia.org/')).toMatch(/^failed/);
+      // Going round the proxy is not possible: the container still has no route of its own.
+      expect(inside(mine, `require('net').connect({host:'1.1.1.1',port:443,timeout:3000}).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).on('timeout',()=>process.exit(1))`).status).not.toBe(0);
+      // (Changing the list starts a fresh proxy, so keep what the first one recorded.)
+      const earlier = docker('logs', `${mine}-egress`).stdout;
+      // The proxy cannot be used to reach what is ours.
+      must('ext', 'allow', SHARED.project, acme.orgId, 'fbt-erp:8080=private', `${SHARED.project}-mongo-1:27017=private`, `${SHARED.project}-api-1:4100=private`);
+      expect(get(`http://${SHARED.project}-api-1:4100/health`)).toMatch(/^failed/);
+      expect(get('http://fbt-erp:8080/after')).toBe('200 ERP /after');
+
+      // Every attempt is on record, and the proxy is as locked down as the extension.
+      const log = docker('logs', `${mine}-egress`).stdout;
+      expect(earlier).toContain('"host":"fbt-other","port":8080,"verdict":"refused","why":"not on the list"');
+      expect(log).toContain('"host":"fbt-erp","port":8080,"verdict":"allowed"');
+      expect(log).toContain(`"host":"${SHARED.project}-api-1","port":4100,"verdict":"refused","why":"an address that is never allowed"`);
+      expect(docker('logs', `${mine}-egress`).stdout).toMatch(/"verdict":"refused"/);
+      const info = JSON.parse(docker('inspect', `${mine}-egress`).stdout)[0];
+      expect(info.HostConfig.ReadonlyRootfs).toBe(true);
+      expect(Object.keys(info.NetworkSettings.Networks).sort()).toEqual([mine, `${SHARED.project}-egress`].sort());
+      // The form keeps working through all of this.
+      expect((await submit(SHARED, acme, { customer: 'With a way out', amount: 10, gstin: '27AAPFU0939F1ZV' })).status).toBe(201);
+
+      // Taking the agreement away closes the way out again.
+      expect(must('ext', 'allow', SHARED.project, acme.orgId)).toContain('may call nothing outside');
+      expect(docker('ps', '-a', '--filter', `name=${mine}-egress`, '--format', '{{.Names}}').stdout.trim()).toBe('');
+      expect(get('http://fbt-erp:8080/customers/7')).toMatch(/^failed/);
+      expect(stack('ext', 'allow', SHARED.project, acme.orgId, '*.acme.com').out).toContain('is not host, host:port or host:port=private');
+    } finally {
+      docker('rm', '-f', 'fbt-erp', 'fbt-other');
+    }
+  });
+
   test('a version that does not start, or does not build, never replaces the one that works', async () => {
     const good = readFileSync(join(acmeRepo, 'src/index.ts'), 'utf8');
     const running = JSON.parse(docker('inspect', extName(SHARED, acme)).stdout)[0].Image;

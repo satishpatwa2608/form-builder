@@ -48,6 +48,7 @@ pnpm stack op <project> extension list <orgId>
 pnpm stack ext init <directory>                           # a new extension repository, from the starter
 pnpm stack ext deploy <project> <orgId> <repository>      # the delivery pipeline
 pnpm stack ext remove <project> <orgId>
+pnpm stack ext allow <project> <orgId> [host[:port][=private] ...]   # what it may call out to
 ```
 
 `<project>` names an installation. Its generated keys and each extension's
@@ -105,6 +106,32 @@ container is created, so this does not arise there.
 After `stack up` is run again (an upgrade, a restart), the new API and worker
 containers are put back on every extension's network.
 
+## Letting an extension call the customer's own systems
+
+An extension starts with no way out. When a customer needs their code to call
+their own systems (an ERP, a credit bureau), agree the addresses with them and
+set the list:
+
+```
+pnpm stack ext allow fb <orgId> api.acme.com erp.acme.com:8443
+pnpm stack ext allow fb <orgId>                 # nothing: closes it again
+```
+
+- An entry is a host name and a port (443 when left out). No wildcards, no
+  bare addresses.
+- The extension gets a **proxy of its own**, and its container is restarted to
+  use it. The customer's code changes nothing: an ordinary `fetch` (or
+  `http`/`https` request) goes through it.
+- Only listed addresses get through. Anything else fails for their code, and
+  the reason is in the proxy's record: `docker logs <extension>-egress` has one
+  line for every attempt, allowed or refused.
+- A name that resolves to a **private address is refused**, so a customer
+  cannot point a listed name at something inside our network. For a system
+  reached over a private link, mark the entry: `erp.internal:8080=private`.
+- Never reachable, whatever the list says: the machine itself, the cloud's
+  metadata address, and the network the proxy shares with the API and worker.
+- The extension still has no route of its own. The proxy is the only way out.
+
 ## Testing
 
 ```
@@ -115,7 +142,7 @@ Needs Docker running. It builds the images, brings up a shared installation
 with two customers and a dedicated one, delivers their extensions, and checks
 in a real browser and from inside the containers that it all behaves as
 described here, including a bad version, a stopped container, a restart, a
-plan without extensions, and removal. It cleans up after itself
+plan without extensions, agreed outbound calls, and removal. It cleans up after itself
 (`E2E_KEEP=1` leaves everything running to look at). First run: several
 minutes.
 
@@ -131,8 +158,8 @@ This is the working model on one Docker host. A production deployment needs:
 - **A build service** for customers' repositories: `npm install` runs their
   dependencies' install scripts, so builds belong on disposable machines.
 - **A secrets manager** in place of `infra/.state/`.
-- **Agreed outbound access** per customer, for extensions that must call the
-  customer's own systems. Here an extension has no outbound access at all.
+- **One fixed outbound address** for the proxies, so customers can allow-list
+  us on their side (the NAT gateway in infra/README.md).
 - **HTTPS, real mail and file storage.** Local Docker runs with
   `NODE_ENV=development`; production mode requires SES, S3, KMS and secure
   cookies.

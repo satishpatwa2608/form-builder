@@ -11,6 +11,8 @@
  *   node infra/stack.mjs ext init <directory>                    a new extension repository, from the starter
  *   node infra/stack.mjs ext deploy <project> <orgId> <repository> [--name main]
  *   node infra/stack.mjs ext remove <project> <orgId> [--name main]
+ *   node infra/stack.mjs ext allow <project> <orgId> [host[:port][=private] ...]   what the extension may call out to
+ *                                                                (no addresses: nothing, which is how it starts)
  *
  * Two ways to host a customer, with the same commands:
  *   shared     one project (say "fb") for everyone; `ext deploy fb <orgId> <repo>` per customer
@@ -24,6 +26,7 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseAllow } from './egress/proxy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const COMPOSE = join(ROOT, 'infra/docker/compose.yml');
@@ -118,10 +121,11 @@ function up(project, flags) {
 function down(project, flags) {
   const env = projectEnv(project);
   for (const ext of extensionsOf(project)) {
-    quiet('docker', ['rm', '-f', ext.CONTAINER]);
+    quiet('docker', ['rm', '-f', ext.CONTAINER, `${ext.CONTAINER}-egress`]);
     for (const service of ['api', 'worker']) quiet('docker', ['network', 'disconnect', '-f', ext.NETWORK, containerOf(project, service)]);
     quiet('docker', ['network', 'rm', ext.NETWORK]);
   }
+  quiet('docker', ['network', 'rm', `${project}-egress`]);
   compose(project, env, ['down', ...(flags.volumes ? ['--volumes'] : [])], { stdio: 'inherit' });
   // Without its data the installation is gone: so are its keys and its extensions' secrets.
   if (flags.volumes) rmSync(stateDir(project), { recursive: true, force: true });
@@ -189,15 +193,54 @@ function waitHealthy(container, seconds = 30) {
   return false;
 }
 
+const LOCKED = ['--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--user', '1000:1000'];
+
+/**
+ * The extension's way out, if it has been given one: a proxy of its own that lets through only the
+ * agreed addresses. It stands with one foot on the extension's private network and one on a network
+ * that leads out, on which nothing of ours lives. Returns the proxy's address, or '' when there is none.
+ */
+function runEgress(project, state) {
+  const proxy = `${state.container}-egress`;
+  quiet('docker', ['rm', '-f', proxy]);
+  const allow = readEnv(state.file).ALLOW ?? '';
+  if (!allow) return '';
+  if (!quiet('docker', ['image', 'inspect', `fb-egress:${TAG}`])) show('docker', ['build', '-f', 'infra/docker/egress.Dockerfile', '-t', `fb-egress:${TAG}`, 'infra/egress']);
+  const out = `${project}-egress`;
+  if (!quiet('docker', ['network', 'inspect', out])) sh('docker', ['network', 'create', out]);
+  // The network it shares with the extension also holds the API and the worker: never a destination.
+  const shared = JSON.parse(sh('docker', ['network', 'inspect', state.network]))[0].IPAM.Config.map((c) => c.Subnet).join(',');
+  sh('docker', ['run', '-d', '--name', proxy, '--restart', 'unless-stopped', '--network', state.network, '-e', `ALLOW=${allow}`, '-e', `NEVER=${shared}`, ...LOCKED, '--memory', '128m', '--cpus', '0.25', '--pids-limit', '64', `fb-egress:${TAG}`]);
+  sh('docker', ['network', 'connect', out, proxy]);
+  return `http://${proxy}:3128`;
+}
+
 /** Starts a customer's image, locked down: no root, no writable disk, no extra rights, on its private network only. */
-function runExtension(state, image) {
+function runExtension(project, state, image) {
+  const proxy = runEgress(project, state);
   quiet('docker', ['rm', '-f', state.container]);
   sh('docker', [
     'run', '-d', '--name', state.container, '--restart', 'unless-stopped',
     '--network', state.network, '--env-file', state.file,
-    '--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--user', '1000:1000',
-    ...LIMITS, image,
+    // With a proxy, Node's own fetch and http clients use it without the customer's code doing anything.
+    ...(proxy ? ['-e', `HTTP_PROXY=${proxy}`, '-e', `HTTPS_PROXY=${proxy}`, '-e', 'NO_PROXY=127.0.0.1,localhost', '-e', 'NODE_USE_ENV_PROXY=1'] : []),
+    ...LOCKED, ...LIMITS, image,
   ]);
+}
+
+/** Sets what a customer's extension may call out to, and restarts it with that. No addresses: nothing. */
+function extAllow(project, orgId, entries, flags) {
+  projectEnv(project);
+  const state = extensionState(project, orgId, String(flags.name ?? 'main'));
+  if (!existsSync(state.file)) fail('No such extension is installed here');
+  const allow = [...parseAllow(entries.join(','))].map(([address, entry]) => `${address}${entry.private ? '=private' : ''}`);
+  const saved = readEnv(state.file);
+  writeEnv(state.file, { ...saved, ALLOW: allow.join(',') });
+  if (saved.IMAGE) {
+    runExtension(project, state, saved.IMAGE);
+    if (!waitHealthy(state.container)) fail('The extension did not come back after the change');
+  }
+  console.log(allow.length ? `${state.container} may call: ${allow.join(', ')}` : `${state.container} may call nothing outside.`);
 }
 
 /**
@@ -235,17 +278,17 @@ function extDeploy(project, orgId, repository, flags) {
     const ref = /Installed as ([a-z0-9]{8})/.exec(out)?.[1];
     const secret = /FB_EXTENSION_SECRET=(\S+)/.exec(out)?.[1];
     if (!ref || !secret) fail(`The installation did not issue a secret:\n${out}`);
-    writeEnv(state.file, { FB_EXTENSION_SECRET: secret, FB_ORG_ID: orgId, REF: ref, CONTAINER: state.container, NETWORK: state.network, IMAGE: '' });
+    writeEnv(state.file, { FB_EXTENSION_SECRET: secret, FB_ORG_ID: orgId, REF: ref, CONTAINER: state.container, NETWORK: state.network, IMAGE: '', ALLOW: '' });
   }
   const saved = readEnv(state.file);
   attach(project, state.network);
 
   // 3. Replace the running version; go back to it if the new one does not answer.
-  runExtension(state, image);
+  runExtension(project, state, image);
   if (!waitHealthy(state.container)) {
     const logs = spawnSync('docker', ['logs', '--tail', '30', state.container], { encoding: 'utf8' });
     if (saved.IMAGE) {
-      runExtension(state, saved.IMAGE);
+      runExtension(project, state, saved.IMAGE);
       waitHealthy(state.container);
     } else quiet('docker', ['rm', '-f', state.container]);
     fail(`The new version did not start${saved.IMAGE ? '; the previous one is running again' : ''}.\n${logs.stdout}${logs.stderr}`);
@@ -263,7 +306,7 @@ function extRemove(project, orgId, flags) {
   if (!existsSync(state.file)) fail('No such extension is installed here');
   const saved = readEnv(state.file);
   console.log(op(project, ['extension', 'remove', orgId, saved.REF]).trim());
-  quiet('docker', ['rm', '-f', state.container]);
+  quiet('docker', ['rm', '-f', state.container, `${state.container}-egress`]);
   for (const service of ['api', 'worker']) quiet('docker', ['network', 'disconnect', '-f', state.network, containerOf(project, service)]);
   quiet('docker', ['network', 'rm', state.network]);
   rmSync(state.file);
@@ -281,7 +324,8 @@ try {
   else if (command === 'ext' && rest[0] === 'init') extInit(rest[1]);
   else if (command === 'ext' && rest[0] === 'deploy') extDeploy(rest[1], rest[2], rest[3], flags);
   else if (command === 'ext' && rest[0] === 'remove') extRemove(rest[1], rest[2], flags);
-  else fail('Commands: build | up <project> | down <project> [--volumes] | op <project> <command> | ext init <dir> | ext deploy <project> <orgId> <repo> | ext remove <project> <orgId>');
+  else if (command === 'ext' && rest[0] === 'allow') extAllow(rest[1], rest[2], rest.slice(3), flags);
+  else fail('Commands: build | up <project> | down <project> [--volumes] | op <project> <command> | ext init <dir> | ext deploy <project> <orgId> <repo> | ext remove <project> <orgId> | ext allow <project> <orgId> [host[:port][=private] ...]');
 } catch (e) {
   fail(e.stderr?.toString().trim() || e.stdout?.toString().trim() || e.message);
 }
