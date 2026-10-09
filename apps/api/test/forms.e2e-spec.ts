@@ -67,6 +67,8 @@ describe('Forms: versions in folders, with folder permissions (e2e)', () => {
 
     const list = (await api().get('/forms').set(bearer(designer)).expect(200)).body;
     expect(list).toEqual([expect.objectContaining({ code: 'CUSTOMER_COMPLAINT', version: 2, status: 'PUBLISHED', publishedVersion: 2, folderId: quality })]);
+    // The list says whether a form has an address to hand out: live, and open to anyone with the link.
+    expect(typeof list[0].publicLink).toBe('boolean');
   });
 
   it('a blank form is a valid draft; the server sets who made it; publishing needs a field', async () => {

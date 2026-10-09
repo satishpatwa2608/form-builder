@@ -104,6 +104,33 @@ describe('studio', () => {
     expect(calls.find((c) => c.method === 'POST' && c.path === '/invitations')?.body).toEqual({ email: 'dev@acme.test', role: 'PUBLISHER' });
   });
 
+  it('forms: a live public form has its link, a way to open it and its embed code right on its row; others do not', async () => {
+    const user = userEvent.setup();
+    const copied: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t: string) => void copied.push(t) } });
+    const form = (over: object) => ({ id: 'x', code: 'X', name: 'X', folderId: 'f1', version: 1, status: 'PUBLISHED', publishedVersion: 1, publicLink: false, updatedAt: '2026-09-30T10:00:00Z', permissions: ['form.view'], ...over });
+    fakeApi({
+      ...signedIn(),
+      'GET /folders': () => ({ body: [{ id: 'f1', name: 'Quality', parentId: null, path: ['f1'] }] }),
+      'GET /forms': () => ({
+        body: [
+          form({ id: 'a', code: 'PLANT_ISSUE', name: 'Plant issue', publicLink: true }),
+          form({ id: 'b', code: 'STAFF_ONLY', name: 'Staff only' }),
+          form({ id: 'c', code: 'DRAFTED', name: 'Drafted', status: 'DRAFT', publishedVersion: null }),
+        ],
+      }),
+    });
+    renderApp('/forms');
+    await user.click(await screen.findByRole('button', { name: 'Copy the link to Plant issue' }));
+    expect(copied[0]).toMatch(new RegExp(`/f/${ME.org.id}/PLANT_ISSUE$`));
+    expect(screen.getByRole('link', { name: 'Open Plant issue as people see it' })).toHaveAttribute('href', copied[0]);
+    await user.click(screen.getByRole('button', { name: 'Copy the embed code for Plant issue' }));
+    expect(copied[1]).toContain(`data-org="${ME.org.id}" data-code="PLANT_ISSUE"`);
+    // A form for signed-in people only, and one not yet published, have no address to hand out.
+    expect(screen.queryByRole('button', { name: 'Copy the link to Staff only' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy the link to Drafted' })).toBeNull();
+  });
+
   it('forms: create from a template (code from the name) and actions follow per-form permissions', async () => {
     const user = userEvent.setup();
     const folder = { id: 'f1', name: 'Quality', parentId: null, path: ['f1'] };

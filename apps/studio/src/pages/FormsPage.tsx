@@ -1,8 +1,10 @@
+import { useAuth } from '../lib/auth';
+import { copyEmbedCode, copyPublicFormLink, publicFormUrl } from '../form/links';
 import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, fieldsFromPdfFields, type ImportedFields } from '@fb/engine';
 import { FormVersions } from '../components/FormVersions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Archive, Download, FilePlus2, FolderInput, GitBranchPlus, History, Inbox, Rocket, Trash2, Upload, X } from 'lucide-react';
+import { Archive, Code2, Download, ExternalLink, FilePlus2, FolderInput, GitBranchPlus, History, Inbox, Link2, Rocket, Trash2, Upload, X } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAction, useFolders, useForms } from '../lib/queries';
 import type { Folder, FormStatus, FormSummary } from '../lib/types';
@@ -254,6 +256,7 @@ function importSummary(r: ImportResult) {
 }
 
 export default function FormsPage() {
+  const { me } = useAuth();
   const forms = useForms();
   const folders = useFolders();
   const [folderFilter, setFolderFilter] = useState('');
@@ -390,6 +393,19 @@ export default function FormsPage() {
                         </td>
                         <td>
                           <div className="st-row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                            {f.publicLink && (
+                              <>
+                                <Button variant="secondary" size="sm" aria-label={`Copy the link to ${f.name}`} title="Copy the form's address, to send to people or put on a page" onClick={() => void copyPublicFormLink(me?.org.id ?? '', f.code)}>
+                                  <Link2 size={14} /> Copy link
+                                </Button>
+                                <a className="st-btn st-btn--ghost st-btn--sm" href={publicFormUrl(me?.org.id ?? '', f.code)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${f.name} as people see it`} title="Open the form as people see it">
+                                  <ExternalLink size={14} />
+                                </a>
+                                <Button variant="ghost" size="sm" aria-label={`Copy the embed code for ${f.name}`} title="Copy a line of HTML that puts this form on your own website" onClick={() => void copyEmbedCode(me?.org.id ?? '', f.code)}>
+                                  <Code2 size={14} />
+                                </Button>
+                              </>
+                            )}
                             {(edit || publish) && (
                               <Link className="st-btn st-btn--ghost st-btn--sm" to={`/forms/${f.id}/submissions`} aria-label={`Submissions of ${f.name}`} title="Submissions">
                                 <Inbox size={14} />

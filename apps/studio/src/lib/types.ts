@@ -107,6 +107,8 @@ export interface FormSummary {
   version: number;
   status: FormStatus;
   publishedVersion: number | null;
+  /** A version is live and open to anyone with its link. */
+  publicLink?: boolean;
   updatedAt: string;
   permissions: Permission[];
   publishAt?: string | null;

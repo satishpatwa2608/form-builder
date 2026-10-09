@@ -83,6 +83,9 @@ describe('The requests portal (e2e)', () => {
     await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: form('DRAFTED', { listOnPortal: true }) }).expect(201);
     const front = (await h.api().get(`/public/portal/${orgId}`).expect(200)).body;
     expect(front.forms).toEqual([{ code: 'LAPTOP', name: 'LAPTOP request', description: 'Ask for a new laptop' }]);
+    // The builder's own list says which forms have an address to hand out: live and open to anyone, nothing else.
+    const mine = (await h.api().get('/forms').set(h.bearer(owner)).expect(200)).body as { code: string; publicLink: boolean }[];
+    expect(Object.fromEntries(mine.map((f) => [f.code, f.publicLink]))).toEqual({ LAPTOP: true, HIDDEN_ONE: true, OVER: true, STAFF_ONLY: false, DRAFTED: false });
   });
 
   it('a requester signs in with a link sent to their email and sees what they sent, without the answers', async () => {
