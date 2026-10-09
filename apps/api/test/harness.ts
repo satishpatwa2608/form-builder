@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
@@ -11,7 +11,7 @@ import { loadConfig } from '../src/config';
 export const PASSWORD = 'correct horse battery';
 
 /** The real app on an in-memory MongoDB, with mail captured instead of sent. */
-export async function startApp(env: Record<string, string> = {}) {
+export async function startApp(env: Record<string, string> = {}, swap: (builder: TestingModuleBuilder) => TestingModuleBuilder = (b) => b) {
   const mongo = await MongoMemoryServer.create();
   const config = loadConfig({
     NODE_ENV: 'test',
@@ -25,10 +25,7 @@ export async function startApp(env: Record<string, string> = {}) {
   const outbox: Mail[] = [];
   /** What the app sends mail with; a test can swap `send` to make sending fail. */
   const mailer: { send: (m: Mail) => Promise<void> } = { send: async (m: Mail) => void outbox.push(m) };
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
-    .overrideProvider(MAILER)
-    .useValue(mailer)
-    .compile();
+  const moduleRef = await swap(Test.createTestingModule({ imports: [AppModule.forRoot(config)] }).overrideProvider(MAILER).useValue(mailer)).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app, config);
   await app.listen(0, '127.0.0.1');

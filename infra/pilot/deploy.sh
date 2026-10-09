@@ -24,7 +24,28 @@ docker compose up -d --remove-orphans
 # Old images take the disk a small server does not have.
 docker image prune -af --filter "until=24h" >/dev/null || true
 for i in $(seq 1 60); do
-  [ "$(docker inspect -f '{{.State.Health.Status}}' fb-api-1 2>/dev/null)" = healthy ] && { echo "running $TAG"; exit 0; }
+  [ "$(docker inspect -f '{{.State.Health.Status}}' fb-api-1 2>/dev/null)" = healthy ] && break
+  [ "$i" = 60 ] && { echo "the API did not become healthy:"; docker compose logs --tail 40 api; exit 1; }
   sleep 3
 done
-echo "the API did not become healthy:"; docker compose logs --tail 40 api; exit 1
+
+# Customers' own code (ext-deployer.sh). A release makes new API and worker containers: put them back on each
+# extension's network, and keep the service that runs what customers ask for.
+chmod +x ext-deployer.sh
+./ext-deployer.sh attach
+cat > /etc/systemd/system/fb-ext-deployer.service <<'UNIT'
+[Unit]
+Description=Form Builder: runs the extensions customers deploy
+After=docker.service
+Requires=docker.service
+[Service]
+ExecStart=/opt/fb/ext-deployer.sh
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --quiet fb-ext-deployer
+systemctl restart fb-ext-deployer
+echo "running $TAG"; exit 0

@@ -145,6 +145,34 @@ new one and move forms over.
    is offered. If a new version does not start, the previous one keeps
    running.
 
+### Deploying it yourself
+
+Where your installation offers it, **Administration → Extensions** has a part
+called **Deploy your own code**, and you do not wait for us:
+
+1. Choose **Show the push commands**. You get a sign-in to your
+   organisation's own image space. It works for an hour, for that space
+   alone, and is not shown again.
+2. In your repository (the starter kit comes with the `Dockerfile` to use),
+   build for the kind of machine shown, and push, giving each version a name
+   of its own:
+
+   ```sh
+   docker login <image space> -u AWS -p <password>
+   docker build --platform linux/arm64 -t <image space>/fb-ext/<your organisation>:v1 .
+   docker push <image space>/fb-ext/<your organisation>:v1
+   ```
+3. Choose the version and press **Deploy**. Within a minute it is running,
+   and its steps, lists, checks and fields are offered in the builder. The
+   page shows how it went; if the version did not start it says why, shows
+   what your code printed, and the version before keeps running.
+
+Only your organisation's administrators can do this, each request is in your
+audit trail and your log (area *Extensions*), and the last ten versions you
+pushed are kept. Whatever the image contains, it runs as an ordinary user,
+cannot write to its own disk, has a fixed share of memory and processor, and
+is on a network with Form Builder and nothing else.
+
 Your plan must include extensions. The same repository works whether you are
 on the shared installation or one of your own. For how we run this, see
 [hosting.md](hosting.md).

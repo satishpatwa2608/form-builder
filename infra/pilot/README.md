@@ -14,6 +14,8 @@ Not the production design (see `infra/terraform` and `docs/hosting.md`): one ser
 | Bucket | `fb-pilot-547878963606-files` | Uploads and PDFs; `deploy/` (these files); `backups/` (kept 30 days) |
 | Key | `alias/fb-pilot` (KMS) | Wraps connector credentials |
 | Images | ECR `fb-api`, `fb-studio`, `fb-runtime` | Tagged with the git commit they were built from |
+| Customers' images | ECR `fb-ext/<organisation id>`, one per customer, made when they first ask to push | Their own extension images; the last ten versions are kept |
+| Push role | IAM `fb-pilot-ext-push` | Customers' push passwords are one-hour sessions of it, each narrowed to that customer's space. Only the server's role can take it |
 | Settings | Parameter store `/fb-pilot/*` | Host names, bucket, key, plan, sender address, and the two generated secrets |
 
 Addresses (temporary names that resolve to the server's address; a real domain replaces them):
@@ -47,6 +49,19 @@ Sign-up is closed on the pilot (`/fb-pilot/SIGNUP=closed`) and new organisations
 The addresses in `/fb-pilot/OPERATOR_EMAILS` see the **Customers** page, where each customer is added with the
 plan bought and its owner invited. See "Who may start an organisation" in `docs/operations.md`.
 
+## Customers' own code
+
+A customer on a plan with extensions deploys its own code from **Extensions → Deploy your own code**
+(`docs/extensions.md`). `EXT_REGISTRY` and `EXT_PUSH_ROLE_ARN` in the parameter store switch it on. The API
+hands out the push password and writes the request down; `ext-deployer.sh`, the service `fb-ext-deployer` on
+the server, is the only thing that starts a container. It keeps each extension's secret and running version
+in `/opt/fb/ext/` (root only), and runs each on a network of its own with the API and the worker and no way
+out: an extension here cannot call the internet or the customer's systems yet.
+
+- What it is doing: `journalctl -u fb-ext-deployer -n 50`
+- What is running: `docker ps --filter name=fb-ext-`
+- A customer's output: `docker logs --tail 50 fb-ext-<first 8 of the organisation id>-main`
+
 ## Changing a setting
 
 `aws ssm put-parameter --name /fb-pilot/<NAME> --value ... --overwrite`, then run `deploy.sh` with the current tag.
@@ -60,5 +75,5 @@ files are already in the bucket, which keeps earlier versions. To restore: copy 
 ## Taking it all away
 
 Turn off termination protection on the server, terminate it, release the address, empty and delete the
-bucket, delete the ECR repositories, the role and instance profile, the firewall group, the parameters, and
+bucket, delete the ECR repositories (the customers' `fb-ext/*` too), the roles (`fb-pilot-server`, `fb-pilot-ext-push`) and instance profile, the firewall group, the parameters, and
 schedule the KMS key for deletion. Everything carries the tag `Project=form-builder-pilot`.

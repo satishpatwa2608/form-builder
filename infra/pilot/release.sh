@@ -24,7 +24,7 @@ for i in api studio runtime; do
   done
 done
 
-for f in compose.yml Caddyfile deploy.sh backup.sh; do aws s3 cp "${A[@]}" infra/pilot/$f s3://fb-pilot-547878963606-files/deploy/$f --only-show-errors; done
+for f in compose.yml Caddyfile deploy.sh backup.sh ext-deployer.sh; do aws s3 cp "${A[@]}" infra/pilot/$f s3://fb-pilot-547878963606-files/deploy/$f --only-show-errors; done
 CID=$(aws ssm send-command "${A[@]}" --instance-ids $SERVER --document-name AWS-RunShellScript --timeout-seconds 900 \
   --parameters "commands=['cd /opt/fb && aws s3 sync s3://fb-pilot-547878963606-files/deploy/ /opt/fb/ --only-show-errors && chmod +x deploy.sh backup.sh && ./deploy.sh $TAG 2>&1 | tail -3']" --query Command.CommandId --output text)
 for i in $(seq 1 100); do

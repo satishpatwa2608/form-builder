@@ -84,6 +84,8 @@ import { PortalService } from './portal/portal.service';
 import { OrgMailService } from './mail/org-mail.service';
 import { OrgLogService } from './logs/org-log.service';
 import { OperatorService } from './operator/operator.service';
+import { EcrImageStore, ExtensionDeployService, IMAGE_STORE } from './extensions/extension-deploy.service';
+import { ExtensionDeploy, ExtensionDeploySchema } from './extensions/extension-deploy.schema';
 import { OperatorController } from './operator/operator.controller';
 import { OrgLogController } from './logs/org-log.controller';
 import { OrgLog, OrgLogSchema } from './logs/log.schema';
@@ -167,6 +169,7 @@ export class AppModule {
           { name: FormFieldStat.name, schema: FormFieldStatSchema },
           { name: PortalPass.name, schema: PortalPassSchema },
           { name: OrgLog.name, schema: OrgLogSchema },
+          { name: ExtensionDeploy.name, schema: ExtensionDeploySchema },
           { name: FormDraft.name, schema: FormDraftSchema },
           { name: SsoState.name, schema: SsoStateSchema },
           { name: Job.name, schema: JobSchema },
@@ -277,6 +280,12 @@ export class AppModule {
         OrgMailService,
         OrgLogService,
         OperatorService,
+        ExtensionDeployService,
+        {
+          provide: IMAGE_STORE,
+          // Only where the installation is set up for it: otherwise the page says it is not switched on.
+          useValue: config.EXT_REGISTRY && config.EXT_PUSH_ROLE_ARN ? new EcrImageStore(config.AWS_REGION, config.EXT_REGISTRY.slice(0, 12), config.EXT_PUSH_ROLE_ARN) : null,
+        },
         DocumentsService,
         FormReviewService,
         FormAutomationService,

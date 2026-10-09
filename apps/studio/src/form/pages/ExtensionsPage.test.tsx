@@ -4,7 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FormDefinition } from '../types';
-import { seedLocalExtensions, type ExtensionInfo } from '../adapters/extensions';
+import { seedLocalDeploy, seedLocalExtensions, type DeployStatus, type ExtensionInfo } from '../adapters/extensions';
 import { FormSettingsPanel } from '../builder/components/FormSettingsPanel';
 import ExtensionsPage from './ExtensionsPage';
 
@@ -37,6 +37,7 @@ const wrap = (node: React.ReactNode) => render(<QueryClientProvider client={new 
 beforeEach(() => {
   admin.value = true;
   seedLocalExtensions([acme], [{ key: CHECK, label: 'Acme rules: One claim per invoice' }]);
+  seedLocalDeploy();
 });
 
 describe('The Extensions page', () => {
@@ -134,5 +135,82 @@ describe('Checks from the extension, in a form\'s settings', () => {
     const group = await screen.findByRole('group', { name: 'Checks from your extension' });
     await user.click(await within(group).findByRole('checkbox', { name: /no longer offered/ }));
     expect(spy.mock.lastCall![0].submitChecks).toBeUndefined();
+  });
+});
+
+describe('Extensions page: deploying your own code', () => {
+  const login = { registry: 'store.test', image: 'store.test/fb-ext/org-1', username: 'AWS', password: 'pw-secret-123', expiresAt: '2026-10-09T10:30:00.000Z', platform: 'linux/arm64' };
+  const images = [
+    { tag: 'v2', pushedAt: '2026-10-09T09:00:00.000Z', sizeMb: 61.4 },
+    { tag: 'v1', pushedAt: '2026-10-08T09:00:00.000Z', sizeMb: 61.2 },
+  ];
+  const on = (over: Partial<DeployStatus> = {}) => seedLocalDeploy({ status: { available: true, included: true, platform: 'linux/arm64', deploys: [], ...over }, login, images })!;
+
+  it('is not offered where the installation does not have it', async () => {
+    wrap(<ExtensionsPage />);
+    expect(await screen.findByRole('heading', { name: 'Acme rules' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Deploy your own code' })).not.toBeInTheDocument();
+  });
+
+  it('shows the push commands for the organisation\'s own space, with the password kept off the screen', async () => {
+    on();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    wrap(<ExtensionsPage />);
+    const area = await screen.findByRole('region', { name: 'Deploy your own code' });
+    await userEvent.click(within(area).getByRole('button', { name: 'Show the push commands' }));
+    expect(await within(area).findByLabelText('Build')).toHaveTextContent('docker build --platform linux/arm64 -t store.test/fb-ext/org-1:v1 .');
+    expect(within(area).getByLabelText('Push')).toHaveTextContent('docker push store.test/fb-ext/org-1:v1');
+    expect(within(area).getByLabelText('Sign in to your image space')).toHaveTextContent('docker login store.test -u AWS -p ••••••••');
+    expect(area).not.toHaveTextContent('pw-secret-123');
+    await userEvent.click(within(area).getByRole('button', { name: 'Copy: Sign in to your image space' }));
+    expect(writeText).toHaveBeenCalledWith('docker login store.test -u AWS -p pw-secret-123');
+  });
+
+  it('deploys the chosen version and shows it under way; nothing else can be asked meanwhile', async () => {
+    const seeded = on();
+    wrap(<ExtensionsPage />);
+    const area = await screen.findByRole('region', { name: 'Deploy your own code' });
+    const version = await within(area).findByLabelText('Version');
+    await within(area).findByRole('option', { name: /^v1 · pushed/ });
+    expect(version).toHaveValue('v2');
+    await userEvent.selectOptions(version, 'v1');
+    await userEvent.click(within(area).getByRole('button', { name: 'Deploy' }));
+    expect(seeded.asked).toEqual(['v1']);
+    const latest = await within(area).findByRole('status', { name: 'Latest deployment' });
+    expect(latest).toHaveTextContent('Waiting to start · version v1');
+    expect(within(area).getByRole('button', { name: 'Deploy' })).toBeDisabled();
+    expect(within(area).getByRole('button', { name: 'Remove the extension' })).toBeDisabled();
+  });
+
+  it('a version that did not start says why and shows what the code printed', async () => {
+    on({ deploys: [{ id: 'd1', kind: 'DEPLOY', tag: 'v2', status: 'FAILED', message: 'Version v2 did not start; the previous one is running again.', output: "Error: Cannot find module './steps'", at: '2026-10-09T09:05:00.000Z', finishedAt: '2026-10-09T09:06:00.000Z' }] });
+    wrap(<ExtensionsPage />);
+    const latest = await screen.findByRole('status', { name: 'Latest deployment' });
+    expect(latest).toHaveTextContent('Failed · version v2');
+    expect(latest).toHaveTextContent('Version v2 did not start; the previous one is running again.');
+    expect(latest).toHaveTextContent("Error: Cannot find module './steps'");
+  });
+
+  it('removes the extension only after being asked twice', async () => {
+    const seeded = on();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    wrap(<ExtensionsPage />);
+    const area = await screen.findByRole('region', { name: 'Deploy your own code' });
+    const remove = await within(area).findByRole('button', { name: 'Remove the extension' });
+    await userEvent.click(remove);
+    expect(seeded.asked).toEqual([]);
+    await userEvent.click(remove);
+    expect(seeded.asked).toEqual(['REMOVE']);
+    confirm.mockRestore();
+  });
+
+  it('a plan without extensions is told so, and offered nothing to press', async () => {
+    on({ included: false });
+    seedLocalExtensions([]);
+    wrap(<ExtensionsPage />);
+    const area = await screen.findByRole('region', { name: 'Deploy your own code' });
+    expect(area).toHaveTextContent('Your plan does not include extensions.');
+    expect(within(area).queryByRole('button')).not.toBeInTheDocument();
   });
 });

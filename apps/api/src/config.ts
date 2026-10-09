@@ -55,6 +55,15 @@ const schema = z.object({
   SIGNUP: z.enum(['open', 'closed']).default('open'),
   /** Email addresses of the people who run this installation (comma-separated): they may add organisations and choose their plan. */
   OPERATOR_EMAILS: z.string().default(''),
+  /**
+   * Customers deploying their own extensions by themselves (see extensions/extension-deploy.service.ts). All
+   * three are set together, by an installation whose server runs the deploy service: the image store's address
+   * (<account>.dkr.ecr.<region>.amazonaws.com), the role whose sessions hand out push passwords, and the kind
+   * of machine the code runs on.
+   */
+  EXT_REGISTRY: z.string().regex(/^(\d{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com)?$/).default(''),
+  EXT_PUSH_ROLE_ARN: z.string().default(''),
+  EXT_PLATFORM: z.string().default('linux/arm64'),
   /** Secure cookies (https only). Must be true outside local development. */
   COOKIE_SECURE: z
     .enum(['true', 'false'])

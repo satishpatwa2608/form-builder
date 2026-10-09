@@ -81,3 +81,85 @@ export function useCustomFields() {
     retry: false,
   });
 }
+
+// ── Deploying your own code, by yourself ──────────────────────────────────
+
+/** One request to run (or take away) a version, and how it went. */
+export interface ExtensionDeployRow {
+  id: string;
+  kind: 'DEPLOY' | 'REMOVE';
+  tag: string;
+  status: 'PENDING' | 'RUNNING' | 'LIVE' | 'FAILED' | 'REMOVED';
+  message: string;
+  /** The end of the code's own output, when it would not start. */
+  output: string;
+  at: string | null;
+  finishedAt: string | null;
+}
+export interface DeployStatus {
+  /** Whether this installation lets organisations deploy their own code themselves. */
+  available: boolean;
+  /** Whether the organisation's plan includes extensions. */
+  included: boolean;
+  /** The kind of machine the code runs on: an image built for another will not start. */
+  platform: string;
+  deploys: ExtensionDeployRow[];
+}
+/** What to push with: shown once, and it stops working after an hour. */
+export interface PushLogin {
+  registry: string;
+  image: string;
+  username: string;
+  password: string;
+  expiresAt: string;
+  platform: string;
+}
+export interface PushedImage {
+  tag: string;
+  pushedAt: string | null;
+  sizeMb: number;
+}
+
+let localDeploy: { status: DeployStatus; login: PushLogin; images: PushedImage[]; asked: string[] } | undefined;
+/** Tests: what the API would answer about deployments, and what gets asked of it. */
+export const seedLocalDeploy = (seed?: { status: DeployStatus; login: PushLogin; images: PushedImage[] }) => {
+  localDeploy = seed && { ...seed, asked: [] };
+  return localDeploy;
+};
+const OFF: DeployStatus = { available: false, included: false, platform: 'linux/arm64', deploys: [] };
+const DEPLOY = [...KEY, 'deploy'] as const;
+export const deployUnderWay = (s?: DeployStatus) => !!s?.deploys.some((d) => d.status === 'PENDING' || d.status === 'RUNNING');
+
+/** Where deployments stand. Asked again every few seconds while one is under way. */
+export function useDeployStatus() {
+  return useQuery({
+    queryKey: DEPLOY,
+    queryFn: async () => (USE_API ? unwrap<DeployStatus>(await adminApi.get('/extensions/deploy')) : (localDeploy?.status ?? OFF)),
+    refetchInterval: (q) => (deployUnderWay(q.state.data) ? 3000 : false),
+    retry: false,
+  });
+}
+
+export function usePushLogin() {
+  return useMutation({ mutationFn: async () => (USE_API ? unwrap<PushLogin>(await adminApi.post('/extensions/deploy/login')) : localDeploy!.login) });
+}
+
+export function usePushedImages(enabled: boolean) {
+  return useQuery({ queryKey: [...DEPLOY, 'images'], enabled, queryFn: async () => (USE_API ? unwrap<PushedImage[]>(await adminApi.get('/extensions/deploy/images')) : (localDeploy?.images ?? [])), retry: false });
+}
+
+/** Asks for a pushed version to run, or (with no tag) for the extension to be taken away. */
+export function useRequestDeploy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (tag: string | null) => {
+      if (!USE_API) {
+        localDeploy!.asked.push(tag ?? 'REMOVE');
+        localDeploy!.status = { ...localDeploy!.status, deploys: [{ id: `d${localDeploy!.asked.length}`, kind: tag ? 'DEPLOY' : 'REMOVE', tag: tag ?? '', status: 'PENDING', message: '', output: '', at: null, finishedAt: null }, ...localDeploy!.status.deploys] };
+        return localDeploy!.status;
+      }
+      return unwrap<DeployStatus>(tag ? await adminApi.post('/extensions/deploy', { tag }) : await adminApi.delete('/extensions/deploy'));
+    },
+    onSuccess: (status) => qc.setQueryData(DEPLOY, status),
+  });
+}

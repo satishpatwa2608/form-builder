@@ -27,6 +27,9 @@ x-api-env: &api-env
   # Who may start an organisation: closed means only the operators, who add each customer.
   SIGNUP: ${SIGNUP:-closed}
   OPERATOR_EMAILS: ${OPERATOR_EMAILS:-}
+  # Customers deploying their own code by themselves: their image spaces, and the role that hands out push passwords.
+  EXT_REGISTRY: ${EXT_REGISTRY:-}
+  EXT_PUSH_ROLE_ARN: ${EXT_PUSH_ROLE_ARN:-}
   FILE_SCANNER: none
   JOBS_POLL: "true"
 

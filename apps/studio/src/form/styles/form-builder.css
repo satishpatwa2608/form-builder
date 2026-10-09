@@ -1090,3 +1090,25 @@
 .fb-translations td:nth-child(2) {
   width: 32%;
 }
+
+.fb-command {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.fb-command code,
+.fb-command__output {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre;
+}
+.fb-command__output {
+  max-height: 260px;
+  white-space: pre-wrap;
+}

@@ -167,6 +167,9 @@ function extInit(directory) {
   if (existsSync(target) && readdirSync(target).length) fail(`${target} is not empty`);
   cpSync(join(ROOT, 'examples/extension-starter'), target, { recursive: true, filter: (src) => !/node_modules|dist$/.test(src) });
   const sdk = vendorSdk(target);
+  // For customers who build the image themselves and deploy it from the builder (docs/extensions.md).
+  cpSync(join(ROOT, 'infra/docker/extension.Dockerfile'), join(target, 'Dockerfile'));
+  writeFileSync(join(target, '.dockerignore'), 'node_modules\ndist\n.git\n');
   const pkg = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'));
   pkg.name = 'my-extension';
   pkg.dependencies['@fb/sdk'] = `file:./vendor/${sdk}`;

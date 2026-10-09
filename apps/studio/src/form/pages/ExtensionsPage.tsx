@@ -3,8 +3,9 @@ import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@ui/button';
 import { messageOf } from '../adapters/backend';
-import { useExtensions, useRefreshExtension, type ExtensionInfo, type ExtensionOffer } from '../adapters/extensions';
+import { useDeployStatus, useExtensions, useRefreshExtension, type ExtensionInfo, type ExtensionOffer } from '../adapters/extensions';
 import { useFormPermissions } from '../hooks/useFormPermissions';
+import { ExtensionDeploy } from './ExtensionDeploy';
 import '../styles/form-builder.css';
 
 const STATUS: Record<ExtensionInfo['status'], string> = { NEW: 'Not started yet', OK: 'Running', UNREACHABLE: 'Not answering' };
@@ -29,11 +30,13 @@ function Offers({ title, where, items }: { title: string; where: string; items: 
   );
 }
 
-/** The organisation's own code: what its extension offers to forms and workflows. Installing one is done by us. */
+/** The organisation's own code: what its extension offers to forms and workflows, and (where offered) deploying it themselves. */
 export default function ExtensionsPage() {
   const { canManagePages } = useFormPermissions();
   const { data = [], isLoading } = useExtensions();
   const refresh = useRefreshExtension();
+  const { data: deploy } = useDeployStatus();
+  const selfService = !!deploy?.available;
 
   if (!canManagePages) return <p className="p-6 text-sm text-muted-foreground">Extensions are managed by your organisation's administrators.</p>;
 
@@ -48,10 +51,11 @@ export default function ExtensionsPage() {
       </div>
       {!isLoading && !data.length && (
         <div className="fb-banner">
-          No extension is set up for your organisation. Your developers write one with the Form Builder SDK; we deploy it for you. Once it is running, what it offers appears here and in the
-          builder.
+          No extension is set up for your organisation. Your developers write one with the Form Builder SDK; {selfService ? 'you deploy it below' : 'we deploy it for you'}. Once it is running, what
+          it offers appears here and in the builder.
         </div>
       )}
+      {canManagePages && <ExtensionDeploy running={data.length > 0} />}
       {data.map((ext) => (
         <section key={ext.id} className="fb-extension" aria-label={ext.name}>
           <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
