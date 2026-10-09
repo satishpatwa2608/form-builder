@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fieldsFromCsv, fieldsFromJsonSchema, MAX_IMPORTED_FIELDS, parseCsv, validateFormDefinition } from '../src';
+import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, MAX_IMPORTED_FIELDS, parseCsv, validateFormDefinition } from '../src';
 import type { FormField } from '../src/types';
 import base from './fixtures/customer-complaint-basic.json';
 
@@ -160,3 +160,38 @@ describe('a form from a spreadsheet', () => {
     expect(brief(fieldsFromCsv(`Story\n"${'word '.repeat(40)}"`).fields)).toEqual(['TEXTAREA story']);
   });
 });
+
+describe('a form from a table a connector exposes', () => {
+  it('makes one field per field, keeping the table\'s names so answers can be saved back without mapping', () => {
+    const { fields, notes } = fieldsFromEntity({ fields: ['_id', 'customer_name', 'contactEmail', 'phone', 'order_date', 'amount', 'is_urgent', 'delivery_notes', 'status'] });
+    expect(fields.map((f) => [f.name, f.label, f.type])).toEqual([
+      ['customer_name', 'Customer name', 'TEXT'],
+      ['contactEmail', 'Contact email', 'EMAIL'],
+      ['phone', 'Phone', 'PHONE'],
+      ['order_date', 'Order date', 'DATE'],
+      ['amount', 'Amount', 'NUMBER'],
+      ['is_urgent', 'Is urgent', 'CHECKBOX'],
+      ['delivery_notes', 'Delivery notes', 'TEXTAREA'],
+      ['status', 'Status', 'TEXT'],
+    ]);
+    expect(notes).toEqual(['"_id" identifies a row and is set by the system, so it has no field.']);
+    const result = validateFormDefinition({ ...base, fields }, 'publish');
+    expect(result.success ? [] : result.issues).toEqual([]);
+  });
+
+  it('a known type wins over what the name suggests; lists and groups are skipped and said so', () => {
+    const { fields, notes } = fieldsFromEntity({
+      fields: [{ name: 'email_count', type: 'number' }, { name: 'active', type: 'string' }, { name: 'signed', type: 'boolean' }, { name: 'when', type: 'date' }, { name: 'tags', type: 'array' }, { name: 'meta', type: 'object' }, { name: 'misc', type: 'unknown' }],
+    });
+    expect(fields.map((f) => [f.name, f.type])).toEqual([['email_count', 'NUMBER'], ['active', 'CHECKBOX'], ['signed', 'CHECKBOX'], ['when', 'DATE'], ['misc', 'TEXT']]);
+    expect(notes).toEqual(['"tags" holds a list and was skipped.', '"meta" holds a group of values and was skipped.']);
+  });
+
+  it('a name that cannot be a field key gets one, and says what to do about it', () => {
+    const { fields, notes } = fieldsFromEntity({ fields: ['order-no', 'address.city', '2nd line', 'order_no'] });
+    expect(fields.map((f) => f.name)).toEqual(['orderNo', 'addressCity', 'field2ndLine', 'order_no']);
+    expect(notes[0]).toBe('"order-no" cannot be a field key as it is, so its field is called "orderNo". Rename it, or map it when saving to the table.');
+    expect(fieldsFromEntity({ fields: [] }).notes).toEqual(['This table exposes no fields.']);
+  });
+});
+

@@ -73,8 +73,8 @@ from Sangam), MongoDB Atlas, domain names, and the certificates.
   approver must be someone other than the person who asked and the person who
   last changed it; any change after approval needs a new review.
 - Comments can be about the form or one field, and never block publishing.
-- **No email is sent** when a review is asked for. The Forms list shows what
-  is waiting. Adding email is small once mail is live.
+- People who can approve are emailed when a review is asked for, and the
+  author when it is decided (added after the first version).
 
 ## 6. Custom field types
 

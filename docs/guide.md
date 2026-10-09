@@ -122,7 +122,8 @@ form.
 - **Anyone who designs the form** can *Ask for a review*, with a note for the
   reviewer. Save the draft first, so the reviewer sees your changes.
 - **Anyone who may publish it** can *Approve* or *Ask for changes* (with a
-  reason). The Forms list shows which drafts are waiting.
+  reason). They are told by email when a review is asked for, the author is
+  told when it is decided, and the Forms list shows which drafts are waiting.
 - **Comments** can be about the whole form or about a field: select the field
   first. A comment links back to its field. Either side resolves or reopens
   a comment.
@@ -172,6 +173,10 @@ signatures are shown as drawn, and choices appear as their labels.
   response arrives, without anyone asking.
 - The same settings give the PDF its own title, a line at the foot of each
   page, and can list the questions nobody answered.
+- A workflow email can carry it: in the email step, switch on **Attach the
+  PDF of the response**.
+- It is written in Latin scripts and the major Indian ones (Hindi, Bengali,
+  Punjabi, Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam).
 - A response's PDF follows the version of the form it was answered on. A
   later change to the form does not rewrite it.
 - Only people who can see a form's responses can get its PDFs.

@@ -147,6 +147,24 @@ test('a plant that is not in the database is refused on submit', async () => {
   expect(((await res.json()) as { errors: unknown }).errors).toEqual([{ field: 'plant', message: 'Select a valid option' }]);
 });
 
+test('a new form can start from a connected table: one field per field, named the same', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await signIn(page, org.email);
+  await page.goto('/forms');
+  await page.getByRole('button', { name: 'New form' }).click();
+  await page.getByRole('radio', { name: /A table from a connector/ }).check({ force: true });
+  await page.getByRole('combobox', { name: 'Table', exact: true }).selectOption({ label: 'Plant CRM · Issues' });
+  await expect(page.getByRole('status').filter({ hasText: 'fields found' })).toContainText('5 fields found in Plant CRM · Issues: Plant, Email, Reporter, Phone, What');
+  await page.getByLabel('Name', { exact: true }).fill('Issue report');
+  await page.getByRole('button', { name: 'Create draft' }).click();
+  await expect(page.getByText(/"Issue report" was created as a draft with 5 fields from Plant CRM · Issues/)).toBeVisible();
+  const forms = await call<{ id: string; code: string }[]>(200, '/forms', { token: org.token });
+  const def = (await call<{ definition: { fields: { name: string; type: string }[] } }>(200, `/forms/${forms.find((f) => f.code === 'ISSUE_REPORT')!.id}`, { token: org.token })).definition;
+  // The table's own names, so a "save to the table" step needs no mapping; kinds guessed from the names.
+  expect(def.fields.map((f) => `${f.name}:${f.type}`)).toEqual(['plant:TEXT', 'email:EMAIL', 'reporter:TEXT', 'phone:PHONE', 'what:TEXT']);
+  expect(problems).toEqual([]);
+});
+
 test('the connectors page shows the connection, its calls and never its credentials; a designer may use it but not see inside', async ({ page }) => {
   await signIn(page, org.email);
   await page.goto('/connectors');

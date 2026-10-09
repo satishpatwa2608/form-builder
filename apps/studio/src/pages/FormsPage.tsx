@@ -1,6 +1,6 @@
-import { fieldsFromCsv, fieldsFromJsonSchema, type ImportedFields } from '@fb/engine';
+import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, type ImportedFields } from '@fb/engine';
 import { FormVersions } from '../components/FormVersions';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Archive, Download, FilePlus2, FolderInput, GitBranchPlus, History, Inbox, Rocket, Trash2, Upload, X } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
@@ -37,6 +37,21 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   /** Fields read from a schema or a spreadsheet, when the form starts from one. */
   const [imported, setImported] = useState<{ file: string; result: ImportedFields; error?: string }>();
   const source = IMPORT_SOURCES.find((x) => x.key === template);
+  /** Tables the signed-in person may use from the organisation's connectors, asked for when that way of starting is chosen. */
+  const [tables, setTables] = useState<{ key: string; name: string; fields: string[] }[]>();
+  const fromTable = template === 'connector';
+  useEffect(() => {
+    if (!fromTable || tables) return;
+    api<{ id: string; name: string; permissions: { use: boolean }; entities: { key: string; label: string; fields: string[] }[] }[]>('/connectors')
+      .then((list) => setTables(list.filter((c) => c.permissions.use).flatMap((c) => c.entities.map((e) => ({ key: `${c.id}/${e.key}`, name: `${c.name} · ${e.label}`, fields: e.fields })))))
+      .catch(() => setTables([]));
+  }, [fromTable, tables]);
+  const pickTable = (key: string) => {
+    const table = tables?.find((t) => t.key === key);
+    if (!table) return setImported(undefined);
+    setImported({ file: table.name, result: fieldsFromEntity({ fields: table.fields }) });
+    if (!name) setName(table.name.split(' · ').pop() ?? '');
+  };
   const readFile = async (file: File | undefined) => {
     if (!file || !source) return;
     if (file.size > 1024 * 1024) return setImported({ file: file.name, result: { fields: [], notes: [] }, error: 'The file is larger than 1 MB.' });
@@ -51,7 +66,7 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
     }
   };
   const create = useSubmit(async () => {
-    if (source) {
+    if (source || fromTable) {
       const fields = imported?.result.fields ?? [];
       await api('/forms', { method: 'POST', body: { folderId, definition: { ...FORM_TEMPLATES[0].definition, fields, name: name.trim(), code: shownCode } } });
       return onDone(`"${name.trim()}" was created as a draft with ${fields.length} field${fields.length === 1 ? '' : 's'} from ${imported?.file}. Check them in the builder before publishing.`);
@@ -113,13 +128,45 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
               </div>
             </label>
           ))}
+          <label className="st-card" style={{ flex: '1 1 200px', padding: 14, cursor: 'pointer', borderColor: fromTable ? 'var(--fb-accent)' : undefined, boxShadow: fromTable ? 'var(--fb-ring)' : undefined, position: 'relative' }}>
+            <input
+              type="radio"
+              name="template"
+              value="connector"
+              checked={fromTable}
+              onChange={() => {
+                setTemplate('connector');
+                setImported(undefined);
+              }}
+              style={{ position: 'absolute', opacity: 0 }}
+            />
+            <strong>A table from a connector</strong>
+            <div className="st-muted" style={{ fontSize: 12 }}>
+              One field for each field of a table your organisation has connected, named the same so answers can be saved back.
+            </div>
+          </label>
         </div>
-        {source && (
+        {(source || fromTable) && (
           <div className="st-stack" style={{ gap: 8 }}>
-            <label className="st-stack" style={{ gap: 4 }}>
-              <strong>{source.fileLabel}</strong>
-              <input key={source.key} type="file" accept={source.accept} aria-label={source.fileLabel} onChange={(e) => void readFile(e.target.files?.[0])} />
-            </label>
+            {source && (
+              <label className="st-stack" style={{ gap: 4 }}>
+                <strong>{source.fileLabel}</strong>
+                <input key={source.key} type="file" accept={source.accept} aria-label={source.fileLabel} onChange={(e) => void readFile(e.target.files?.[0])} />
+              </label>
+            )}
+            {fromTable && (
+              <label className="st-stack" style={{ gap: 4 }}>
+                <strong>Table</strong>
+                <select className="st-select" aria-label="Table" defaultValue="" disabled={!tables?.length} onChange={(e) => pickTable(e.target.value)}>
+                  <option value="">{!tables ? 'Loading…' : tables.length ? 'Choose a table' : 'No connector tables you can use yet'}</option>
+                  {(tables ?? []).map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {imported?.error && <Alert tone="error">{imported.error}</Alert>}
             {imported && !imported.error && (
               <div role="status" className="st-stack" style={{ gap: 4 }}>
@@ -156,7 +203,7 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
           ))}
         </SelectField>
         <div className="st-row">
-          <Button type="submit" busy={create.busy} disabled={!name.trim() || !shownCode || !folderId || (!!source && !imported?.result.fields.length)}>
+          <Button type="submit" busy={create.busy} disabled={!name.trim() || !shownCode || !folderId || ((!!source || fromTable) && !imported?.result.fields.length)}>
             <FilePlus2 size={16} /> Create draft
           </Button>
           <Button variant="ghost" onClick={onCancel}>

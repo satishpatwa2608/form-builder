@@ -260,3 +260,62 @@ export function fieldsFromCsv(csv: string): ImportedFields {
   if (!examples.length && fields.length) notes.push('There were no example rows, so every column became a text field. Change their types in the builder.');
   return { fields, notes };
 }
+
+const FIELD_NAME_OK = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** "first_name", "firstName" -> "First name". */
+const humanise = (name: string) => {
+  const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_.-]+/g, ' ').trim().toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : name;
+};
+/** What kind of field a column's name suggests, when nothing else is known about it. */
+const typeFromName = (name: string): FormField['type'] => {
+  const n = name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+  if (/(^|_)e?mail($|_)/.test(n)) return 'EMAIL';
+  if (/(^|_)(phone|mobile|tel)($|_)/.test(n)) return 'PHONE';
+  if (/(^|_)(date|dob|birthday)($|_)|_(on|at)$/.test(n)) return 'DATE';
+  if (/(^|_)(amount|qty|quantity|price|total|count|age|number|rate|score)($|_)/.test(n)) return 'NUMBER';
+  if (/^(is|has)_|(^|_)(active|enabled|agreed|verified)($|_)/.test(n)) return 'CHECKBOX';
+  if (/(^|_)(notes?|description|comments?|address|message|remarks?|details)($|_)/.test(n)) return 'TEXTAREA';
+  return 'TEXT';
+};
+
+/**
+ * One field for each field of a table (or collection, or resource) a
+ * connector exposes. A field keeps the table's own name as its key wherever
+ * that name can be one, so a workflow step that saves answers to the table
+ * needs no mapping. A known type decides the kind of field; otherwise the
+ * name is the hint ("email", "amount", "created_at").
+ */
+export function fieldsFromEntity(entity: { fields: (string | { name: string; type?: string })[] }): ImportedFields {
+  const names = new Names();
+  const notes: string[] = [];
+  const fields: FormField[] = [];
+  const listed = entity.fields.slice(0, MAX_IMPORTED_FIELDS);
+  if (entity.fields.length > MAX_IMPORTED_FIELDS) notes.push(`Only the first ${MAX_IMPORTED_FIELDS} fields were added.`);
+  const taken = new Set<string>();
+  for (const raw of listed) {
+    const name = typeof raw === 'string' ? raw : raw.name;
+    const known = typeof raw === 'string' ? undefined : raw.type;
+    if (!name) continue;
+    // A row's own id is given by the table, not typed by a person. (A key such as an email address is an answer like any other.)
+    if (name === 'id' || name === '_id') {
+      notes.push(`"${name}" identifies a row and is set by the system, so it has no field.`);
+      continue;
+    }
+    if (known === 'object' || known === 'array') {
+      notes.push(`"${name}" holds a ${known === 'array' ? 'list' : 'group of values'} and was skipped.`);
+      continue;
+    }
+    let key = name;
+    if (!FIELD_NAME_OK.test(name) || name.length > 60 || taken.has(name)) {
+      key = names.key(name);
+      notes.push(`"${name}" cannot be a field key as it is, so its field is called "${key}". Rename it, or map it when saving to the table.`);
+    }
+    taken.add(key);
+    const type: FormField['type'] = known === 'number' ? 'NUMBER' : known === 'boolean' ? 'CHECKBOX' : known === 'date' ? 'DATE' : typeFromName(name);
+    fields.push({ id: names.id(), name: key, label: humanise(name).slice(0, 120), type });
+  }
+  if (!fields.length && !notes.length) notes.push('This table exposes no fields.');
+  return { fields, notes };
+}
+
