@@ -28,11 +28,21 @@ export async function postWebhook(url: string, payload: unknown, secret?: string
   const allowed = webhookAllowed(url);
   // `in` narrows under the API's non-strict config too.
   if ('error' in allowed) throw new Error(allowed.error);
+  return postJson(allowed.target, payload, secret);
+}
+
+/**
+ * The posting itself, to an address someone has already decided may be called.
+ * An error names the host and the status only: the rest of the address can be a secret.
+ */
+export async function postJson(target: URL, payload: unknown, secret?: string): Promise<{ host: string; status: number; reply: Record<string, unknown> }> {
   const body = JSON.stringify(payload);
   const headers: Record<string, string> = { 'content-type': 'application/json', 'user-agent': 'form-builder-webhook' };
   if (secret) headers['x-fb-signature'] = `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
-  const res = await fetch(allowed.target, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(WORKFLOW.webhookTimeoutMs) });
-  if (!res.ok) throw new Error(`${allowed.target.hostname} answered ${res.status}`);
+  const res = await fetch(target, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(WORKFLOW.webhookTimeoutMs) }).catch(() => {
+    throw new Error(`${target.hostname} did not answer`);
+  });
+  if (!res.ok) throw new Error(`${target.hostname} answered ${res.status}`);
   const text = (await res.text()).slice(0, 64 * 1024);
   let reply: unknown;
   try {
@@ -41,7 +51,7 @@ export async function postWebhook(url: string, payload: unknown, secret?: string
     reply = undefined;
   }
   return {
-    host: allowed.target.hostname,
+    host: target.hostname,
     status: res.status,
     reply: reply && typeof reply === 'object' && !Array.isArray(reply) ? (reply as Record<string, unknown>) : {},
   };

@@ -147,6 +147,28 @@ describe('Workflow dialog', () => {
     expect(steps[1].if).toEqual({ field: '$steps.sign.status', operator: 'equals', value: 'DECLINED' });
   });
 
+  it('automation tool step: pick the tool, paste the flow\'s address; a wrong one is said at once and the address never shows in the diagram', async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    render(<Harness initial={{ ...basic, automations: [{ id: 'a', name: 'A', enabled: true, when: 'SUBMITTED', actions: [] }] }} spy={spy} />);
+    await user.click(screen.getByRole('tab', { name: /Automations/ }));
+    await user.click(screen.getByRole('button', { name: 'Add a step at the start' }));
+    await user.click(within(screen.getByRole('group', { name: 'Choose a step' })).getByRole('button', { name: /Send to an automation tool/ }));
+    // Starts on Power Automate, with where to find the address.
+    expect(screen.getByText(/When an HTTP request is received/)).toBeInTheDocument();
+    const box = screen.getByLabelText("The flow's address");
+    await user.click(box);
+    await user.paste('https://hooks.zapier.com/hooks/catch/1/abc/');
+    expect(screen.getByText(/That is not a Power Automate address/)).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Which tool' }));
+    await user.click(await screen.findByRole('option', { name: 'Zapier' }));
+    expect(screen.queryByText(/That is not a/)).toBeNull();
+    expect(spy.mock.lastCall![0].automations[0].actions[0]).toEqual({ id: 'flow', type: 'FLOW', service: 'ZAPIER', url: 'https://hooks.zapier.com/hooks/catch/1/abc/' });
+    const diagram = screen.getByLabelText('A flow');
+    expect(within(diagram).getByText('To Zapier')).toBeInTheDocument();
+    expect(within(diagram).queryByText(/hooks\/catch/)).toBeNull();
+  });
+
   it('who works the records: switch to a team of people and departments', async () => {
     const user = userEvent.setup();
     const spy = vi.fn();

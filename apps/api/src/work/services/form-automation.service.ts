@@ -8,8 +8,11 @@ import { JobQueue, type JobContext } from '../../jobs/job-queue.service';
 import { Model } from 'mongoose';
 import { newId as uuidv4 } from '../../common/crypto';
 import { MailService } from './mail.service';
+import { postJson } from './webhook-client';
 import type { Automation, AutomationAction, AutomationTrigger, FormDefinition, FormValues, RecipientRef } from '@fb/engine';
 import {
+  FLOW_SERVICE_INFO,
+  isFlowAddress,
   conditionValues,
   escapeHtml,
   evaluateCondition,
@@ -39,6 +42,7 @@ const STEP_NAME: Record<AutomationAction['type'], string> = {
   ASSIGN: 'Assign',
   SET_STATUS: 'Status change',
   WEBHOOK: 'Webhook',
+  FLOW: 'Automation tool',
   HANDLER: 'Custom API',
   APPROVAL: 'Approval',
   SIGN: 'Send for signature',
@@ -640,6 +644,14 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       case 'WEBHOOK':
         return this.webhook(action.url, ctx);
 
+      case 'FLOW': {
+        const tool = FLOW_SERVICE_INFO[action.service]?.label ?? 'the automation tool';
+        // Checked again here, at the moment of sending: only that tool's own addresses are ever called.
+        if (!isFlowAddress(action.service, action.url)) throw new Error(`that is not a ${tool} address`);
+        const { status, reply } = await postJson(new URL(action.url), this.outgoing(ctx), process.env.FORM_WEBHOOK_SECRET);
+        return { summary: `handed to ${tool}`, data: { ...reply, httpStatus: status } };
+      }
+
       case 'APPROVAL':
       case 'SIGN':
         // Pausing is the flow's job (runFlow); reaching here would be a bug.
@@ -659,25 +671,26 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
    * FORM_WEBHOOK_SECRET is set so the receiver can trust the body.
    */
   private async webhook(url: string, ctx: FormHandlerContext): Promise<StepResult> {
-    const { host, status, reply } = await postWebhook(
-      url,
-      {
-        event: ctx.trigger,
-        form: { code: ctx.definition.code, version: ctx.definition.version, name: ctx.definition.name },
-        record: {
-          id: ctx.record.uuid,
-          ref: ctx.record.ref,
-          status: ctx.record.status,
-          assigneeId: ctx.record.assigneeId,
-          submittedAt: ctx.record.createdAt,
-        },
-        values: ctx.record.payload,
-        // What earlier steps produced in this flow (AEM-style metadata).
-        steps: ctx.steps,
-      },
-      process.env.FORM_WEBHOOK_SECRET,
-    );
+    const { host, status, reply } = await postWebhook(url, this.outgoing(ctx), process.env.FORM_WEBHOOK_SECRET);
     // A JSON object reply becomes this step's output, e.g. {{$steps.crm.leadId}}.
     return { summary: `posted to ${host}`, data: { ...reply, httpStatus: status } };
+  }
+
+  /** What another system is sent about a response: the same for a webhook and for an automation tool. */
+  private outgoing(ctx: FormHandlerContext) {
+    return {
+      event: ctx.trigger,
+      form: { code: ctx.definition.code, version: ctx.definition.version, name: ctx.definition.name },
+      record: {
+        id: ctx.record.uuid,
+        ref: ctx.record.ref,
+        status: ctx.record.status,
+        assigneeId: ctx.record.assigneeId,
+        submittedAt: ctx.record.createdAt,
+      },
+      values: ctx.record.payload,
+      // What earlier steps produced in this flow (AEM-style metadata).
+      steps: ctx.steps,
+    };
   }
 }

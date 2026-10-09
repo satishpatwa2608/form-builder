@@ -1,4 +1,4 @@
-import { eventSources, formAvailability } from '@fb/engine';
+import { eventSources, formAvailability, publicCopy } from '@fb/engine';
 import { Body, Controller, UseFilters, Get, Headers, HttpCode, Ip, NotFoundException, Param, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { FormDefinitionService } from '../services/form-definition.service';
 import { Public } from '../../auth/auth.guard';
@@ -80,7 +80,8 @@ export class FormPublicController {
     const user = await this.context.optionalUser(auth);
     const def = await this.submissions.publishedFor(orgId, code, user, 'show');
     const state = formAvailability(def);
-    if (state === 'OPEN') return apiResponse(true, 200, 'Form fetched', def);
+    // Only what draws the form and checks its answers: nothing about what happens to a response afterwards.
+    if (state === 'OPEN') return apiResponse(true, 200, 'Form fetched', publicCopy(def));
     // Not taking answers: enough to explain that, and none of the questions.
     return apiResponse(true, 200, 'Form is not open', {
       unavailable: state,

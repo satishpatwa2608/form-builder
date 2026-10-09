@@ -20,6 +20,8 @@ const definition = {
     { id: 'e', type: 'TEXT', name: 'reason', label: 'Reason for a large group' },
   ],
   rules: [{ id: 'r1', when: { expr: 'people > 5' }, then: [{ type: 'REQUIRE', target: 'reason' }] }],
+  workflow: { enabled: true, refPrefix: 'CB', statuses: [{ key: 'NEW', label: 'New', category: 'OPEN' }, { key: 'DONE', label: 'Done', category: 'DONE' }], assignment: { type: 'NONE' } },
+  automations: [{ id: 'a1', name: 'Tell ops', enabled: true, when: 'SUBMITTED', actions: [{ id: 'm', type: 'EMAIL', to: [{ kind: 'EMAIL', email: 'ops@acme.test' }], subject: 'New callback', body: 'See the inbox.' }] }],
 };
 
 const cases: [string, FormValues][] = [
@@ -61,6 +63,9 @@ describe('Headless: a form as JSON, answered from someone else\'s code (e2e)', (
     ]);
     expect(live.fields[3]!.dataSource).toMatchObject({ type: 'STATIC', options: [{ label: 'Morning', value: 'AM' }, { label: 'Afternoon', value: 'PM' }] });
     expect(live.rules).toHaveLength(1);
+    // What happens to a response afterwards is the organisation's business, not the public's.
+    for (const key of ['automations', 'workflow', 'recordAccess', 'workflowRef', 'submitChecks', 'document', 'createdBy', 'updatedBy']) expect(live).not.toHaveProperty(key);
+    expect(JSON.stringify(live)).not.toMatch(/hooks\.example|ops@acme\.test|Tell ops/);
     // A form that is not published is not there at all.
     await h.api().get(`/public/forms/NOPE?org=${orgId}`).expect(404);
   });

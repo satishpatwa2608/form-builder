@@ -1,3 +1,4 @@
+import type { FlowService } from '../flow-services';
 import type { Condition } from './rules';
 import type { FormField } from './field';
 
@@ -201,6 +202,12 @@ export type AutomationAction = StepMeta &
   | { type: 'SET_STATUS'; status: string }
   /** POST the record as JSON to an allow-listed https URL (FORM_WEBHOOK_ALLOWLIST). */
   | { type: 'WEBHOOK'; url: string }
+  /**
+   * Hand the response to a flow in an automation tool (Power Automate, Workfront Fusion, Zapier, Make)
+   * by posting it to the address that tool gave the flow. The address must be one of that tool's own
+   * (flow-services.ts). Output: what the flow answered, and httpStatus.
+   */
+  | { type: 'FLOW'; service: FlowService; url: string }
   /** Code registered on the server under this key, for logic that can't be configured. */
   | { type: 'HANDLER'; key: string }
   );

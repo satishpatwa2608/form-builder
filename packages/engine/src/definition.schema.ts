@@ -1,3 +1,4 @@
+import { FLOW_SERVICE_INFO, FLOW_SERVICES, isFlowAddress } from './flow-services';
 import { z } from 'zod';
 import type { Condition, FormDefinition, FormEventAction, FormField, RuleAction } from './types';
 import { conditionFields } from './evaluate-condition';
@@ -276,6 +277,7 @@ const actionSchema = z.union([
   z.object({ ...stepMeta, type: z.literal('ASSIGN'), userId: z.string().max(64) }),
   z.object({ ...stepMeta, type: z.literal('SET_STATUS'), status: z.string().max(40) }),
   z.object({ ...stepMeta, type: z.literal('WEBHOOK'), url: z.string().max(500) }),
+  z.object({ ...stepMeta, type: z.literal('FLOW'), service: z.enum(FLOW_SERVICES), url: z.string().max(2000) }),
   z.object({ ...stepMeta, type: z.literal('HANDLER'), key: z.string().max(60) }),
 ]);
 
@@ -493,6 +495,9 @@ function checkWorkflow(def: FormDefinition, ctx: z.RefinementCtx) {
       if (action.type === 'CREATE_TASK' && !action.title.trim()) missing('the task needs a title');
       if (action.type === 'ASSIGN' && wf?.enabled && !action.userId) missing('choose who to assign');
       if (action.type === 'WEBHOOK' && !/^https:\/\/[^\s/]+\.[^\s]+$/.test(action.url)) missing('webhooks need a full https URL');
+      if (action.type === 'FLOW' && !isFlowAddress(action.service, action.url)) {
+        missing(action.url.trim() ? `that is not a ${FLOW_SERVICE_INFO[action.service].label} address` : `paste the ${FLOW_SERVICE_INFO[action.service].label} flow's address`);
+      }
       if (action.type === 'HANDLER' && !/^[a-z0-9-]{1,60}$/.test(action.key)) missing('choose a custom API');
       const recipients = 'to' in action ? action.to : [];
       for (const r of recipients) {

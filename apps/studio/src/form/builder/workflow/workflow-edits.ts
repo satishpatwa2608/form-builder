@@ -10,7 +10,7 @@ import type {
   WorkflowConfig,
   WorkflowStatus,
 } from '../../types';
-import { answerFields as topAnswerFields, isValueField, stepKey } from '../../engine';
+import { answerFields as topAnswerFields, FLOW_SERVICE_INFO, isFlowAddress, isValueField, stepKey } from '../../engine';
 import type { CustomWorkflow, Person } from '../../adapters/workflow';
 
 /** Pure edits behind the Workflow dialog, kept out of the components so they're easy to test. */
@@ -24,6 +24,7 @@ export const ACTION_LABEL: Record<AutomationAction['type'], string> = {
   ASSIGN: 'Assign to someone',
   SET_STATUS: 'Change the status',
   WEBHOOK: 'Call a webhook',
+  FLOW: 'Send to an automation tool',
   HANDLER: 'Run a custom API',
 };
 
@@ -139,6 +140,7 @@ const STEP_ID_BASE: Record<AutomationAction['type'], string> = {
   ASSIGN: 'assign',
   SET_STATUS: 'status',
   WEBHOOK: 'webhook',
+  FLOW: 'flow',
   HANDLER: 'api',
 };
 
@@ -179,6 +181,7 @@ export function stepOutputs(step: AutomationAction, customWorkflows: CustomWorkf
     case 'CREATE_TASK':
       return ['taskId', 'title'];
     case 'WEBHOOK':
+    case 'FLOW':
       return ['httpStatus'];
     case 'HANDLER':
       return customWorkflows.find((w) => w.key === step.key)?.outputs ?? [];
@@ -272,6 +275,9 @@ export function stepSummary(s: AutomationAction, form: FormDefinition, people: P
       return `To ${form.workflow?.statuses.find((x) => x.key === s.status)?.label ?? (s.status || '?')}`;
     case 'WEBHOOK':
       return s.url.replace(/^https:\/\//, '') || 'No URL yet';
+    case 'FLOW':
+      // Never the address itself: it is the flow's key.
+      return isFlowAddress(s.service, s.url) ? `To ${FLOW_SERVICE_INFO[s.service].label}` : `Paste the ${FLOW_SERVICE_INFO[s.service].label} flow's address`;
     case 'HANDLER':
       return customWorkflows.find((w) => w.key === s.key)?.label ?? (s.key || 'Choose a custom API');
     case 'APPROVAL':
@@ -312,6 +318,8 @@ export function newAction(type: AutomationAction['type'], form: FormDefinition):
       return { type, status: form.workflow?.statuses[1]?.key ?? form.workflow?.statuses[0]?.key ?? '' };
     case 'WEBHOOK':
       return { type, url: 'https://' };
+    case 'FLOW':
+      return { type, service: 'POWER_AUTOMATE', url: '' };
     case 'HANDLER':
       return { type, key: '' };
   }

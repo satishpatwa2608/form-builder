@@ -1,3 +1,4 @@
+import { FLOW_SERVICE_INFO, FLOW_SERVICES, isFlowAddress } from '../../engine';
 import type { AutomationAction, FormDefinition } from '../../types';
 import type { CustomWorkflow, Person } from '../../adapters/workflow';
 import { NumberSetting, SelectSetting, Setting, TextSetting, SwitchSetting } from '../components/settings';
@@ -123,6 +124,22 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
             onChange={(url) => onChange({ ...action, url: url.trim() })}
           />
         );
+      case 'FLOW': {
+        const info = FLOW_SERVICE_INFO[action.service];
+        const pasted = action.url.trim();
+        return (
+          <>
+            <SelectSetting label="Which tool" value={action.service} options={FLOW_SERVICES.map((s) => ({ label: FLOW_SERVICE_INFO[s].label, value: s }))} onChange={(service) => onChange({ ...action, service })} />
+            <TextSetting
+              label="The flow's address"
+              value={action.url}
+              placeholder="https://..."
+              hint={pasted && !isFlowAddress(action.service, pasted) ? `That is not a ${info.label} address. ${info.where}` : `${info.where} The response and the outputs of earlier steps are sent to it; what it answers becomes this step's output. Treat the address like a password: anyone who has it can start the flow.`}
+              onChange={(url) => onChange({ ...action, url: url.trim() })}
+            />
+          </>
+        );
+      }
       case 'HANDLER': {
         const chosen = customWorkflows.find((w) => w.key === action.key);
         const options = customWorkflows.map((w) => ({ label: w.label, value: w.key }));
