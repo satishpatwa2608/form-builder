@@ -83,23 +83,42 @@ export function documentRows(def: Pick<FormDefinition, 'fields'>, values: FormVa
 
 // ── Fonts ──────────────────────────────────────────────────────────────────
 // Noto Sans, so the document reads the same on every machine and covers more than Latin.
+const INDIC = ['devanagari', 'bengali', 'gurmukhi', 'gujarati', 'oriya', 'tamil', 'telugu', 'kannada', 'malayalam'] as const;
 const FONT_FILES = {
   latin: '@fontsource/noto-sans/files/noto-sans-latin-{w}-normal.woff',
   latinExt: '@fontsource/noto-sans/files/noto-sans-latin-ext-{w}-normal.woff',
-  devanagari: '@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-{w}-normal.woff',
+  ...(Object.fromEntries(INDIC.map((s) => [s, `@fontsource/noto-sans-${s}/files/noto-sans-${s}-${s}-{w}-normal.woff`])) as Record<(typeof INDIC)[number], string>),
 } as const;
 type Script = keyof typeof FONT_FILES;
-const SCRIPTS = Object.keys(FONT_FILES) as Script[];
-let fonts: Record<string, Buffer> | undefined;
-function fontData(): Record<string, Buffer> {
-  fonts ??= Object.fromEntries(SCRIPTS.flatMap((s) => (['400', '700'] as const).map((w) => [`${s}-${w}`, readFileSync(require.resolve(FONT_FILES[s].replace('{w}', w)))])));
-  return fonts;
+/** Each script's block of Unicode, in the order the blocks come. */
+const BLOCKS: [number, number, Script][] = [
+  [0x0900, 0x097f, 'devanagari'],
+  [0x0980, 0x09ff, 'bengali'],
+  [0x0a00, 0x0a7f, 'gurmukhi'],
+  [0x0a80, 0x0aff, 'gujarati'],
+  [0x0b00, 0x0b7f, 'oriya'],
+  [0x0b80, 0x0bff, 'tamil'],
+  [0x0c00, 0x0c7f, 'telugu'],
+  [0x0c80, 0x0cff, 'kannada'],
+  [0x0d00, 0x0d7f, 'malayalam'],
+];
+const loaded = new Map<string, Buffer>();
+/** A font file, read from disk the first time a document needs it. */
+function fontData(name: string): Buffer {
+  let data = loaded.get(name);
+  if (!data) {
+    const [script, weight] = name.split('-') as [Script, string];
+    data = readFileSync(require.resolve(FONT_FILES[script].replace('{w}', weight)));
+    loaded.set(name, data);
+  }
+  return data;
 }
 
 /** Which of our fonts can draw a character. Latin first: it is what almost everything is in. */
-function scriptOf(cp: number): Script {
-  if (cp >= 0x0900 && cp <= 0x097f) return 'devanagari';
-  if (cp === 0x20b9 || cp === 0x200c || cp === 0x200d || (cp >= 0xa8e0 && cp <= 0xa8ff)) return 'devanagari';
+function scriptOf(cp: number, around: Script | undefined): Script {
+  // The rupee sign, the joiners that shape conjuncts and the danda are shared: they stay in the script around them.
+  if (cp === 0x20b9 || cp === 0x200c || cp === 0x200d || cp === 0x0964 || cp === 0x0965) return around && around !== 'latin' && around !== 'latinExt' ? around : 'devanagari';
+  for (const [from, to, script] of BLOCKS) if (cp >= from && cp <= to) return script;
   if ((cp >= 0x0100 && cp <= 0x024f) || (cp >= 0x1e00 && cp <= 0x1eff)) return 'latinExt';
   return 'latin';
 }
@@ -109,9 +128,10 @@ export function fontRuns(text: string): { script: Script; text: string }[] {
   const runs: { script: Script; text: string }[] = [];
   for (const ch of text) {
     const cp = ch.codePointAt(0)!;
-    // Spaces, digits and punctuation stay with whatever is around them.
-    const neutral = cp <= 0x40 || (cp >= 0x5b && cp <= 0x60) || (cp >= 0x7b && cp <= 0x7f);
-    const script = neutral && runs.length ? runs[runs.length - 1]!.script : scriptOf(cp);
+    // A space or a line break stays with whatever is around it. Digits and punctuation are Latin's:
+    // the other fonts do not all have them, and a missing one would be drawn as an empty box.
+    const neutral = cp === 0x20 || cp === 0x09 || cp === 0x0a || cp === 0x0d;
+    const script = neutral && runs.length ? runs[runs.length - 1]!.script : scriptOf(cp, runs[runs.length - 1]?.script);
     if (runs.length && runs[runs.length - 1]!.script === script) runs[runs.length - 1]!.text += ch;
     else runs.push({ script, text: ch });
   }
@@ -123,6 +143,13 @@ export function fontRuns(text: string): { script: Script; text: string }[] {
  * What a script needs to be written at all (Devanagari conjuncts) is not affected.
  */
 const PLAIN = { liga: false, clig: false, dlig: false } as unknown as PDFKit.Mixins.OpenTypeFeatures[];
+/**
+ * The text library cannot place marks that sit above a letter in these two fonts (it stops
+ * with an error), so that one refinement is left out for them: the marks are drawn where the
+ * font puts them by default. Every letter is still there.
+ */
+const NO_ABOVE_MARKS = { liga: false, clig: false, dlig: false, abvm: false } as unknown as PDFKit.Mixins.OpenTypeFeatures[];
+const featuresFor = (script: string) => (script === 'gurmukhi' || script === 'malayalam' ? NO_ABOVE_MARKS : PLAIN);
 
 const MARGIN = 50;
 const LABEL_WIDTH = 170;
@@ -149,18 +176,26 @@ export function renderDocument(input: DocumentInput): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
   });
-  for (const [name, data] of Object.entries(fontData())) doc.registerFont(name, data);
 
   const width = doc.page.width - MARGIN * 2;
   const bottom = () => doc.page.height - doc.page.margins.bottom;
-  const font = (script: Script, bold: boolean) => doc.font(`${script}-${bold ? '700' : '400'}`);
+  // A font is given to the document the first time it is used, so one in English carries no others.
+  const registered = new Set<string>();
+  const font = (script: Script, bold: boolean) => {
+    const name = `${script}-${bold ? '700' : '400'}`;
+    if (!registered.has(name)) {
+      doc.registerFont(name, fontData(name));
+      registered.add(name);
+    }
+    return doc.font(name);
+  };
 
   /** How tall a piece of text will be at this width. Measured in the font most of it is in. */
   const heightOf = (text: string, w: number, size: number, bold = false) => {
     const runs = fontRuns(text);
     const main = runs.reduce((a, b) => (b.text.length > a.text.length ? b : a), runs[0] ?? { script: 'latin' as Script, text: '' });
     font(main.script, bold).fontSize(size);
-    return doc.heightOfString(text || ' ', { width: w, features: PLAIN });
+    return doc.heightOfString(text || ' ', { width: w, features: featuresFor(main.script) });
   };
   /** Writes text at a place, changing font wherever the script changes. */
   const write = (raw: string, x: number, y: number, w: number, size: number, opts: { bold?: boolean; color?: string; align?: 'left' | 'right' | 'center' } = {}) => {
@@ -168,13 +203,13 @@ export function renderDocument(input: DocumentInput): Promise<Buffer> {
     const runs = fontRuns(text);
     doc.fillColor(opts.color ?? INK).fontSize(size);
     if (runs.length <= 1) {
-      font(runs[0]?.script ?? 'latin', !!opts.bold).text(text || ' ', x, y, { width: w, align: opts.align ?? 'left', features: PLAIN });
+      font(runs[0]?.script ?? 'latin', !!opts.bold).text(text || ' ', x, y, { width: w, align: opts.align ?? 'left', features: featuresFor(runs[0]?.script ?? 'latin') });
       return;
     }
     runs.forEach((run, i) => {
       font(run.script, !!opts.bold);
-      if (i === 0) doc.text(run.text, x, y, { width: w, continued: true, features: PLAIN });
-      else doc.text(run.text, { continued: i < runs.length - 1, features: PLAIN });
+      if (i === 0) doc.text(run.text, x, y, { width: w, continued: true, features: featuresFor(run.script) });
+      else doc.text(run.text, { continued: i < runs.length - 1, features: featuresFor(run.script) });
     });
   };
   /** Starts a new page if `need` points will not fit on this one. */

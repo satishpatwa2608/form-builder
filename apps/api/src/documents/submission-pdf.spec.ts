@@ -125,6 +125,32 @@ describe('The document itself', () => {
     expect(text).toContain('Zoë Müller');
   });
 
+  it('writes the major Indian scripts, each in its own font, and only carries the fonts a document uses', async () => {
+    const samples: Record<string, string> = {
+      devanagari: 'नमस्ते',
+      bengali: 'নমস্কার',
+      gurmukhi: 'ਸਤ ਸ੍ਰੀ ਅਕਾਲ',
+      gujarati: 'નમસ્તે',
+      oriya: 'ନମସ୍କାର',
+      tamil: 'வணக்கம்',
+      telugu: 'నమస్కారం',
+      kannada: 'ನಮಸ್ಕಾರ',
+      malayalam: 'നമസ്കാരം',
+    };
+    for (const [script, text] of Object.entries(samples)) expect(fontRuns(text).map((r) => r.script)).toEqual([script]);
+    // The rupee sign takes the script it stands in; digits are always Latin; nothing is lost.
+    expect(fontRuns('மொத்தம் ₹500').map((r) => `${r.script}:${r.text}`)).toEqual(['tamil:மொத்தம் ₹', 'latin:500']);
+
+    const english = await renderDocument(input({ rows: [{ kind: 'answer', label: 'Name', value: 'Asha' }] }));
+    const all = await renderDocument(input({ rows: Object.entries(samples).map(([script, text]) => ({ kind: 'answer' as const, label: script, value: `${text} / ${script}` })) }));
+    expect(await pdfParse(all).then((p) => p.numpages)).toBe(1);
+    expect(await textOf(all)).toContain('/ malayalam');
+    // Nine more fonts are inside the second document, and none of them in the first.
+    const fontsIn = (pdf: Buffer) => (pdf.toString('latin1').match(/\/FontFile[23]?\b/g) ?? []).length;
+    expect(fontsIn(all)).toBeGreaterThanOrEqual(fontsIn(english) + 9);
+    if (process.env.PDF_SAMPLE) writeFileSync(process.env.PDF_SAMPLE.replace('.pdf', '-scripts.pdf'), all);
+  });
+
   it('a logo or a brand colour that is not what it should be is left out; the document still stands', async () => {
     const pdf = await renderDocument(input({ org: { name: 'Acme', logo: 'data:image/png;base64,bm90LWFuLWltYWdl', color: 'red; drop table' } }));
     expect(await textOf(pdf)).toContain('Asha Textiles');
