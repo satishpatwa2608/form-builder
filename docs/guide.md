@@ -174,7 +174,22 @@ warranty form all follow the same steps.
 - A form exported to another organisation takes its workflow with it as the
   form's own.
 
-## 5. Your data (connectors)
+## 5. Your own code (extensions)
+
+When something cannot be set up on screen, your developers can write it as an
+**extension**: a small service of your own that we run for your organisation
+only. See [extensions.md](extensions.md) for developers.
+
+- **Administration → Extensions** shows whether yours is running and what it
+  offers. After your developers ship a new version, choose **Read again**.
+- **Workflow steps** it offers are picked under Workflow → Automations →
+  Custom API, and what a step returns can steer the steps after it.
+- **Lists** it offers can be chosen as where a dropdown's options come from.
+- **Checks** it offers are ticked in a form's settings. They run before a
+  submission is accepted. If a check objects, or cannot be run, the
+  submission is refused and the person is asked to try again.
+
+## 6. Your data (connectors)
 
 - **Connectors → New connector** (Connector managers): MongoDB, PostgreSQL,
   MySQL, Supabase, REST API, Amazon S3, CloudWatch Logs.
@@ -187,7 +202,7 @@ warranty form all follow the same steps.
   connector with "Where it runs" = that gateway and put the credentials in the
   agent's `connectors.json`. See `apps/gateway/README.md`.
 
-## 6. Plan and usage
+## 7. Plan and usage
 
 Organisation → **Plan & usage** shows your plan and what's used this month.
 When a limit is reached the action says so; public forms stop accepting

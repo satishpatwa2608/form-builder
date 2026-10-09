@@ -358,6 +358,19 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  examples/extension-starter:
+    dependencies:
+      '@fb/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^20.10.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   packages/connectors:
     dependencies:
       '@aws-sdk/client-cloudwatch-logs':

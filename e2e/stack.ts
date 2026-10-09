@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
  */
 
 export const ROOT = resolve(__dirname, '..');
-export const PORTS = { mongo: 27098, api: 4198, studio: 5183, runtime: 5184 } as const;
+export const PORTS = { mongo: 27098, api: 4198, studio: 5183, runtime: 5184, extension: 4197 } as const;
 export const API = `http://127.0.0.1:${PORTS.api}`;
 export const STUDIO = `http://127.0.0.1:${PORTS.studio}`;
 export const RUNTIME = `http://127.0.0.1:${PORTS.runtime}`;
@@ -30,6 +30,8 @@ export interface StackState {
   dir: string;
   apiLog: string;
   pids: number[];
+  /** The API's environment, for running its operator commands against the same database and keys. */
+  apiEnv: Record<string, string>;
 }
 
 export const readState = (): StackState => JSON.parse(readFileSync(STATE_FILE, 'utf8')) as StackState;
@@ -57,13 +59,14 @@ function run(name: string, dir: string, command: string, args: string[], cwd: st
 export async function startStack(): Promise<StackState> {
   if (existsSync(STATE_FILE)) stopStack();
   // The API runs from its build, like production; the engine and connectors are its dependencies.
-  execSync('pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/api --filter @fb/gateway build', { cwd: ROOT, stdio: 'inherit' });
+  execSync('pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/sdk --filter @fb/api --filter @fb/gateway --filter @fb/extension-starter build', { cwd: ROOT, stdio: 'inherit' });
 
   const dir = mkdtempSync(join(tmpdir(), 'fb-e2e-'));
   mkdirSync(join(dir, 'db'));
   mkdirSync(join(dir, 'uploads'));
   const children: ChildProcess[] = [];
-  const state = (): StackState => ({ dir, apiLog: join(dir, 'api.log'), pids: children.map((c) => c.pid!).filter(Boolean) });
+  let apiEnv: Record<string, string> = {};
+  const state = (): StackState => ({ dir, apiLog: join(dir, 'api.log'), pids: children.map((c) => c.pid!).filter(Boolean), apiEnv });
   const save = () => writeFileSync(STATE_FILE, JSON.stringify(state()));
 
   try {
@@ -71,33 +74,32 @@ export async function startStack(): Promise<StackState> {
       children.push(run('mongod', dir, 'mongod', ['--dbpath', join(dir, 'db'), '--port', String(PORTS.mongo), '--bind_ip', '127.0.0.1'], dir, {}));
       save();
     }
-    children.push(
-      run('api', dir, 'node', ['dist/main.js'], join(ROOT, 'apps/api'), {
-        // "test" switches off rate limits, which a suite submitting from one address would trip.
-        NODE_ENV: 'test',
-        PORT: String(PORTS.api),
-        // A fresh database name each run, so a shared server starts clean too.
-        MONGODB_URL: `${MONGO}fb-e2e-${Date.now()}`,
-        JWT_SECRET: randomBytes(48).toString('base64'),
-        SECRET_KEY: randomBytes(32).toString('base64'),
-        APP_URL: STUDIO,
-        API_URL: API,
-        FORM_APP_URL: RUNTIME,
-        CORS_ORIGINS: `${STUDIO},${RUNTIME}`,
-        COOKIE_SECURE: 'false',
-        MAIL_PROVIDER: 'console',
-        STORAGE_PROVIDER: 'local',
-        LOCAL_STORAGE_DIR: join(dir, 'uploads'),
-        DEFAULT_PLAN: 'ENTERPRISE',
-        JOBS_ROLE: 'all',
-        // Rate limits are off under "test", but jobs due later (a scheduled publish, a retry) must still run by themselves.
-        JOBS_POLL: 'true',
-        FILE_SCANNER: 'none',
-        FORM_ALLOW_MOCK_CAPTCHA: 'true',
-        // The "customer database" the connector scenario reads is on this machine.
-        CONNECTOR_ALLOW_PRIVATE_NETWORK: 'true',
-      }),
-    );
+    apiEnv = {
+      // "test" switches off rate limits, which a suite submitting from one address would trip.
+      NODE_ENV: 'test',
+      PORT: String(PORTS.api),
+      // A fresh database name each run, so a shared server starts clean too.
+      MONGODB_URL: `${MONGO}fb-e2e-${Date.now()}`,
+      JWT_SECRET: randomBytes(48).toString('base64'),
+      SECRET_KEY: randomBytes(32).toString('base64'),
+      APP_URL: STUDIO,
+      API_URL: API,
+      FORM_APP_URL: RUNTIME,
+      CORS_ORIGINS: `${STUDIO},${RUNTIME}`,
+      COOKIE_SECURE: 'false',
+      MAIL_PROVIDER: 'console',
+      STORAGE_PROVIDER: 'local',
+      LOCAL_STORAGE_DIR: join(dir, 'uploads'),
+      DEFAULT_PLAN: 'ENTERPRISE',
+      JOBS_ROLE: 'all',
+      // Rate limits are off under "test", but jobs due later (a scheduled publish, a retry) must still run by themselves.
+      JOBS_POLL: 'true',
+      FILE_SCANNER: 'none',
+      FORM_ALLOW_MOCK_CAPTCHA: 'true',
+      // The "customer database" the connector scenario reads is on this machine.
+      CONNECTOR_ALLOW_PRIVATE_NETWORK: 'true',
+    };
+    children.push(run('api', dir, 'node', ['dist/main.js'], join(ROOT, 'apps/api'), apiEnv));
     save();
     const web = { VITE_API_URL: API, VITE_RUNTIME_URL: RUNTIME, VITE_STUDIO_URL: STUDIO };
     children.push(run('studio', dir, 'npx', ['vite', '--port', String(PORTS.studio), '--strictPort', '--host', '127.0.0.1'], join(ROOT, 'apps/studio'), web));

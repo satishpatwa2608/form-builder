@@ -998,3 +998,41 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Extensions ─────────────────────────────────────────────────────────── */
+.fb-extension {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.fb-extension__status {
+  font-weight: 600;
+}
+.fb-extension__status[data-status='OK'] {
+  color: #15803d;
+}
+.fb-extension__status[data-status='UNREACHABLE'] {
+  color: var(--destructive);
+}
+.fb-offers {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  list-style: disc;
+  font-size: 13px;
+}
+.fb-offers li {
+  padding: 2px 0;
+}
+.fb-checks {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.fb-checks label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}

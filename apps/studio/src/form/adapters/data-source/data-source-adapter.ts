@@ -119,16 +119,14 @@ export interface DataSourceInfo {
 export function useDataSources() {
   return useQuery({
     queryKey: ['form-platform', 'data-sources-info'],
-    queryFn: async (): Promise<DataSourceInfo[]> =>
-      USE_API
-        ? (await (await import('../../../lib/api')).api<{ key: string; name: string; params: string[]; valueField?: string; labelField?: string }[]>('/connectors/sources')).map((x) => ({
-            key: x.key,
-            name: x.name,
-            params: x.params,
-            valueField: x.valueField,
-            labelField: x.labelField,
-          }))
-        : MOCK_DATA_SOURCE_URLS.map((key) => ({ key, name: key })),
+    queryFn: async (): Promise<DataSourceInfo[]> => {
+      if (!USE_API) return MOCK_DATA_SOURCE_URLS.map((key) => ({ key, name: key }));
+      const { api } = await import('../../../lib/api');
+      type Source = { key: string; name: string; params: string[]; valueField?: string; labelField?: string };
+      // Connector sources, then the lists the organisation's extension offers. Either may be absent.
+      const [connectors, extensions] = await Promise.all([api<Source[]>('/connectors/sources').catch(() => []), api<Source[]>('/extensions/sources').catch(() => [])]);
+      return [...connectors, ...extensions].map((x) => ({ key: x.key, name: x.name, params: x.params, valueField: x.valueField, labelField: x.labelField }));
+    },
     staleTime: 60_000,
     retry: false,
   });

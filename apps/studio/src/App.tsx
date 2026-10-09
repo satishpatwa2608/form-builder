@@ -24,6 +24,7 @@ const NewWorkItemRoute = lazy(() => work().then((m) => ({ default: m.NewWorkItem
 const WorkingTimeRoute = lazy(() => work().then((m) => ({ default: m.WorkingTimeRoute })));
 const WebhooksRoute = lazy(() => work().then((m) => ({ default: m.WebhooksRoute })));
 const WorkflowsRoute = lazy(() => work().then((m) => ({ default: m.WorkflowsRoute })));
+const ExtensionsRoute = lazy(() => work().then((m) => ({ default: m.ExtensionsRoute })));
 const SubmissionsRoute = lazy(() => work().then((m) => ({ default: m.SubmissionsRoute })));
 const lazyPage = (el: JSX.Element) => <Suspense fallback={<p className="st-empty">Loading…</p>}>{el}</Suspense>;
 
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="work/dashboard" element={lazyPage(<DashboardRoute />)} />
         <Route path="work/new" element={lazyPage(<NewWorkItemRoute />)} />
         <Route path="settings/working-time" element={lazyPage(<WorkingTimeRoute />)} />
+        <Route path="settings/extensions" element={lazyPage(<ExtensionsRoute />)} />
         <Route path="settings/webhooks" element={lazyPage(<WebhooksRoute />)} />
         <Route path="forms/:id/submissions" element={lazyPage(<SubmissionsRoute />)} />
       </Route>

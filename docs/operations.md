@@ -66,6 +66,40 @@ With more than one API instance, a gateway is connected to one of them: until
 routing between instances is added, run a single API instance or pin
 `/gateway/connect` and connector calls with sticky routing.
 
+## Extensions (a customer's own code)
+
+A customer's custom code never runs inside the API. It is a container of its
+own, written against `@fb/sdk` ([docs/extensions.md](extensions.md)), that the
+API calls over the private network.
+
+- **Network:** the container must be reachable from the API and the worker,
+  and from nothing else. It must not be able to reach MongoDB, the object
+  store or other customers' containers. Give it outbound access only to what
+  that customer has agreed.
+- **Install** (issues the secret, shown once):
+  ```
+  pnpm --filter @fb/api extension install <orgId> http://<host>:<port>
+  ```
+  Start the container with the `FB_EXTENSION_SECRET` and `FB_ORG_ID` it
+  prints, then `extension sync <orgId> <ref>` (or the customer's admin chooses
+  Read again on the Extensions page).
+- **List / remove:** `extension list <orgId>`, `extension remove <orgId> <ref>`.
+  After a removal, forms that name its steps or checks cannot be published,
+  and live forms that run one of its checks refuse submissions.
+- The address is set only by this command, never by the customer: it points
+  inside our network. The command uses the API's own environment
+  (`MONGODB_URL`, `SECRET_KEY` or `KMS_KEY_ID`) and is recorded in the
+  customer's audit log.
+- **Health:** `GET /fb/health` on the container. The API records
+  `UNREACHABLE` on the extension when a call fails; the customer's admins see
+  it on their Extensions page.
+- **Limits:** 15 s for a workflow step (retried by the job queue like any
+  step), 5 s for a list or a check, 1 MB per request and reply.
+- **Not built yet:** the pipeline that builds a customer's repository into an
+  image and runs it. Until then an image is built from the starter's
+  Dockerfile and run by hand. This waits on the hosting decisions in
+  status.md (AWS account, infrastructure as code).
+
 ## Uploads and malware scanning
 
 Every upload is checked by its real content type before it can be attached.

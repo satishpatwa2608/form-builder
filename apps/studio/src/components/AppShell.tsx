@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, LogOut, Menu, ScrollText, Settings, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
+import { BarChart3, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, LogOut, Menu, Puzzle, ScrollText, Settings, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { useAuth } from '../lib/auth';
 import type { Permission } from '../lib/types';
@@ -32,6 +32,7 @@ const ADMIN: NavItem[] = [
   { to: '/settings', label: 'Organisation', icon: Settings, needs: 'org.manage' },
   { to: '/settings/working-time', label: 'Working time', icon: CalendarClock, needs: 'org.manage' },
   { to: '/settings/webhooks', label: 'Webhooks', icon: Webhook, needs: 'org.manage' },
+  { to: '/settings/extensions', label: 'Extensions', icon: Puzzle, needs: 'org.manage' },
 ];
 
 function Nav({ items, onPick }: { items: NavItem[]; onPick: () => void }) {

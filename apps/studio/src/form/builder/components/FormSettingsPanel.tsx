@@ -1,6 +1,9 @@
 import { isTimeZone } from '../../engine';
 import type { FontFamily, FormActionConfig, FormDefinition, FormTheme, SubmissionConfig } from '../../types';
+import { Checkbox } from '@ui/checkbox';
+import { useSubmitChecks } from '../../adapters/extensions';
 import { useStyles } from '../../adapters/styles/style-master';
+import { VISIBLE_BORDER } from '../../runtime/styles';
 import { ColorSetting, SelectSetting, SwitchSetting, TextSetting } from './settings';
 
 /** A stored ISO time as the value of a date-and-time box (the person's own time zone), and back. */
@@ -21,6 +24,45 @@ interface FormSettingsPanelProps {
   /** The code is the form's identity across versions - only a never-published v1 may change it. */
   codeLocked: boolean;
   onChange: (changes: Partial<FormDefinition>) => void;
+}
+
+/**
+ * Checks the organisation's own code runs before a submission is accepted.
+ * Nothing is shown unless its extension offers some, or the form names one.
+ */
+function SubmitChecks({ form, onChange }: Pick<FormSettingsPanelProps, 'form' | 'onChange'>) {
+  const { data: offered = [], isSuccess } = useSubmitChecks();
+  const chosen = form.submitChecks ?? [];
+  // One the form still names although the extension stopped offering it: shown so it can be removed.
+  const gone = isSuccess ? chosen.filter((key) => !offered.some((c) => c.key === key)) : [];
+  if (!offered.length && !chosen.length) return null;
+  const set = (key: string, on: boolean) => {
+    const next = on ? [...chosen, key] : chosen.filter((k) => k !== key);
+    onChange({ submitChecks: next.length ? next : undefined });
+  };
+  return (
+    <div className="fb-setting" role="group" aria-label="Checks from your extension">
+      <span className="fb-setting__label">Checks from your extension</span>
+      <div className="fb-checks">
+        {offered.map((c) => (
+          <label key={c.key}>
+            <Checkbox className={VISIBLE_BORDER} checked={chosen.includes(c.key)} onCheckedChange={(v) => set(c.key, v === true)} />
+            <span>
+              {c.label}
+              {c.description && <span className="fb-muted" style={{ display: 'block' }}>{c.description}</span>}
+            </span>
+          </label>
+        ))}
+        {gone.map((key) => (
+          <label key={key}>
+            <Checkbox className={VISIBLE_BORDER} checked onCheckedChange={() => set(key, false)} />
+            <span style={{ color: 'var(--destructive)' }}>A check that is no longer offered. Untick it to publish.</span>
+          </label>
+        ))}
+      </div>
+      <span className="fb-setting__hint">Run after the form's own rules pass. A submission is refused if a check objects, or cannot be run.</span>
+    </div>
+  );
 }
 
 /** Shown when no field is selected: everything about the form as a whole. */
@@ -106,6 +148,7 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           checked={form.saveForLater !== false}
           onChange={(on) => onChange({ saveForLater: on ? undefined : false })}
         />
+        <SubmitChecks form={form} onChange={onChange} />
 
         <div className="fb-panel__title">Layout</div>
         <SelectSetting
