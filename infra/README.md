@@ -10,6 +10,32 @@ AWS `ap-south-1` (Mumbai). Planned (docs/plan.md, section 2):
 
 Nothing is provisioned yet (by design: no AWS resources are created without the account decision below).
 
+## What is here
+
+- `docker/`, `stack.mjs`: the product on one Docker host, both ways of hosting customers, with
+  the delivery of their extensions. Tested (`pnpm e2e:docker`). See [docs/hosting.md](../docs/hosting.md).
+- `egress/`: the outbound proxy an extension gets when it may call a customer's systems.
+- `terraform/`: the same deployment described for AWS. **Validated, never applied.**
+
+### Terraform
+
+```
+cd infra/terraform
+cp example.tfvars stage.tfvars          # fill in; never committed
+terraform init -backend-config="bucket=<state bucket>" -backend-config="key=form-builder/stage.tfstate" -backend-config="region=ap-south-1"
+terraform plan -var-file=stage.tfvars
+```
+
+It creates: a VPC with public, private and isolated subnets and one NAT address; the API and
+worker on ECS Fargate behind a load balancer; S3 and CloudFront for the two web apps; the
+uploads bucket; a KMS key; generated secrets; and one locked-down service per customer
+extension, with a proxy only where outbound addresses have been agreed.
+
+It expects to be given: an AWS account, a state bucket, two ACM certificates (one in
+us-east-1 for CloudFront), the API image in ECR, and a secret holding the MongoDB Atlas
+connection string. Before the first apply, read the plan: this has only ever been checked
+with `terraform validate`.
+
 ## Email (SES) - to do once the AWS account is chosen
 
 1. Verify the sending domain in SES (ap-south-1) with Easy DKIM; publish the DKIM CNAMEs and an SPF/DMARC record.

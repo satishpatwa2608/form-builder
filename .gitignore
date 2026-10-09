@@ -10,3 +10,10 @@ coverage/
 
 .local-db/
 infra/.state/
+
+# Terraform working files (the lock file is kept)
+infra/terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!example.tfvars
