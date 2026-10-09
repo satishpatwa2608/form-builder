@@ -22,6 +22,9 @@ import {
   resolveParams,
   resolveSystemValue,
   systemContextFor,
+  localize,
+  pickLanguage,
+  uiText,
 } from '@fb/engine';
 import { CHANNELS, FORM_SUBMITTED_EVENT, LIMITS } from '../constants';
 import { checkSubmissionShape, isPlainObject } from '../../forms/payload-guard';
@@ -44,6 +47,8 @@ export interface SubmitBody {
   urlParams?: unknown;
   /** The browser's IANA time zone, so `today()` in a rule is the same day the person saw. */
   timeZone?: unknown;
+  /** The language the form was filled in (one the form offers; its own otherwise). */
+  language?: unknown;
 }
 
 export interface FormSubmittedEvent {
@@ -169,6 +174,10 @@ export class FormSubmissionService {
       urlParams: FormSubmissionService.cleanUrlParams(body.urlParams),
       timeZone: FormSubmissionService.cleanTimeZone(body.timeZone),
     });
+    // Messages go back in the language the person is reading the form in, if the form has it.
+    const language = pickLanguage(def, typeof body.language === 'string' ? body.language.slice(0, 20) : undefined);
+    ctx.language = language;
+    const say = uiText(language, def);
     for (const f of def.fields) {
       if (f.type === 'HIDDEN') values[f.name] = f.systemSource ? resolveSystemValue(f, ctx) : f.defaultValue;
       // Locked prefill for a signed-in person: the real value wins over whatever was sent.
@@ -182,7 +191,7 @@ export class FormSubmissionService {
 
     // 5. The same validation the browser ran: required, lengths, patterns, options, conditional rules.
     const checked = opts.trusted ? { ...def, fields: def.fields.filter((f) => f.type !== 'CAPTCHA') } : def;
-    const result = buildZodSchema(checked, ctx).safeParse(values);
+    const result = buildZodSchema(localize(checked, language), ctx).safeParse(values);
     if (!result.success) {
       // A mistake in a repeating section's row is reported at `section.row.field`.
       throw reject(result.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })));
@@ -202,7 +211,7 @@ export class FormSubmissionService {
       const rows = unresolved.length ? [] : await this.master.queryDataSource(orgId, api.url, params, user).catch(() => []);
       const allowed = new Set(rows.map((r) => String(r[api.valueField] ?? '')));
       const chosen = Array.isArray(values[f.name]) ? (values[f.name] as unknown[]) : [values[f.name]];
-      if (!chosen.every((v) => allowed.has(String(v)))) optionIssues.push({ field: f.name, message: 'Select a valid option' });
+      if (!chosen.every((v) => allowed.has(String(v)))) optionIssues.push({ field: f.name, message: say('option') });
     }
     if (optionIssues.length) throw reject(optionIssues);
 
@@ -239,6 +248,7 @@ export class FormSubmissionService {
         files: [],
         submittedBy: user?.uuid ?? '',
         channel,
+        language,
         source,
         idempotencyKey,
       });

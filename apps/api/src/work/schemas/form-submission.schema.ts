@@ -49,6 +49,10 @@ export class FormSubmission {
   @Prop({ type: String, default: 'WEB' })
   channel: string;
 
+  /** The language the form was filled in ('' on responses from before forms had languages). */
+  @Prop({ type: String, default: '' })
+  language: string;
+
   /** Client-generated key so a retried/double-clicked submit is stored once. */
   @Prop({ type: String, default: null })
   idempotencyKey: string | null;

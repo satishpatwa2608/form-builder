@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
-import { findStatus, workflowOf, type FormDefinition, type FormValues } from '@fb/engine';
+import { findStatus, isRtl, localize, workflowOf, type FormDefinition, type FormValues } from '@fb/engine';
 import type { Model } from 'mongoose';
 import type { AuthContext } from '../auth/auth-context';
 import { newId } from '../common/crypto';
@@ -110,8 +110,10 @@ export class DocumentsService implements OnModuleInit {
       if (stored) return { pdf: stored, fileName };
     }
     // The version it was submitted against: a later change to the form does not rewrite what was answered.
-    const def = await this.definitions.findVersion(orgId, row.formId);
-    if (!def) throw new NotFoundException('The form this response belongs to no longer exists');
+    const stored = await this.definitions.findVersion(orgId, row.formId);
+    if (!stored) throw new NotFoundException('The form this response belongs to no longer exists');
+    // In the language it was answered in. (Right-to-left scripts cannot be drawn yet: those stay in the form's own language.)
+    const def = row.language && !isRtl(row.language) ? localize(stored, row.language) : stored;
     const status = row.ref ? (findStatus(workflowOf(def), row.status)?.label ?? row.status) : undefined;
     const pdf = await this.render(orgId, def, row.payload as FormValues, { ref: row.ref || undefined, submittedAt: (row as unknown as { createdAt: Date }).createdAt, status });
     const key = DocumentsService.keyOf(orgId, row.formCode, row.uuid);
