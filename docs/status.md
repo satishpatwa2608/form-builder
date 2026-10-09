@@ -24,7 +24,8 @@ Choices made on 9 October are recorded in [decisions.md](decisions.md).
 - Work items: inbox, dashboard, statuses, actions, approvals, SLA with working time, emails, notifications, webhooks, automations.
 
 ### Connectors (Phase 2a)
-- MongoDB, PostgreSQL, MySQL, SQL Server, Supabase, REST API, OData (Dynamics 365, SAP), Amazon S3, CloudWatch Logs.
+- MongoDB, PostgreSQL, MySQL, SQL Server, Supabase, REST API, OData (Dynamics 365, SAP), Salesforce, Google Sheets, Excel, SharePoint/OneDrive folders, Azure Blob Storage, Amazon S3, CloudWatch Logs. Of these, OData, Salesforce, Google Sheets, Excel, SharePoint/OneDrive and Azure Blob are tested against stand-ins only, not yet against the real services.
+- Send to an automation tool: Power Automate, Workfront Fusion, Zapier, Make.
 - Credentials encrypted, never shown again; test, discover, expose only chosen fields and operations; read-only unless allowed; every call logged.
 - Used in forms for dropdowns, prefill, saving answers and custom automation steps.
 - SSRF protection (https only, no private addresses, no redirects, size cap).
@@ -84,7 +85,7 @@ See the figures in the last hand-over message for the run of 9 October. Suites: 
 - Local `.env` uses the Business plan so the demo isn't capped; new orgs elsewhere start on Free.
 
 ### Engineering work remaining
-- **AEM parity:** more connectors (Phase 11: SQL Server and OData are done, as is an organisation's own mail server; Oracle, SOAP, Salesforce, SharePoint, Google Drive, Sheets and the rest are not). Google mail by its API rather than an app password. In Phase 10: drafts in the portal, time per question, GA4/Segment export, a branching flow designer, a chart component, a React renderer package (see the plan for why not). In Phase 7 (e-signature): outside providers (DocuSign, Aadhaar eSign) and certifying the PDF with a certificate. In Phase 9: XLIFF, translated emails, right-to-left PDFs, an outside accessibility audit. In Phase 6: designed document templates, attaching the PDF to an email, PDF operations, more scripts. In Phase 8: a form from a connector entity or a fillable PDF.
+- **AEM parity:** Oracle, SOAP, Google Drive, OData v2, Marketo and Adobe Experience Platform connectors are not built. Google mail by its API rather than an app password. Trying each outside service for real (Google, Microsoft 365, Azure, Salesforce, Dynamics, the automation tools).
 - **Production hosting:** apply and correct the Terraform; a registry for the SDK and customers' images; a build service for customers' repositories; a secrets manager in place of `infra/.state/`.
 - Onboarding tour.
 - Minor hardening: unique index on SSO domains; DNS-rebinding protection in the outbound fetch helper.

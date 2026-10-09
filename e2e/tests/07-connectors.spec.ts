@@ -167,6 +167,39 @@ test('a new form can start from a connected table: one field per field, named th
   expect(problems).toEqual([]);
 });
 
+test('when the table gains a column, the builder says so and adds the field in one press', async ({ page }) => {
+  const problems = watchForProblems(page);
+  const formId = (await call<{ id: string; code: string }[]>(200, '/forms', { token: org.token })).find((f) => f.code === 'ISSUE_REPORT')!.id;
+  // The form remembers the table it came from.
+  expect((await call<{ definition: { startedFrom: { table: string; name: string } } }>(200, `/forms/${formId}`, { token: org.token })).definition.startedFrom).toEqual({ table: `${connectorId}/issues`, name: 'Plant CRM · Issues' });
+  await signIn(page, org.email);
+  await page.goto(`/forms/${formId}/edit`);
+  await expect(page.getByRole('button', { name: 'Save draft' })).toBeVisible();
+  // Nothing to say while the form asks for every column.
+  await expect(page.getByRole('status', { name: 'New columns' })).toHaveCount(0);
+
+  // The connector manager exposes two more columns of the table.
+  await call(200, `/connectors/${connectorId}/entities`, {
+    method: 'PUT',
+    token: org.token,
+    body: {
+      entities: [
+        { key: 'plants', label: 'Plants', fields: ['code', 'name', 'region'], keyField: 'code', operations: ['list', 'get'], valueField: 'code', labelField: 'name' },
+        { key: 'customers', label: 'Customers', fields: ['email', 'fullName', 'phone'], keyField: 'email', operations: ['list', 'get'] },
+        { key: 'issues', label: 'Issues', fields: ['plant', 'email', 'reporter', 'phone', 'what', 'severity', 'cost_amount'], operations: ['insert'] },
+      ],
+    },
+  });
+  await page.reload();
+  const banner = page.getByRole('status', { name: 'New columns' });
+  await expect(banner).toContainText('Plant CRM · Issues has 2 columns this form does not ask for: severity, cost_amount.');
+  await banner.getByRole('button', { name: 'Add them to the form' }).click();
+  await expect(banner).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect.poll(async () => (await call<{ definition: { fields: { name: string; type: string }[] } }>(200, `/forms/${formId}`, { token: org.token })).definition.fields.map((f) => `${f.name}:${f.type}`).slice(-2)).toEqual(['severity:TEXT', 'cost_amount:NUMBER']);
+  expect(problems).toEqual([]);
+});
+
 test('the connectors page shows the connection, its calls and never its credentials; a designer may use it but not see inside', async ({ page }) => {
   await signIn(page, org.email);
   await page.goto('/connectors');

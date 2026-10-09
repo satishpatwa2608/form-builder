@@ -1,3 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
+import { Button } from '@ui/button';
+import { api } from '../../lib/api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
@@ -31,7 +34,7 @@ import { useSharedWorkflows } from '../adapters/shared-workflows';
 import { useFragments } from '../adapters/fragments';
 import { addFragmentSection } from '../builder/components/FragmentSettings';
 import { createField } from '../builder/field-catalog';
-import { fragmentUse, syncFragments } from '../engine';
+import { fragmentUse, syncFragments, tableChanges, withTableFields } from '../engine';
 import { RulesDialog } from '../builder/rules/RulesDialog';
 import { ReviewDialog } from '../builder/components/ReviewDialog';
 import { useFormReview } from '../adapters/review';
@@ -140,6 +143,18 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
     const synced = syncFragments(form, fragments);
     if (synced.changed) store.updateForm({ fields: synced.definition.fields });
   }, [form, fragments, readOnly, unlockedFragment, store]);
+  // A form started from a connected table: has the table gained columns the form does not ask for?
+  const startedFrom = form?.startedFrom;
+  const { data: tableFields } = useQuery({
+    queryKey: ['table-fields', startedFrom?.table],
+    enabled: !!startedFrom && !readOnly,
+    queryFn: async () => {
+      const [connectorId, ...rest] = startedFrom!.table.split('/');
+      const list = await api<{ id: string; entities: { key: string; fields: string[] }[] }[]>('/connectors');
+      return list.find((c) => c.id === connectorId)?.entities.find((e) => e.key === rest.join('/'))?.fields ?? null;
+    },
+  });
+  const newColumns = useMemo(() => (form && tableFields && !readOnly ? tableChanges(form, tableFields) : null), [form, tableFields, readOnly]);
   const selectedField = form?.fields.find((f) => f.id === selectedFieldId);
 
   const doSave = useCallback(async (): Promise<FormDefinition | null> => {
@@ -337,6 +352,20 @@ export default function BuilderPage({ formId, onBack, onOpenForm }: BuilderPageP
       {form.status === 'DRAFT' && doc?.scheduleError && (
         <div className="fb-banner" role="alert">
           The scheduled publish did not happen: {doc.scheduleError}
+        </div>
+      )}
+      {newColumns && newColumns.columns.length > 0 && (
+        <div className="fb-banner" role="status" aria-label="New columns">
+          <span>
+            <strong>{form.startedFrom!.name}</strong> has {newColumns.columns.length === 1 ? 'a column' : `${newColumns.columns.length} columns`} this form does not ask for: {newColumns.columns.slice(0, 8).join(', ')}
+            {newColumns.columns.length > 8 ? '…' : ''}.
+          </span>{' '}
+          <Button type="button" size="sm" onClick={() => store.updateForm({ fields: withTableFields(form, newColumns).fields })}>
+            Add {newColumns.columns.length === 1 ? 'it' : 'them'} to the form
+          </Button>{' '}
+          <Button type="button" size="sm" variant="outline" onClick={() => store.updateForm({ startedFrom: { ...form.startedFrom!, leftOut: [...(form.startedFrom!.leftOut ?? []), ...newColumns.columns] } })}>
+            Leave {newColumns.columns.length === 1 ? 'it' : 'them'} out
+          </Button>
         </div>
       )}
       {readOnly && form.status === 'DRAFT' && (

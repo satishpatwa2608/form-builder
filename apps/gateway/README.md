@@ -24,7 +24,7 @@ the customer's machine: the cloud only ever stores non-secret settings.
    ```
 
    **Where it connects is decided here, not in the cloud:** `host`, `port`,
-   `ssl`, `verifyCertificate`, `url`, `baseUrl`, `auth`, `apiKeyHeader` and `tokenUrl` (where an OData connector signs in) are taken from this file.
+   `ssl`, `verifyCertificate`, `url`, `baseUrl`, `auth`, `apiKeyHeader`, `tokenUrl` (where an OData connector signs in), `instanceUrl`, `containerUrl`, `tenantId`, `link` and `spreadsheet` are taken from this file.
    If the cloud connector has one of them and this file doesn't, the request is
    refused - so nobody who can edit the connector online can redirect your
    credentials to another server. `allowedHosts` (comma-separated) may be set

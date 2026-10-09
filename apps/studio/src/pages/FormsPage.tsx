@@ -36,7 +36,7 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   const [folderId, setFolderId] = useState(folders[0]?.id ?? '');
   const shownCode = codeTouched ? code : codeFromName(name);
   /** Fields read from a schema or a spreadsheet, when the form starts from one. */
-  const [imported, setImported] = useState<{ file: string; result: ImportedFields; error?: string }>();
+  const [imported, setImported] = useState<{ file: string; result: ImportedFields; error?: string; table?: string }>();
   const source = IMPORT_SOURCES.find((x) => x.key === template);
   /** Tables the signed-in person may use from the organisation's connectors, asked for when that way of starting is chosen. */
   const [tables, setTables] = useState<{ key: string; name: string; fields: string[] }[]>();
@@ -50,7 +50,7 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   const pickTable = (key: string) => {
     const table = tables?.find((t) => t.key === key);
     if (!table) return setImported(undefined);
-    setImported({ file: table.name, result: fieldsFromEntity({ fields: table.fields }) });
+    setImported({ file: table.name, table: table.key, result: fieldsFromEntity({ fields: table.fields }) });
     if (!name) setName(table.name.split(' · ').pop() ?? '');
   };
   const readFile = async (file: File | undefined) => {
@@ -80,7 +80,7 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   const create = useSubmit(async () => {
     if (source || fromTable) {
       const fields = imported?.result.fields ?? [];
-      await api('/forms', { method: 'POST', body: { folderId, definition: { ...FORM_TEMPLATES[0].definition, fields, name: name.trim(), code: shownCode } } });
+      await api('/forms', { method: 'POST', body: { folderId, definition: { ...FORM_TEMPLATES[0].definition, fields, name: name.trim(), code: shownCode, ...(fromTable && imported?.table ? { startedFrom: { table: imported.table, name: imported.file } } : {}) } } });
       return onDone(`"${name.trim()}" was created as a draft with ${fields.length} field${fields.length === 1 ? '' : 's'} from ${imported?.file}. Check them in the builder before publishing.`);
     }
     const tpl = FORM_TEMPLATES.find((t) => t.key === template)!;

@@ -249,6 +249,23 @@ Which address a response belongs to: the form's contact email field
 
 ## 4. Responses and work
 
+### Sending a response to Power Automate, Zapier and the like
+
+Add the step **Send to an automation tool** to an automation. Choose the
+tool (Power Automate, Workfront Fusion, Zapier or Make) and paste the
+address that tool gave your flow; the step says where to find it. The
+response and the outputs of earlier steps are posted there, and what the
+flow answers is available to later steps.
+
+Treat the address like a password: anyone who has it can start the flow.
+It is stored with the form and never shown in a record's history.
+
+### How fast the form appears
+
+**Responses → Analytics** says how long the form took to appear for the
+people who opened it: the average, and the share of visits that had it
+within two seconds.
+
 ### Where people give up
 
 **Responses → Analytics → Question by question** lists every question with
@@ -397,7 +414,35 @@ only. See [extensions.md](extensions.md) for developers.
 ## 6. Your data (connectors)
 
 - **Connectors → New connector** (Connector managers): MongoDB, PostgreSQL,
-  MySQL, SQL Server, Supabase, REST API, OData, Amazon S3, CloudWatch Logs.
+  MySQL, SQL Server, Supabase, REST API, OData, Salesforce, Google Sheets,
+  Excel, SharePoint or OneDrive folder, Azure Blob Storage, Amazon S3,
+  CloudWatch Logs.
+- **Salesforce:** your Salesforce address (Setup → My Domain), and the
+  consumer key and secret of a connected app that has the *client
+  credentials flow* switched on and a "run as" user chosen. Leads, contacts,
+  cases and your own objects are then found with their fields.
+- **Google Sheets:** in Google Cloud create a service account, add a JSON
+  key and switch on the Sheets API. Share the sheet with the account's email
+  address as an editor. Paste the sheet's address and the key file. Each tab
+  is a table; its first row holds the column headings.
+- **Excel, and a SharePoint or OneDrive folder:** register an application in
+  Microsoft Entra with the *Files.ReadWrite.All* application permission
+  (*Sites.ReadWrite.All* for SharePoint) and admin consent. Paste its
+  directory ID, application ID and secret, and the link from **Share → Copy
+  link** on the workbook or folder. A workbook needs a table (Insert →
+  Table).
+- **Azure Blob Storage:** the container's address and a shared access
+  signature for that container allowing Create, Write and List.
+- **Saving a response:** expose a table's *insert* (or a folder's *upload*)
+  on the connector, then add it to an automation as **Run a custom API**.
+  Under **What goes into each field** the builder shows which answer fills
+  each column, matched by name; change any that are wrong. A folder or
+  container receives the answers as a file and the PDF beside it, named by
+  form and reference.
+- **When a table gains columns:** a form started from a connected table
+  remembers it. Once the connector manager has exposed the new columns, the
+  builder shows a line naming them, with **Add them to the form** and
+  **Leave them out**.
 - **OData** reaches Dynamics 365, SAP and other systems that offer an OData
   service. Give the service's address and how it signs in; its tables, fields
   and each table's key are then found for you. For Dynamics, sign in **as an

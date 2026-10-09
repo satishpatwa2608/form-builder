@@ -905,6 +905,7 @@ const formDefinitionShapeObject = z.object({
   events: z.array(eventSchema).max(MAX_EVENTS).optional(),
   timeZone: z.string().max(64).optional(),
   saveForLater: z.boolean().optional(),
+  startedFrom: z.object({ table: z.string().max(200), name: z.string().max(200), leftOut: z.array(z.string().max(100)).max(500).optional() }).optional(),
   listOnPortal: z.boolean().optional(),
   languages: z.object({ default: languageCode, others: z.array(languageCode).max(20) }).optional(),
   translations: z.record(languageCode, z.record(z.string().max(200), z.string().max(5000))).optional(),

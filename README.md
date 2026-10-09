@@ -1,6 +1,6 @@
 # Form Builder
 
-A hosted form platform: build forms, connect them to your own data (MongoDB, Postgres, MySQL, SQL Server, Supabase, REST, OData, AWS — directly or through a gateway inside your network), and run every submission as a work item with SLAs, approvals and automations. Security first.
+A hosted form platform: build forms, connect them to your own data (MongoDB, Postgres, MySQL, SQL Server, Supabase, REST, OData, Salesforce, Google Sheets, Excel, SharePoint, Azure Blob, AWS — directly or through a gateway inside your network), and run every submission as a work item with SLAs, approvals and automations. Security first.
 
 - Plan and reasoning: [docs/plan.md](docs/plan.md)
 - For customer admins: [docs/guide.md](docs/guide.md)
@@ -59,7 +59,7 @@ on the PATH, or `E2E_MONGODB_URL` pointing at a server that is already running.
 | `04-steps-uploads-drafts` | Steps, accordion, review; uploads and downloads; save and continue later; CAPTCHA; sign-in-only forms |
 | `05-work-items` | Inbox, record view, actions, approval and rejection, comments, emails, dashboard |
 | `06-accounts-and-access` | Sign-up, invitations, roles, folder permissions, organisation isolation, versions, export/import, audit log |
-| `07-connectors` | Options, a look-up and write-back against a real database; what the public may read; an OData system added by its address, its tables and keys found, read by a dropdown and written to |
+| `07-connectors` | Options, a look-up and write-back against a real database; what the public may read; an OData system added by its address, its tables and keys found, read by a dropdown and written to; a table gaining columns and the builder adding the fields |
 | `08-account-settings-embed` | Password reset, two-factor, branding, analytics (funnel and question by question), embedding by frame and by one line of HTML, phone and wide layouts, staff-raised items |
 | `09-gateway` | The gateway agent as its own process: register, read a private database, revoke |
 | `10-every-screen-and-templates` | Every builder screen opens cleanly; a webhook; each built-in template publishes and opens |

@@ -292,6 +292,28 @@ Each one follows the existing connector contract and security rules in plan.md s
 | Every connector: rows cut to the exposed fields | Fixed while building OData. A database returns only the columns asked for, but an API may ignore "only these fields" and send everything. Rows are now cut down to the exposed fields in one place, for every connector and for gateways; before this a REST API that sent extra fields had them passed on to the form. |
 | Oracle, SOAP, Salesforce, SharePoint, OneDrive, Azure Blob, Google Drive, Google Sheets, Excel | Not started. Each needs an account or a running instance of the other side to be built against honestly. Dynamics and SAP are reached through OData. Power Automate, Zapier and Make are reached today through webhooks (Webhooks page) and the REST connector; named connectors for them are not built. |
 
+### Against Adobe's Edge Delivery forms page (9 October 2026)
+
+Read from https://www.aem.live/developer/forms and its pages on submit actions, components and spreadsheet authoring. What it lists that we lacked, and what was done:
+
+| Their feature | State here |
+|---|---|
+| Invoke a Power Automate flow; Workfront Fusion | Done, as one step: **Send to an automation tool** (Power Automate, Workfront Fusion, Zapier, Make). Pick the tool and paste the flow's address. Only that tool's own addresses are accepted, checked when the form is published and again when sending; the address is never shown in records or logs. |
+| Submit to a spreadsheet | Done: Google Sheets (a service account the sheet is shared with) and Excel in Microsoft 365 (a table in a workbook). Each response is a row; a sheet can also feed a dropdown. Text a spreadsheet would run as a formula is stored as text. |
+| Submit to SharePoint, OneDrive, Azure Blob Storage | Done: each response is saved as its answers (JSON) and its PDF, named by form and reference. A SharePoint or OneDrive folder is named by its sharing link; Azure by a container address and a shared access signature. |
+| Salesforce | Done: reads and writes leads, contacts, cases and custom objects, signing in as a connected app. |
+| Microsoft Dynamics OData | Done earlier the same day (the OData connector). |
+| Field names that differ between the form and the other system | Not on their page, needed for the above: a step that writes to another system fills each of its fields from the answer whose name matches, read loosely (`email` fills `Email`, `company_name` fills `CompanyName__c`), and the builder shows each match with a dropdown to change it. |
+| All HTML input types | Added time, month, web address, colour and slider. Not added: week (browsers disagree on it) and password (a form should not collect passwords). |
+| Performance monitoring of real visits | Done: each visit reports how long the form took to appear; the analytics show the average and the share within two seconds. Counts only. |
+| Authoring a form in a spreadsheet | Done differently. Their spreadsheet is the form's definition, a row per field; ours stays the builder. What we added is the part that matters afterwards: a form started from a connected table remembers it, and when the table gains columns the builder says so and adds the fields in one press. |
+| Marketo Engage, Adobe Experience Platform | Not built, by decision. |
+| Code deployed from the customer's GitHub | Not built: extensions do this job without sharing our source. |
+
+Found and fixed while doing this: the form JSON given to the public carried the form's automations and workflow (internal email addresses, webhook addresses, who is assigned). The public copy now holds only what draws the form and checks its answers.
+
+None of the outside services has been used for real yet: Google, Microsoft 365, Azure, Salesforce, Power Automate, Workfront Fusion, Zapier and Make are each tested against a stand-in that behaves as their documentation describes. The first run against each real service may turn up differences.
+
 ### Phase 12 – Beyond AEM (6+ weeks, pick by demand)
 
 - Payment field (Razorpay, Stripe).

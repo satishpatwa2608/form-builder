@@ -6,7 +6,7 @@ import type { FormDefinition } from './types';
  * who is emailed and assigned, which systems are called and at what address,
  * who may see the records.
  */
-const SERVER_ONLY = ['automations', 'workflow', 'workflowRef', 'recordAccess', 'submitChecks', 'document', 'listOnPortal', 'createdBy', 'updatedBy'] as const;
+const SERVER_ONLY = ['automations', 'workflow', 'workflowRef', 'recordAccess', 'submitChecks', 'document', 'listOnPortal', 'startedFrom', 'createdBy', 'updatedBy'] as const;
 
 export type PublicFormDefinition = Omit<FormDefinition, (typeof SERVER_ONLY)[number]>;
 

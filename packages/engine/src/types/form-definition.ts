@@ -28,6 +28,11 @@ export interface FormDefinition {
    * link. On unless set to false.
    */
   saveForLater?: boolean;
+  /**
+   * The connected table this form was started from (`<connector id>/<table>`), so the builder can say when
+   * the table has gained columns. `leftOut` are columns the designer chose not to ask for.
+   */
+  startedFrom?: { table: string; name: string; leftOut?: string[] };
   /** Shown on the organisation's requests portal, for anyone to start. Public forms only. */
   listOnPortal?: boolean;
   /**
