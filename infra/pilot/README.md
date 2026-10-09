@@ -24,23 +24,17 @@ Addresses (temporary names that resolve to the server's address; a real domain r
 
 ## Releasing a new version
 
-On a Mac with Apple silicon (the server is ARM, so images built here run there as they are):
+On a Mac with Apple silicon (the server is ARM, so images built here run there as they are), with everything
+committed:
 
 ```sh
-R=547878963606.dkr.ecr.ap-south-1.amazonaws.com; H=13-234-208-44.sslip.io; TAG=$(git rev-parse --short HEAD)
-aws ecr get-login-password --profile formbuilder --region ap-south-1 | docker login --username AWS --password-stdin $R
-docker build -f infra/docker/api.Dockerfile -t $R/fb-api:$TAG . && docker push $R/fb-api:$TAG
-for app in studio runtime; do
-  docker build -f infra/docker/web.Dockerfile --build-arg APP=$app --build-arg VITE_API_URL=https://api.$H \
-    --build-arg VITE_STUDIO_URL=https://app.$H --build-arg VITE_RUNTIME_URL=https://forms.$H -t $R/fb-$app:$TAG . && docker push $R/fb-$app:$TAG
-done
-aws ssm send-command --profile formbuilder --region ap-south-1 --instance-ids i-08cd40934729c192b \
-  --document-name AWS-RunShellScript --parameters "commands=['/opt/fb/deploy.sh $TAG']"
+infra/pilot/release.sh
 ```
 
+It builds the current commit, pushes the three images (checking each arrived), copies the configuration
+files, runs `deploy.sh` on the server and checks the API answers.
+
 The builder and form app have their addresses built in, so a change of host names means building them again.
-Changed `compose.yml`, `Caddyfile` or a script: copy it to `s3://fb-pilot-547878963606-files/deploy/` and run
-`aws s3 sync s3://fb-pilot-547878963606-files/deploy/ /opt/fb/` on the server before `deploy.sh`.
 
 ## Looking at it
 
