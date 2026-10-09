@@ -127,7 +127,7 @@ export class FormPublicController {
     if ((type !== 'view' && type !== 'start' && type !== 'fields') || !/^[A-Z0-9_]{1,100}$/.test(code)) return;
     const def = await this.definitions.findPublished(orgId, code);
     if (!def) throw new NotFoundException('Form not found');
-    if (type !== 'fields') return this.plans.recordEvent(orgId, code, type);
+    if (type !== 'fields') return this.plans.recordEvent(orgId, code, type, body.loadMs);
     // One visit's summary, sent as the person leaves: which questions they answered, where a mistake showed, where they stopped.
     const names = (v: unknown) => (Array.isArray(v) ? v.filter((n): n is string => typeof n === 'string') : []);
     await this.plans.recordFields(orgId, code, countedFields(def).map((f) => f.name), { answered: names(body.answered), mistakes: names(body.mistakes), leftAt: typeof body.leftAt === 'string' ? body.leftAt : undefined });

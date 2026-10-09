@@ -116,8 +116,18 @@ export class PlansService {
     await this.stats.updateOne({ orgId, code, day: day() }, { $inc: { submissions: 1 } }, { upsert: true }).catch(() => undefined);
   }
 
-  async recordEvent(orgId: string, code: string, type: 'view' | 'start') {
-    await this.stats.updateOne({ orgId, code, day: day() }, { $inc: { [type === 'view' ? 'views' : 'starts']: 1 } }, { upsert: true });
+  async recordEvent(orgId: string, code: string, type: 'view' | 'start', loadMs?: unknown) {
+    const inc: Record<string, number> = { [type === 'view' ? 'views' : 'starts']: 1 };
+    // A load time is counted when it is a believable one: a tab left open in the background reports minutes.
+    if (type === 'view' && typeof loadMs === 'number' && Number.isFinite(loadMs) && loadMs > 0 && loadMs <= 60_000) {
+      const ms = Math.round(loadMs);
+      inc.loads = 1;
+      inc.loadMsTotal = ms;
+      if (ms < 1000) inc.loadUnder1s = 1;
+      if (ms < 2000) inc.loadUnder2s = 1;
+      if (ms < 4000) inc.loadUnder4s = 1;
+    }
+    await this.stats.updateOne({ orgId, code, day: day() }, { $inc: inc }, { upsert: true });
   }
 
   /**
@@ -178,6 +188,10 @@ export class PlansService {
     });
     const totals = series.reduce((t, r) => ({ views: t.views + r.views, starts: t.starts + r.starts, submissions: t.submissions + r.submissions }), { views: 0, starts: 0, submissions: 0 });
     const rate = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : null);
-    return { days, series, totals, startRate: rate(totals.starts, totals.views), completionRate: rate(totals.submissions, totals.starts || totals.views) };
+    const sum = (key: 'loads' | 'loadMsTotal' | 'loadUnder1s' | 'loadUnder2s' | 'loadUnder4s') => rows.reduce((n, r) => n + (r[key] ?? 0), 0);
+    const loads = sum('loads');
+    // How quickly the form appeared for the people who opened it. Nothing to say until someone has.
+    const speed = loads ? { loads, averageMs: Math.round(sum('loadMsTotal') / loads), under1s: rate(sum('loadUnder1s'), loads), under2s: rate(sum('loadUnder2s'), loads), under4s: rate(sum('loadUnder4s'), loads) } : null;
+    return { days, series, totals, startRate: rate(totals.starts, totals.views), completionRate: rate(totals.submissions, totals.starts || totals.views), speed };
   }
 }

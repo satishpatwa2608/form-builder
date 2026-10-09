@@ -53,9 +53,10 @@ describe('Plans: limits, quotas, usage and form analytics (e2e)', () => {
   it('counts views, starts and submissions per form, and stops accepting at the monthly quota', async () => {
     const id = (await h.api().get('/forms').set(h.bearer(owner)).expect(200)).body.find((f: { code: string }) => f.code === 'A').id;
     await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
-    const events = (type: string) => h.api().post(`/public/forms/A/events?org=${orgId}`).send({ type });
-    await events('view').expect(204);
-    await events('view').expect(204);
+    const events = (type: string, extra: object = {}) => h.api().post(`/public/forms/A/events?org=${orgId}`).send({ type, ...extra });
+    // Two visitors say how long the form took to appear; a third value is not a believable wait and is not counted.
+    await events('view', { loadMs: 800 }).expect(204);
+    await events('view', { loadMs: 3200 }).expect(204);
     await events('start').expect(204);
     await h.api().post(`/public/forms/B/events?org=${orgId}`).send({ type: 'view' }).expect(404); // not published
     await h.api().post(`/public/forms/A/submissions?org=${orgId}`).send({ values: { name: 'Ravi' }, idempotencyKey: 'k1' }).expect(201);
@@ -64,6 +65,9 @@ describe('Plans: limits, quotas, usage and form analytics (e2e)', () => {
     expect(stats.series).toHaveLength(7);
     expect(stats.totals).toEqual({ views: 2, starts: 1, submissions: 1 });
     expect(stats).toMatchObject({ startRate: 50, completionRate: 100 });
+    expect(stats.speed).toEqual({ loads: 2, averageMs: 2000, under1s: 50, under2s: 50, under4s: 100 });
+    for (const loadMs of [9_000_000, -5, 'fast', { $gt: 0 }]) await events('view', { loadMs }).expect(204);
+    expect((await h.api().get(`/forms/${id}/stats?days=7`).set(h.bearer(owner)).expect(200)).body.speed.loads).toBe(2);
     expect((await h.api().get('/org/usage').set(h.bearer(owner))).body.usage.submissionsThisMonth).toBe(1);
 
     // Per question: each visit says once what was answered, where a mistake showed, and where the person stopped.

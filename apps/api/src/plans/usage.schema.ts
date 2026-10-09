@@ -23,6 +23,15 @@ export class FormStat {
   @Prop({ type: Number, default: 0 }) views: number;
   @Prop({ type: Number, default: 0 }) starts: number;
   @Prop({ type: Number, default: 0 }) submissions: number;
+  /**
+   * How long the form took to appear for real visitors that day: how many reported, the total (for an
+   * average), and how many fell in each band (for "what share were quick"). Milliseconds.
+   */
+  @Prop({ type: Number, default: 0 }) loads: number;
+  @Prop({ type: Number, default: 0 }) loadMsTotal: number;
+  @Prop({ type: Number, default: 0 }) loadUnder1s: number;
+  @Prop({ type: Number, default: 0 }) loadUnder2s: number;
+  @Prop({ type: Number, default: 0 }) loadUnder4s: number;
 }
 export type FormStatDocument = HydratedDocument<FormStat>;
 export const FormStatSchema = SchemaFactory.createForClass(FormStat);

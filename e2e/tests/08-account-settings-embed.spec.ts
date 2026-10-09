@@ -143,6 +143,11 @@ test.describe('branding, analytics, embedding and raising work from inside', () 
         return [now.views - before.totals.views, now.starts - before.totals.starts, now.submissions - before.totals.submissions];
       })
       .toEqual([1, 1, 1]);
+    // The visit also said how long the form took to appear, as a real browser measured it.
+    const speed = (await call<{ speed: { loads: number; averageMs: number } | null }>(200, `/forms/${formId}/stats`, { token: org.token })).speed!;
+    expect(speed.loads).toBeGreaterThanOrEqual(1);
+    expect(speed.averageMs).toBeGreaterThan(0);
+    expect(speed.averageMs).toBeLessThan(60_000);
   });
 
   test('question by question: where one person gave up and another tripped is counted and shown', async ({ page, context }) => {

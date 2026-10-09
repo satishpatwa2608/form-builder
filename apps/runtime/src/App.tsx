@@ -57,8 +57,8 @@ function trackFields(org: string, code: string, summary: object) {
 }
 
 /** Counts only (opened / started), once per page load. Failures never bother the respondent. */
-function track(org: string, code: string, type: 'view' | 'start') {
-  void publicApi(`/forms/${code}/events?org=${encodeURIComponent(org)}`, { method: 'POST', body: { type } }).catch(() => undefined);
+function track(org: string, code: string, type: 'view' | 'start', extra: object = {}) {
+  void publicApi(`/forms/${code}/events?org=${encodeURIComponent(org)}`, { method: 'POST', body: { type, ...extra } }).catch(() => undefined);
 }
 
 /** What the server sends in place of a form that is not taking answers. */
@@ -135,7 +135,8 @@ export default function App() {
           url.searchParams.delete('resume');
           window.history.replaceState(null, '', url.toString());
         }
-        track(target.org, target.code, 'view');
+        // How long this visitor waited from following the link to having the form: the browser's own clock, whole milliseconds.
+        track(target.org, target.code, 'view', { loadMs: Math.round(performance.now()) });
       } catch (e) {
         setState({ loading: false, error: (e as Error).message, session });
       }

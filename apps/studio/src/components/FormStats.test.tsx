@@ -1,14 +1,14 @@
 import { render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FormStats, whereTheyStop } from './FormStats';
+import { FormStats, speedLine, whereTheyStop } from './FormStats';
 
-const state = vi.hoisted(() => ({ fields: [] as { name: string; label: string; answered: number; mistakes: number; leftAt: number }[] }));
+const state = vi.hoisted(() => ({ speed: null as null | { loads: number; averageMs: number; under1s: number; under2s: number; under4s: number }, fields: [] as { name: string; label: string; answered: number; mistakes: number; leftAt: number }[] }));
 vi.mock('../lib/api', () => ({
   api: async (path: string) =>
     path.includes('/field-stats')
       ? { days: 30, starts: 10, submissions: 6, fields: state.fields }
-      : { days: 30, series: [], totals: { views: 20, starts: 10, submissions: 6 }, startRate: 50, completionRate: 60 },
+      : { days: 30, series: [], totals: { views: 20, starts: 10, submissions: 6 }, startRate: 50, completionRate: 60, speed: state.speed },
 }));
 
 beforeAll(() => {
@@ -53,6 +53,14 @@ describe('form analytics', () => {
     ]);
     expect(screen.getByText('Of 4 people who started and left, 3 stopped at "PAN number".')).toBeInTheDocument();
     expect(screen.getByText(/Counts only: nothing about who answered/)).toBeInTheDocument();
+  });
+
+  it('says how fast the form appears for real visitors, once any have reported', async () => {
+    show();
+    expect(await screen.findByText('Completed after starting')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Loading speed')).toBeNull();
+    expect(speedLine({ loads: 240, averageMs: 1380, under1s: 40, under2s: 87.5, under4s: 97.5 })).toBe('The form appears in 1.4 seconds on average; 87.5% of visits have it within 2 seconds, and 2.5% wait more than 4. From 240 visits.');
+    expect(speedLine({ loads: 1, averageMs: 600, under1s: 100, under2s: 100, under4s: 100 })).toBe('The form appears in 0.6 seconds on average; 100% of visits have it within 2 seconds. From 1 visit.');
   });
 
   it('says where people stop only when someone has', () => {

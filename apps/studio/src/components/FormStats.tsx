@@ -9,6 +9,16 @@ interface Stats {
   totals: { views: number; starts: number; submissions: number };
   startRate: number | null;
   completionRate: number | null;
+  /** How quickly the form appeared for real visitors; null until one has reported. */
+  speed: { loads: number; averageMs: number; under1s: number | null; under2s: number | null; under4s: number | null } | null;
+}
+
+/** How fast the form is for the people opening it, in a sentence. */
+export function speedLine(speed: NonNullable<Stats['speed']>): string {
+  const seconds = (speed.averageMs / 1000).toFixed(1);
+  const quick = speed.under2s ?? 0;
+  const slow = Math.round((100 - (speed.under4s ?? 100)) * 10) / 10;
+  return `The form appears in ${seconds} seconds on average; ${quick}% of visits have it within 2 seconds${slow > 0 ? `, and ${slow}% wait more than 4` : ''}. From ${speed.loads.toLocaleString()} ${speed.loads === 1 ? 'visit' : 'visits'}.`;
 }
 
 /** Opened -> started -> submitted for one form (counts only; nothing about who). */
@@ -52,6 +62,11 @@ export function FormStats({ formId }: { formId: string }) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      {data.speed && (
+        <p className="st-muted" style={{ margin: '12px 0 0' }} aria-label="Loading speed">
+          {speedLine(data.speed)}
+        </p>
+      )}
       <FieldStats formId={formId} days={days} />
     </section>
   );
