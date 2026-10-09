@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { ArrowLeft, Download, Printer } from 'lucide-react';
+import { ArrowLeft, Download, FileText, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@ui/button';
 import { SmartTable, type SmartTableColumn } from '@ui/smart-table';
@@ -98,15 +98,41 @@ export default function SubmissionsPage({ formId, onBack }: SubmissionsPageProps
     });
   };
 
+  /**
+   * The document of record: made and kept by the server, the same for whoever asks for it.
+   * It is fetched with the session and saved as a file (a tab opened on it from memory
+   * is something browsers refuse).
+   */
+  const downloadDocument = async (row: SubmissionRow) => {
+    try {
+      const { apiFile } = await import('../../lib/api');
+      const url = URL.createObjectURL(await apiFile(`/forms/${encodeURIComponent(formId!)}/submissions/${encodeURIComponent(row.uuid)}/document`));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${((row as { ref?: string }).ref || `${def?.code ?? 'response'}-${row.uuid.slice(0, 8)}`).replace(/[^A-Za-z0-9._-]/g, '_')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Couldn't get the PDF");
+    }
+  };
+
   const columns: SmartTableColumn<SubmissionRow>[] = [
     {
       title: '',
       dataIndex: 'uuid',
-      width: 44,
+      width: 76,
       render: (_: unknown, row) => (
-        <button type="button" className="fb-icon-btn" aria-label="Print or save as PDF" title="Print / save as PDF" onClick={() => print(row)}>
-          <Printer size={15} />
-        </button>
+        <span className="flex items-center">
+          <button type="button" className="fb-icon-btn" aria-label="Download the PDF of this response" title="Download the PDF of this response" onClick={() => void downloadDocument(row)}>
+            <FileText size={15} />
+          </button>
+          <button type="button" className="fb-icon-btn" aria-label="Print" title="Print from this browser" onClick={() => print(row)}>
+            <Printer size={15} />
+          </button>
+        </span>
       ),
     },
     { title: 'Submitted', dataIndex: 'createdAt', width: 150, render: (v: string) => format(new Date(v), 'dd MMM yyyy, HH:mm') },

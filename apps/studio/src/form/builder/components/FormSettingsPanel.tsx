@@ -26,6 +26,12 @@ interface FormSettingsPanelProps {
   onChange: (changes: Partial<FormDefinition>) => void;
 }
 
+/** The PDF settings with nothing left set to nothing; undefined when there is none at all. */
+const tidyDocument = (d: NonNullable<FormDefinition['document']>): FormDefinition['document'] => {
+  const kept = Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined && v !== ''));
+  return Object.keys(kept).length ? kept : undefined;
+};
+
 /**
  * Checks the organisation's own code runs before a submission is accepted.
  * Nothing is shown unless its extension offers some, or the form names one.
@@ -147,6 +153,29 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           hint="They get a private link to come back to their answers within 30 days."
           checked={form.saveForLater !== false}
           onChange={(on) => onChange({ saveForLater: on ? undefined : false })}
+        />
+        <SwitchSetting
+          label="Keep a PDF of each response"
+          hint="Made by the server as each response arrives and stored with it. Without this, a PDF is still made the first time someone opens it from Responses."
+          checked={form.document?.keep === true}
+          onChange={(keep) => onChange({ document: tidyDocument({ ...form.document, keep: keep || undefined }) })}
+        />
+        <TextSetting
+          label="Title on the PDF"
+          value={form.document?.title}
+          placeholder={form.name}
+          onChange={(title) => onChange({ document: tidyDocument({ ...form.document, title: title || undefined }) })}
+        />
+        <TextSetting
+          label="Line at the foot of each page"
+          value={form.document?.footer}
+          placeholder="e.g. Confidential"
+          onChange={(footer) => onChange({ document: tidyDocument({ ...form.document, footer: footer || undefined }) })}
+        />
+        <SwitchSetting
+          label="List questions nobody answered"
+          checked={form.document?.showEmpty === true}
+          onChange={(showEmpty) => onChange({ document: tidyDocument({ ...form.document, showEmpty: showEmpty || undefined }) })}
         />
         <SubmitChecks form={form} onChange={onChange} />
 

@@ -78,4 +78,20 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return (res.status === 204 ? null : await res.json()) as T;
 }
 
+/**
+ * A file the API makes for the signed-in person (a PDF), as a blob. It is fetched with
+ * the session like any other request: a plain link could not carry it.
+ */
+export async function apiFile(path: string, retry = true): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { credentials: 'include', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+  } catch {
+    throw new ApiError(0, "Can't reach the server. Check your connection.");
+  }
+  if (res.status === 401 && retry && (await refreshSession())) return apiFile(path, false);
+  if (!res.ok) throw await toError(res);
+  return res.blob();
+}
+
 export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : 'That did not work');

@@ -159,6 +159,32 @@ for the public until the restored draft is published.
 
 ## 4. Responses and work
 
+### The PDF of a response
+
+Every response can be had as a PDF made by the server: your organisation's
+name, logo and colour, the form's title, the reference and status, then every
+answer in the order the form asks it. Repeating sections are tables,
+signatures are shown as drawn, and choices appear as their labels.
+
+- **Responses → the document icon** on a row downloads it. It is made the
+  first time anyone asks and kept, so everyone gets the same file.
+- **Form settings → Keep a PDF of each response** makes and stores it as each
+  response arrives, without anyone asking.
+- The same settings give the PDF its own title, a line at the foot of each
+  page, and can list the questions nobody answered.
+- A response's PDF follows the version of the form it was answered on. A
+  later change to the form does not rewrite it.
+- Only people who can see a form's responses can get its PDFs.
+
+For developers, the same documents can be made from your own data
+(designers of the form only):
+
+- `POST /forms/<id>/document` with `{ "values": { ... }, "reference": "..." }`
+  returns the PDF. Nothing is stored.
+- `POST /forms/<id>/documents/batch` with `{ "items": [ { ... }, ... ] }`
+  (up to 1,000) queues them; `GET /documents/batches/<id>` reports progress
+  and `GET /documents/batches/<id>/<n>` returns the n-th document.
+
 - **Submissions** (inbox icon on a form): table of responses, CSV export,
   print / save as PDF per response, and analytics — opened, started,
   submitted, with rates, for 7/30/90 days.

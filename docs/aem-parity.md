@@ -146,6 +146,17 @@ Limits to know:
 
 **Done when:** a submission produces a stored, branded PDF without a browser, and a batch of 1,000 records produces 1,000 documents without slowing the API.
 
+**Status, 9 October 2026: the core is built.**
+
+| Item | State |
+|---|---|
+| Document of record | Done. Made on the server with pdfkit and Noto Sans (no browser); stored through the file store at one place per response, so a retried job or two requests at once never leave two. A form can keep one for every response (made by the worker as it arrives) or have it made on first request. It follows the version the response was answered on. |
+| Default template | Done: organisation name, logo and colour, title, reference, status, answers in the form's order, sections as headings, repeating sections as tables, signatures as pictures, page numbers. Per form: a title, a footer line, and whether to list unanswered questions. Text is searchable; what people typed is always drawn as text. |
+| Scripts | Latin (with accents) and Devanagari. Other Indian scripts need their Noto fonts added. |
+| Generation API | Done: one at a time (answers in, PDF out, nothing stored) and in batches of up to 1,000 (queued, status endpoint, each document fetchable). |
+| Measure | 1,000 documents in about 50 seconds on a developer machine, with the API's 95th-percentile response under a third of a second while they are made (`documents-batch.e2e-spec.ts`). |
+| Not built | Designed templates beyond those settings (choosing fields, page breaks, custom headers). Attaching the PDF to an email step. A "Generate document" automation step. Storing in the customer's own S3 connector. Merge, split, reorder, PDF/A, HTML to PDF, PDF to image, password protection. |
+
 ### Phase 7 – E-signature (3 weeks)
 
 - One signing interface with provider plugins, like connectors. First providers: DocuSign and one Aadhaar eSign provider.
