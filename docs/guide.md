@@ -5,6 +5,32 @@ skip to the sections they need.
 
 ## 1. People and access
 
+### Logs and the audit trail
+
+Two places say what happened, and they are for different questions.
+
+- **Logs** is what the product did for you, line by line, each with a level
+  (Debug, Info, Warning, Error): a response arriving, each workflow step,
+  each connector call, each email, signatures, sign-ins. Use it to find out
+  why something did not happen.
+  - **Show** narrows to a level and above; **From** to one part of the
+    product; **Find** to words, a form code or a reference.
+  - **Following** keeps new lines appearing by themselves. **Download**
+    gives what is shown as a `.log` file.
+  - Press a line to see its details.
+  - **What is recorded** sets a level for each part. *Info* is the usual.
+    *Debug* records far more (every connector call, each response sent back
+    with mistakes) and is for finding a fault: you choose 1, 4 or 24 hours
+    and it goes back to Info by itself. Choose also how long lines are kept
+    (1 to 30 days; 14 unless changed).
+  - A line never holds what people answered, a password or a key. Email
+    addresses are shown as `r***@example.com`.
+- **Audit trail** is what people changed, who did it and from where. It
+  cannot be edited or deleted, and has no levels to set.
+
+Admins and owners read both; only someone who manages the organisation
+changes what the log records.
+
 - **Members → Invite** with a role. Roles: Owner, Admin, Connector manager,
   Designer, Publisher, Records worker, Viewer.
 - **Folders & access**: forms live in folders. Give someone a role *on a

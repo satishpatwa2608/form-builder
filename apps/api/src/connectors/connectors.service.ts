@@ -1,3 +1,4 @@
+import { orgLog } from '../logs/org-log';
 import { mappedValues } from '@fb/engine';
 import { BadRequestException, ForbiddenException, HttpException, Inject, Injectable, NotFoundException, type OnModuleDestroy } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -340,10 +341,12 @@ export class ConnectorsService implements OnModuleDestroy {
         res = await this.registry.run({ connector: this.record(c), secrets, allowPrivateNetwork: this.privateAllowed() }, { entity: ref, kind, params, limits });
       }
       await this.calls.create({ orgId: c.orgId, connectorId: c.id, entity: entity.key, kind, actor, ok: true, durationMs: res.durationMs, rows: res.rows.length || res.affected || 0 });
+      orgLog.debug(c.orgId, 'connectors', `${c.name}: ${kind} ${entity.label}`, { connector: c.name, type: c.type, table: entity.key, kind, rows: res.rows.length || res.affected || 0, ms: res.durationMs, by: actor });
       return res;
     } catch (e) {
       const msg = e instanceof ConnectorError ? e.message : e instanceof HttpException ? e.message : 'failed';
       await this.calls.create({ orgId: c.orgId, connectorId: c.id, entity: entity.key, kind, actor, ok: false, durationMs: Date.now() - start, error: msg.slice(0, 200) });
+      orgLog.error(c.orgId, 'connectors', `${c.name}: ${kind} ${entity.label} failed - ${msg.slice(0, 200)}`, { connector: c.name, type: c.type, table: entity.key, kind, ms: Date.now() - start, by: actor });
       if (e instanceof HttpException) throw e; // e.g. 503 when the gateway is offline
       throw e instanceof ConnectorError && e.code === 'READ_ONLY' ? new ForbiddenException(msg) : new BadRequestException(msg);
     }

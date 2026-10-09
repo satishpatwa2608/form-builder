@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, Library, LogOut, Menu, Puzzle, ScrollText, Settings, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
+import { BarChart3, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, Library, LogOut, Menu, Puzzle, ScrollText, Settings, Terminal, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { useAuth } from '../lib/auth';
 import type { Permission } from '../lib/types';
@@ -29,7 +29,8 @@ const WORK: NavItem[] = [
 const ADMIN: NavItem[] = [
   { to: '/members', label: 'Members', icon: Users, needs: 'members.view' },
   { to: '/access', label: 'Folders & access', icon: FolderTree },
-  { to: '/audit', label: 'Audit log', icon: ScrollText, needs: 'audit.read' },
+  { to: '/logs', label: 'Logs', icon: Terminal, needs: 'audit.read' },
+  { to: '/audit', label: 'Audit trail', icon: ScrollText, needs: 'audit.read' },
   { to: '/settings', label: 'Organisation', icon: Settings, needs: 'org.manage' },
   { to: '/settings/working-time', label: 'Working time', icon: CalendarClock, needs: 'org.manage' },
   { to: '/settings/webhooks', label: 'Webhooks', icon: Webhook, needs: 'org.manage' },

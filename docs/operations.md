@@ -75,6 +75,21 @@ through the person's browser. Three things to know when hosting it:
   Answers nobody asked for (provider-started sign-in) are refused. Requests
   are not signed and encrypted statements are not accepted: neither is set up.
 
+## Each organisation's log
+
+Organisations read their own log in the studio (Logs). Nothing to operate,
+three things to know:
+
+- Lines live in the `org_logs` collection and are removed by a TTL index when
+  the organisation's chosen number of days (1 to 30, 14 by default) is up.
+- An organisation writes at most 600 lines a minute; beyond that the rest of
+  the minute is dropped and one line says so. Debug, the only level that
+  writes a lot, switches itself back to Info after at most 24 hours.
+- Writing a line never fails or delays the work it describes. A line that
+  cannot be written is lost and the server log says `a log line was not
+  written`. The server's own log (stdout) is separate and unchanged: it is
+  for you, and is not shown to customers.
+
 ## An organisation's own mail server
 
 Each organisation sets this up itself (Organisation → Email sending). What

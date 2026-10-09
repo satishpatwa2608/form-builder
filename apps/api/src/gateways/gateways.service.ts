@@ -1,3 +1,4 @@
+import { orgLog } from '../logs/org-log';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { InjectModel } from '@nestjs/mongoose';
@@ -86,6 +87,7 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
       // (A query does nothing until it is run: hence exec.)
       void this.gateways.updateOne({ id: gw.id }, { $set: { lastSeenAt: new Date(), instanceId: this.instanceId, version: String(req.headers['x-gateway-version'] ?? '').slice(0, 40) } }).exec().catch(() => undefined);
       this.logger.log(`gateway ${gw.id} connected (org ${gw.orgId})`);
+      orgLog.info(gw.orgId, 'gateway', `Gateway connected: ${gw.name}`, { gateway: gw.id });
       ws.on('message', (data) => {
         let msg: GatewayResponse;
         try {

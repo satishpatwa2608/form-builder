@@ -66,7 +66,7 @@ An independent review of the new code found issues; all were fixed, tested and r
 - **Plans** count extensions.
 
 ### Tests
-See the figures in the last hand-over message for the run of 9 October. Suites: engine, connectors, SDK, API (unit and end-to-end on an in-memory database), studio, runtime, the outbound proxy, 21 browser scenario files (`pnpm e2e`) and the Docker hosting suite (`pnpm e2e:docker`). CI runs on every push to the private repository and passes.
+See the figures in the last hand-over message for the run of 9 October. Suites: engine, connectors, SDK, API (unit and end-to-end on an in-memory database), studio, runtime, the outbound proxy, 22 browser scenario files (`pnpm e2e`) and the Docker hosting suite (`pnpm e2e:docker`). CI runs on every push to the private repository and passes.
 
 ## What needs to be done
 

@@ -38,7 +38,43 @@ export const ACTION_LABEL: Record<string, string> = {
   'form.moved': 'Moved a form',
   'style.saved': 'Saved a style',
   'style.deleted': 'Deleted a style',
+  'form.exported': 'Exported a form',
+  'form.imported': 'Imported a form',
+  'form.restored': 'Restored an earlier version',
+  'form.scheduled': 'Scheduled a publish',
+  'form.review_requested': 'Asked for a review',
+  'form.review_approved': 'Approved a form',
+  'form.review_changes': 'Asked for changes to a form',
+  'connector.created': 'Added a connector',
+  'connector.updated': 'Changed a connector',
+  'connector.deleted': 'Removed a connector',
+  'connector.secrets_updated': 'Replaced a connector\'s credentials',
+  'connector.entities_updated': 'Changed what a connector exposes',
+  'gateway.created': 'Added a gateway',
+  'gateway.revoked': 'Cut off a gateway',
+  'extension.installed': 'Installed an extension',
+  'extension.refreshed': 'Refreshed an extension',
+  'extension.uninstalled': 'Removed an extension',
+  'org.sso_updated': 'Changed single sign-on',
+  'org.sso_domain_verified': 'Proved an email domain',
+  'org.mail_updated': 'Changed email sending',
+  'org.mail_enabled': 'Switched on own email sending',
+  'org.mail_disabled': 'Switched off own email sending',
+  'org.logging_updated': 'Changed what the log records',
+  'member.provisioned_by_sso': 'Joined through single sign-on',
 };
+
+/** A name for an action nobody has written one for: "workflow.shared_saved" reads "Workflow: shared saved". */
+export const actionLabel = (action: string) => {
+  if (ACTION_LABEL[action]) return ACTION_LABEL[action];
+  const [group, ...rest] = action.split('.');
+  const words = rest.join(' ').replace(/_/g, ' ').trim();
+  const thing = (group ?? '').replace(/_/g, ' ');
+  return words ? `${thing.charAt(0).toUpperCase()}${thing.slice(1)}: ${words}` : action;
+};
+
+/** Where it was done from, in words where the address says little. */
+export const fromLabel = (ip: string) => (!ip ? '' : ip === '::1' || ip === '127.0.0.1' || ip === '::ffff:127.0.0.1' ? 'This computer' : ip.replace(/^::ffff:/, ''));
 const RISKY = new Set(['auth.login_failed', 'auth.login_locked', 'auth.2fa_failed', 'auth.refresh_reused', 'auth.2fa_disabled', 'member.removed']);
 
 const describe = (e: AuditEntry) => {
@@ -55,13 +91,14 @@ export default function AuditPage() {
   const members = useMembers(can('members.view'));
   const [action, setAction] = useState('');
   const [pages, setPages] = useState<(string | undefined)[]>([undefined]);
-  const who = (id: string) => members.data?.find((m) => m.userId === id)?.name ?? 'Someone';
+  // Something done by nobody in the organisation was done by the product itself or its operator.
+  const who = (id: string) => members.data?.find((m) => m.userId === id)?.name ?? (id ? 'Someone who has left' : 'Form Builder');
 
   return (
     <>
       <PageHead
-        title="Audit log"
-        subtitle="Everything that changed, who did it and from where. Entries can't be edited or deleted."
+        title="Audit trail"
+        subtitle="Everything people changed, who did it and from where. Entries can't be edited or deleted. For what the product itself did, with levels, see Logs."
         actions={
           <select className="st-select" style={{ width: 240 }} aria-label="Filter by action" value={action} onChange={(e) => (setAction(e.target.value), setPages([undefined]))}>
             <option value="">All activity</option>
@@ -132,9 +169,11 @@ function AuditRows({ action, before, who, onMore }: { action: string; before?: s
               <strong>{who(e.actorId)}</strong>
             </div>
           </td>
-          <td>{RISKY.has(e.action) ? <Badge tone="danger">{ACTION_LABEL[e.action] ?? e.action}</Badge> : (ACTION_LABEL[e.action] ?? e.action)}</td>
+          <td>{RISKY.has(e.action) ? <Badge tone="danger">{actionLabel(e.action)}</Badge> : actionLabel(e.action)}</td>
           <td className="st-muted">{describe(e)}</td>
-          <td className="st-mono st-muted">{e.ip || '—'}</td>
+          <td className="st-muted" title={e.ip}>
+            {fromLabel(e.ip) || '—'}
+          </td>
         </tr>
       ))}
       {onMore && data?.next && (

@@ -1,3 +1,4 @@
+import { orgLog } from '../../logs/org-log';
 import {
   BadRequestException,
   ForbiddenException,
@@ -284,6 +285,7 @@ export class FormSubmissionService {
     };
     this.events.emit(FORM_SUBMITTED_EVENT, event);
     this.logger.log(`submission ${uuid} form=${def.code} v${def.version} org=${orgId} by=${user?.uuid ?? 'anonymous'} channel=${channel}`);
+    orgLog.info(orgId, 'submissions', 'Response received', { form: def.code, version: def.version, ref: state.ref ?? '', record: uuid, channel, language, files: pendingFiles.length, source });
 
     return apiResponse(true, 201, def.submission.success?.message ?? 'Submitted', { submissionId: uuid, ref: state.ref ?? '', payload });
   }

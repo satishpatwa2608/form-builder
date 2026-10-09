@@ -1,3 +1,4 @@
+import { orgLog } from '../logs/org-log';
 import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, GoneException, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -108,6 +109,7 @@ export class SignaturesService implements OnModuleInit {
     ).toObject() as SignatureRequest;
     await this.store.put(SignaturesService.originalKey(request), pdf, 'application/pdf');
     for (const index of order === 'PARALLEL' ? emails.map((_, i) => i) : [0]) await this.invite(request, index);
+    orgLog.info(p.orgId, 'signatures', `Sent for signature: ${request.title}`, { record: p.recordId, signers: emails.length, order, days });
     if (maxReminders > 0) await this.jobs.enqueue(JOB_REMIND, { id }, { orgId: p.orgId, runAt: new Date(Date.now() + REMIND_EVERY_MS), dedupeKey: `signature-remind:${id}:1` });
     await this.jobs.enqueue(JOB_EXPIRE, { id }, { orgId: p.orgId, runAt: expiresAt, dedupeKey: `signature-expire:${id}` });
     return id;
@@ -213,6 +215,7 @@ export class SignaturesService implements OnModuleInit {
       stepKey: request.stepKey,
       output: { status, signedAt: status === 'SIGNED' ? new Date().toISOString() : '', signers: request.signers.filter((s) => s.status === 'SIGNED').length, declinedBy: declined?.email ?? '' },
     };
+    (status === 'SIGNED' ? orgLog.info : orgLog.warn)(request.orgId, 'signatures', status === 'SIGNED' ? `Signed by everyone: ${request.title}` : status === 'DECLINED' ? `Declined: ${request.title}` : `Not signed in time: ${request.title}`, { record: request.recordId, signers: request.signers.length });
     this.events.emit(SIGNATURE_FINISHED_EVENT, event);
     await this.tellSigners(request, status, declined?.email ?? '');
   }

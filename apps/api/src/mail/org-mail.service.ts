@@ -1,3 +1,5 @@
+import { orgLog } from '../logs/org-log';
+import { maskEmail } from '../logs/org-log.service';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
@@ -183,14 +185,19 @@ export class OrgMailService {
    */
   async send(orgId: string | undefined, mail: Mail): Promise<void> {
     const org = orgId ? await this.orgs.findOne({ id: orgId }).select('name mail').lean() : null;
-    if (!org?.mail?.enabled || org.mail.provider === 'DEFAULT') return this.ours.send(mail);
+    if (!org?.mail?.enabled || org.mail.provider === 'DEFAULT') {
+      await this.ours.send(mail);
+      return orgLog.info(orgId, 'mail', 'Email sent', { to: maskEmail(mail.to), through: 'Form Builder', attachments: mail.attachments?.length ?? 0 });
+    }
     try {
       await this.through(org.mail as OrganizationDocument['mail'], org.name, mail);
+      orgLog.info(orgId, 'mail', 'Email sent', { to: maskEmail(mail.to), through: org.mail.provider === 'MICROSOFT' ? 'Microsoft 365' : 'your mail server', attachments: mail.attachments?.length ?? 0 });
     } catch (e) {
       const message = e instanceof MailSendError ? e.message : 'The mail server could not be used.';
       // Shown to the admin on the settings card. Never the message itself, which carries single-use links.
       await this.orgs.updateOne({ id: orgId }, { $set: { 'mail.lastError': message, 'mail.lastErrorAt': new Date() } }).catch(() => undefined);
       this.logger.warn(`own mail failed for org ${orgId}: ${e instanceof MailSendError ? e.reason : (e as Error).name}`);
+      orgLog.error(orgId, 'mail', `Email not sent - ${message}`, { to: maskEmail(mail.to) });
       throw e instanceof MailSendError ? e : new Error('own mail failed');
     }
   }

@@ -1,3 +1,4 @@
+import { orgLog } from '../../logs/org-log';
 import { eventSources, formAvailability, publicCopy } from '@fb/engine';
 import { Body, Controller, UseFilters, Get, Headers, HttpCode, Ip, NotFoundException, Param, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { FormDefinitionService } from '../services/form-definition.service';
@@ -113,6 +114,12 @@ export class FormPublicController {
       return result;
     } catch (e) {
       await this.plans.releaseSubmission(orgId, reserved);
+      // Which questions were at fault, never what was answered.
+      const faults = (e as { errors?: { field: string }[] })?.errors;
+      const status = (e as { getStatus?: () => number })?.getStatus?.();
+      if (Array.isArray(faults)) orgLog.debug(orgId, 'submissions', 'Response sent back with mistakes', { form: code, mistakes: faults.length, fields: [...new Set(faults.map((f) => f.field))].slice(0, 10).join(', ') });
+      else if (!status || status >= 500) orgLog.error(orgId, 'submissions', 'A response could not be stored', { form: code });
+      else orgLog.debug(orgId, 'submissions', 'Response refused', { form: code, status });
       throw e;
     }
   }

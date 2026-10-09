@@ -19,6 +19,7 @@ const screens: [path: string, shows: RegExp][] = [
   ['/members', /Members/],
   ['/access', /Folders/],
   ['/audit', /Audit/],
+  ['/logs', /Logs/],
   ['/settings', /Branding/],
   ['/settings/working-time', /Working/i],
   ['/settings/webhooks', /Webhooks/],

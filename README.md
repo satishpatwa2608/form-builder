@@ -65,6 +65,7 @@ on the PATH, or `E2E_MONGODB_URL` pointing at a server that is already running.
 | `10-every-screen-and-templates` | Every builder screen opens cleanly; a webhook; each built-in template publishes and opens |
 | `11-lifecycle` | Opening and closing times, the save-for-later switch, scheduled publishing, comparing and restoring versions |
 | `12-start-from-a-file` | A new form from a spreadsheet and from a JSON Schema |
+| `22-logs` | The organisation's log: lines with levels as things happen, errors found, narrowed by part and reference, debug switched on for a while, downloaded as a file, closed to other organisations; the audit trail in words |
 | `21-own-mail` | An organisation's own mail server: set up, a wrong password said plainly, a test email, switched on; a workflow email then arrives from its address through a real local mail server |
 | `20-portal` | The requests portal: switched on by an admin, a form listed with one switch, a requester signs in by emailed link and follows the status; someone else sees none of it |
 | `19-signatures` | A response sent to two people to sign from emailed links (typed and drawn), the signed PDF on the record, a decline, a link that was never issued |
@@ -86,7 +87,7 @@ Every route needs a signed-in session unless marked public. The guard re-checks 
 |---|---|
 | Auth (public) | `POST /auth/signup`, `/verify-email`, `/resend-verification`, `/login`, `/refresh`, `/forgot-password`, `/reset-password`; `POST /auth/sso/start` (studio origin only), `GET /auth/sso/saml/:org/metadata`, `POST /auth/sso/saml/:org/acs`, `GET /auth/sso/callback` |
 | Auth | `GET /auth/me`, `POST /auth/logout`, `/switch-org`, `/password`, `/2fa/setup`, `/2fa/enable`, `/2fa/disable` |
-| Organisation | `GET/PATCH /org`, `POST /orgs`, `GET /org/usage`, `GET/PUT /org/branding`, `GET/POST /org/domains`, `POST /org/domains/:host/verify`, `DELETE /org/domains/:host`, `GET/PUT /org/sso`, `GET/PUT /org/mail`, `POST /org/mail/test`, `POST /org/mail/use` |
+| Organisation | `GET/PATCH /org`, `POST /orgs`, `GET /org/usage`, `GET/PUT /org/branding`, `GET/POST /org/domains`, `POST /org/domains/:host/verify`, `DELETE /org/domains/:host`, `GET/PUT /org/sso`, `GET/PUT /org/mail`, `POST /org/mail/test`, `POST /org/mail/use`, `GET /org/logs`, `GET /org/logs/download`, `GET/PUT /org/logs/settings` |
 | Members | `GET /members`, `PATCH/DELETE /members/:userId`, `GET/POST /invitations`, `DELETE /invitations/:id`, `POST /invitations/accept` (public) |
 | Access | `GET/POST /folders`, `PATCH/DELETE /folders/:id`, `GET /folders/:id/permissions`, `GET/POST /grants`, `DELETE /grants/:id` |
 | Forms | `GET/POST /forms`, `POST /forms/import`, `GET/PUT/DELETE /forms/:id`, `GET /forms/:id/versions`, `/export`, `/stats`, `/submissions`, `/submissions/:sid/files/:uploadId`; `POST /forms/:id/publish`, `/new-version`, `/archive`; `PATCH /forms/:id/folder` |
@@ -105,6 +106,7 @@ Every route needs a signed-in session unless marked public. The guard re-checks 
 - **SSO:** OpenID Connect code flow with PKCE and a confidential client; started only by a POST from a studio origin and bound to the starting browser by a cookie (no login CSRF); identity from the provider's userinfo endpoint; trusted only for email domains the org has proven with a DNS TXT record (one org per domain); requiring SSO unlocks only after one successful SSO sign-in.
 - **Access:** deny by default; org roles plus folder/connector grants inherited downwards; nobody can give a role they don't hold.
 - **Audit log:** append-only at the model level, secrets redacted, logo bytes never logged.
+- **Organisation log:** each organisation's own log with levels per area (`apps/api/src/logs`). Lines carry identifiers, never answers or secrets; context keys that look like secrets are redacted by name; at most 600 lines a minute per organisation; kept 1 to 30 days by a TTL index; debug switches itself off.
 - **Connectors:** credentials envelope-encrypted (KMS in production); SSRF protection (https only, private addresses blocked, no redirects, 2 MB cap); parameterised queries; only exposed entities/fields/operations; read-only unless allowed; every call logged without values. Gateway connectors keep credentials — and the host/URL they are sent to — on the customer's machine.
 - **Public forms:** rate-limited (MongoDB-backed limiter, safe across instances), payload shape checks, uploads verified by content, CAPTCHA, monthly response quota per plan (reserved atomically). Save-and-resume tokens are rotated on every save and sent to the API in request bodies, not URLs.
 - **Custom domains:** proven by a DNS TXT record; such origins get CORS on `/public/*` only, never with credentials.

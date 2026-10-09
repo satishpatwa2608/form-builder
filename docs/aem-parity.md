@@ -310,6 +310,8 @@ Read from https://www.aem.live/developer/forms and its pages on submit actions, 
 | Marketo Engage, Adobe Experience Platform | Not built, by decision. |
 | Code deployed from the customer's GitHub | Not built: extensions do this job without sharing our source. |
 
+**Logs (asked for on 9 October, after AEM's `system/console/slinglog`).** Each organisation has its own log console: lines with a level (Debug, Info, Warning, Error) from each part of the product (responses, workflow, connectors, email, signatures, sign-in, portal, extensions, gateways, audit), read live, narrowed by level, part and words, and downloaded as a `.log` file. Each part has a level of its own, as AEM's loggers do; Debug is chosen for 1, 4 or 24 hours and goes back by itself. What differs from AEM: there are no log files to name and no patterns to write, since a customer of a hosted product has no file system to put them in; and a line never holds an answer or a secret. The audit trail stays beside it, unchangeable, now with every action named in words.
+
 Found and fixed while doing this: the form JSON given to the public carried the form's automations and workflow (internal email addresses, webhook addresses, who is assigned). The public copy now holds only what draws the form and checks its answers.
 
 None of the outside services has been used for real yet: Google, Microsoft 365, Azure, Salesforce, Power Automate, Workfront Fusion, Zapier and Make are each tested against a stand-in that behaves as their documentation describes. The first run against each real service may turn up differences.

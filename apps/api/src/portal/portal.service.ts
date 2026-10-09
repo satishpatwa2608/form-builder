@@ -1,3 +1,5 @@
+import { orgLog } from '../logs/org-log';
+import { maskEmail } from '../logs/org-log.service';
 import { ForbiddenException, HttpException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { findStatus, formAvailability, workflowOf } from '@fb/engine';
@@ -105,6 +107,7 @@ export class PortalService {
     const session = `fbps_${randomToken()}`;
     const expiresAt = new Date(Date.now() + SESSION_MS);
     await this.passes.create({ tokenHash: hashToken(session), orgId, email: link.email, kind: 'SESSION', expiresAt });
+    orgLog.info(orgId, 'portal', 'Someone signed in to the portal', { who: maskEmail(link.email) });
     return { session, email: link.email, expiresAt };
   }
 

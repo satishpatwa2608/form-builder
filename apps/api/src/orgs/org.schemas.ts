@@ -110,6 +110,8 @@ export class Organization {
   @Prop({ type: OrgSso, default: () => ({}) }) sso: OrgSso;
   @Prop({ type: OrgPortal, default: () => ({}) }) portal: OrgPortal;
   @Prop({ type: OrgMail, default: () => ({}) }) mail: OrgMail;
+  /** What the organisation's log records: a level per area, until when debug runs, and how long lines are kept. */
+  @Prop({ type: MongooseSchema.Types.Mixed, default: () => ({}) }) logging: { levels?: Record<string, string>; debugUntil?: Date | null; keepDays?: number };
 }
 export type OrganizationDocument = HydratedDocument<Organization>;
 export const OrganizationSchema = SchemaFactory.createForClass(Organization);

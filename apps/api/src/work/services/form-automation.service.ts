@@ -1,3 +1,4 @@
+import { orgLog } from '../../logs/org-log';
 import { DocumentsService } from '../../documents/documents.service';
 import { SIGNATURE_FINISHED_EVENT, SignaturesService, type SignatureFinishedEvent } from '../../signatures/signatures.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
@@ -350,8 +351,11 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     // What an earlier attempt of the same job already did, by step.
     const earlier = jobRunId ? await this.records.runSteps(orgId, recordId, runId) : new Map<number, Record<string, unknown>>();
     if (earlier.has(-1)) return;
-    const log = (message: string, data: Record<string, unknown>) =>
-      this.records.log(orgId, recordId, 'AUTOMATION', '', `${automation.name}: ${message}`, { runId, automationId: automation.id, ...data });
+    const log = (message: string, data: Record<string, unknown>) => {
+      // Every step's outcome, in the organisation's log as well as on the record: failures as errors.
+      (data.ok === false ? orgLog.error : orgLog.info)(orgId, 'workflow', `${automation.name}: ${message}`, { form: run.definition.code, record: recordId, step: typeof data.stepKey === 'string' ? data.stepKey : '', kind: typeof data.action === 'string' ? data.action : '', run: runId });
+      return this.records.log(orgId, recordId, 'AUTOMATION', '', `${automation.name}: ${message}`, { runId, automationId: automation.id, ...data });
+    };
     const finish = (status: 'DONE' | 'STOPPED') =>
       resume ? this.runs.updateOne({ uuid: runId }, { $set: { status, steps } }) : Promise.resolve();
 

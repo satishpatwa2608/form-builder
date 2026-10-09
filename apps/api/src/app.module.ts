@@ -82,6 +82,9 @@ import { SignatureRequest, SignatureRequestSchema } from './signatures/signature
 import { SignaturesService } from './signatures/signatures.service';
 import { PortalService } from './portal/portal.service';
 import { OrgMailService } from './mail/org-mail.service';
+import { OrgLogService } from './logs/org-log.service';
+import { OrgLogController } from './logs/org-log.controller';
+import { OrgLog, OrgLogSchema } from './logs/log.schema';
 import { OrgMailController } from './mail/org-mail.controller';
 import { PortalController } from './portal/portal.controller';
 import { PortalPass, PortalPassSchema } from './portal/portal.schema';
@@ -161,6 +164,7 @@ export class AppModule {
           { name: FormStat.name, schema: FormStatSchema },
           { name: FormFieldStat.name, schema: FormFieldStatSchema },
           { name: PortalPass.name, schema: PortalPassSchema },
+          { name: OrgLog.name, schema: OrgLogSchema },
           { name: FormDraft.name, schema: FormDraftSchema },
           { name: SsoState.name, schema: SsoStateSchema },
           { name: Job.name, schema: JobSchema },
@@ -204,6 +208,7 @@ export class AppModule {
         SignaturePublicController,
         PortalController,
         OrgMailController,
+        OrgLogController,
         SignaturesController,
         DocumentsController,
         FormReviewController,
@@ -267,6 +272,7 @@ export class AppModule {
         SignaturesService,
         PortalService,
         OrgMailService,
+        OrgLogService,
         DocumentsService,
         FormReviewService,
         FormAutomationService,

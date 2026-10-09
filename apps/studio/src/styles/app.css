@@ -792,3 +792,111 @@
 
 .st-auth__or { display: flex; align-items: center; gap: 10px; color: var(--fb-muted); font-size: 12px; }
 .st-auth__or::before, .st-auth__or::after { content: ''; flex: 1; height: 1px; background: var(--fb-line); }
+
+/* Logs: lines as a log file reads, with their level */
+.st-logbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--fb-line);
+}
+.st-logbar label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--fb-soft);
+}
+.st-logbar .st-select,
+.st-logbar .st-input {
+  height: 34px;
+  min-width: 190px;
+}
+.st-log {
+  max-height: 68vh;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.st-logline {
+  display: grid;
+  grid-template-columns: 190px 52px minmax(90px, max-content) 1fr;
+  gap: 10px;
+  width: 100%;
+  padding: 3px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--fb-line);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.st-logline:hover,
+.st-logline[aria-expanded='true'] {
+  background: var(--fb-surface-2);
+}
+.st-logline time,
+.st-logline__area {
+  color: var(--fb-soft);
+  white-space: nowrap;
+}
+.st-logline__level {
+  font-weight: 700;
+}
+.st-logline--debug .st-logline__level,
+.st-logline--debug .st-logline__text {
+  color: var(--fb-soft);
+}
+.st-logline--info .st-logline__level {
+  color: #1d5fbf;
+}
+.st-logline--warn .st-logline__level {
+  color: #8a5a00;
+}
+.st-logline--error .st-logline__level,
+.st-logline--error .st-logline__text {
+  color: var(--fb-danger);
+}
+.st-logline--error {
+  background: color-mix(in srgb, var(--fb-danger) 5%, transparent);
+}
+.st-logline__text {
+  overflow-wrap: anywhere;
+}
+.st-logline__facts {
+  margin-inline-start: 12px;
+  color: var(--fb-soft);
+}
+.st-logline__more {
+  grid-column: 3 / -1;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 14px;
+  margin: 4px 0 6px;
+  color: var(--fb-text, inherit);
+}
+.st-logline__more dt {
+  color: var(--fb-soft);
+}
+.st-logline__more dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.st-loglevels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px 20px;
+}
+.st-loglevels label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+@media (max-width: 800px) {
+  .st-logline {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}

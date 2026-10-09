@@ -88,7 +88,7 @@ describe('studio', () => {
     renderApp('/members');
     expect(await screen.findByRole('heading', { name: 'Members' })).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(within(nav).queryByRole('link', { name: /Audit log/ })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: /Audit trail/ })).not.toBeInTheDocument();
     expect(within(nav).queryByRole('link', { name: /Organisation/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Send invitation/ })).not.toBeInTheDocument();
   });

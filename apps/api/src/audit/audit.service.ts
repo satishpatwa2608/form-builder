@@ -1,3 +1,4 @@
+import { orgLog } from '../logs/org-log';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
@@ -53,6 +54,10 @@ export class AuditService {
       before: redact(event.before),
       after: redact(event.after),
     });
+    // The same event, as a line in the organisation's log: sign-in events under their own area, the risky ones as warnings.
+    const signIn = event.action.startsWith('auth.');
+    const risky = /failed|locked|reused|2fa_disabled|removed/.test(event.action);
+    (risky ? orgLog.warn : orgLog.info)(actor.orgId, signIn ? 'sign-in' : 'audit', event.action, { by: actor.actorId, target: event.targetType ? `${event.targetType}:${event.targetId ?? ''}` : '', from: actor.ip });
   }
 
   async list(orgId: string, query: { action?: string; actorId?: string; before?: string; limit?: number }) {

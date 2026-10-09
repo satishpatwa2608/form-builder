@@ -1,3 +1,4 @@
+import { orgLog } from '../logs/org-log';
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
@@ -102,7 +103,10 @@ export class PlansService {
     const limit = (await this.limitsOf(orgId)).submissionsPerMonth;
     await this.months.updateOne({ orgId, month: m }, { $setOnInsert: { submissions: 0 } }, { upsert: true }).catch(() => undefined); // a racing insert is fine
     const res = await this.months.updateOne({ orgId, month: m, ...(limit === null ? {} : { submissions: { $lt: limit } }) }, { $inc: { submissions: 1 } });
-    if (!res.modifiedCount) throw new HttpException({ statusCode: 429, message: "This form isn't accepting responses right now. Please try again later.", code: 'QUOTA' }, 429);
+    if (!res.modifiedCount) {
+      orgLog.warn(orgId, 'submissions', 'A response was turned away: the plan\'s responses for this month are used up', { limit: limit ?? 0 });
+      throw new HttpException({ statusCode: 429, message: "This form isn't accepting responses right now. Please try again later.", code: 'QUOTA' }, 429);
+    }
     return m;
   }
 
