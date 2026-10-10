@@ -159,6 +159,36 @@ describe('FormContainer — form events', () => {
     await waitFor(() => expect(value(/^Phone/)).toBe('Typed by a person'), { timeout: 3000 });
   });
 
+  it('a look-up fills a repeating section with one row for each row that comes back, within its limit', async () => {
+    const withLines: FormField[] = [
+      ...flat,
+      { id: 'r', type: 'REPEAT', name: 'lines', label: 'Lines', validation: { max: 2 } },
+      { id: 'ri', type: 'TEXT', name: 'item', label: 'Item', parentId: 'r' },
+      { id: 'rq', type: 'NUMBER', name: 'qty', label: 'Qty', parentId: 'r' },
+    ];
+    const order: FormEvent = {
+      id: 'order',
+      on: { type: 'CLICK', field: 'find' },
+      do: [{ type: 'FETCH', source: { url: 'orders', method: 'GET', params: { email: '{{email}}' } }, set: { fullName: 'customer' }, rows: { into: 'lines', set: { item: 'product.name', qty: 'quantity' } } }],
+    };
+    const { user } = renderForm(form([order], { fields: withLines }), {
+      rows: [
+        { customer: 'Asha Rao', product: { name: 'Pen' }, quantity: '3' },
+        { customer: 'Asha Rao', product: { name: 'Ink' }, quantity: 1 },
+        { customer: 'Asha Rao', product: { name: 'Paper' }, quantity: 5 },
+      ],
+    });
+    await user.type(screen.getByLabelText(/^Email/), 'asha@acme.test');
+    await user.click(screen.getByRole('button', { name: 'Find me' }));
+    await waitFor(() => expect(screen.getAllByRole('group', { name: /Lines row/ })).toHaveLength(2));
+    expect(value(/^Full name/)).toBe('Asha Rao');
+    const rows = screen.getAllByRole('group', { name: /Lines row/ });
+    expect((rows[0]!.querySelector('input[name$="item"]') as HTMLInputElement).value).toBe('Pen');
+    // A number that arrived as text is a number in the form.
+    expect((rows[0]!.querySelector('input[name$="qty"]') as HTMLInputElement).value).toBe('3');
+    expect((rows[1]!.querySelector('input[name$="item"]') as HTMLInputElement).value).toBe('Ink');
+  });
+
   it('a button opens another step', async () => {
     const steps: FormField[] = [
       { id: 's1', type: 'SECTION', name: 'about', label: 'About you' },

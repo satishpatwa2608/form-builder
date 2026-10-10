@@ -73,6 +73,28 @@ describe('event edits', () => {
     expect(JSON.stringify(result.success ? '' : result.issues)).toContain('the very answer it waits on');
   });
 
+  it('a look-up may fill the rows of a repeating section, and only with that section\'s own questions', () => {
+    const base = form();
+    const withRows = {
+      ...base,
+      fields: [
+        ...base.fields,
+        { id: 'rr', type: 'REPEAT' as const, name: 'lines', label: 'Lines' },
+        { id: 'ri', type: 'TEXT' as const, name: 'item', label: 'Item', parentId: 'rr' },
+      ],
+    };
+    const lookup = (rows: { into: string; set: Record<string, string> }): FormEvent => ({ id: 'e', on: { type: 'LOAD' }, do: [{ type: 'FETCH', source: { url: 'orders', method: 'GET' }, set: {}, rows }] });
+    const said = (rows: { into: string; set: Record<string, string> }) => {
+      const result = validateFormDefinition({ ...withRows, events: [lookup(rows)] });
+      return result.success ? '' : JSON.stringify(result.issues);
+    };
+    // Rows alone are enough: no single field need be filled as well.
+    expect(said({ into: 'lines', set: { item: 'name' } })).toBe('');
+    expect(said({ into: 'lines', set: {} })).toContain('Choose at least one question of \\"Lines\\" to fill in');
+    expect(said({ into: 'lines', set: { email: 'x' } })).toContain('is not a question of');
+    expect(said({ into: 'email', set: { item: 'x' } })).toContain('is not a repeating section');
+  });
+
   it('reports what stops an event from publishing, per event and in the issues list', () => {
     const def = form([
       { id: 'a', on: { type: 'SUBMIT_SUCCESS' }, do: [{ type: 'REDIRECT', url: 'javascript:alert(1)' }] },

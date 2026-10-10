@@ -13,6 +13,8 @@ import {
   buildZodSchema,
   childrenOf,
   clickableButtons,
+  formShape,
+  MAX_ROWS,
   watchedFields,
   coerceToField,
   computeFormState,
@@ -387,9 +389,28 @@ function FormRuntime({
             continue;
           }
           try {
-            const [row] = await dataSourceAdapter.fetchRows({ ...action.source, valueField: '', labelField: '' }, params);
+            const found = await dataSourceAdapter.fetchRows({ ...action.source, valueField: '', labelField: '' }, params);
+            const [row] = found;
             if (!row) setNotice(ui('lookupNone'));
             else for (const [name, path] of Object.entries(action.set)) fill(name, readOwnPath(row, path));
+            // One row of the repeating section for each row that came back, within the section's own limit.
+            const section = action.rows && definition.fields.find((f) => f.name === action.rows!.into && f.type === 'REPEAT');
+            if (action.rows && section && row) {
+              const children = formShape(definition.fields).repeats.find((r) => r.field.id === section.id)?.valueChildren ?? [];
+              const most = Math.min(section.validation?.max ?? MAX_ROWS, MAX_ROWS);
+              form.setValue(
+                section.name,
+                found.slice(0, most).map((r) =>
+                  Object.fromEntries(
+                    Object.entries(action.rows!.set).flatMap(([name, path]) => {
+                      const child = children.find((c) => c.name === name);
+                      return child ? [[name, coerceToField(readOwnPath(r, path), child)]] : [];
+                    }),
+                  ),
+                ),
+                { shouldDirty: true },
+              );
+            }
           } catch {
             setNotice(ui('lookupFailed'));
           }

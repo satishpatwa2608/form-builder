@@ -90,7 +90,12 @@ const fetchSourceSchema = z.object({
 const eventActionSchema: z.ZodType<FormEventAction> = z.union([
   z.object({ type: z.literal('SET_VALUE'), target: z.string().min(1), value: expressionText }),
   z.object({ type: z.literal('GO_TO_STEP'), step: z.string().min(1) }),
-  z.object({ type: z.literal('FETCH'), source: fetchSourceSchema, set: z.record(z.string(), z.string().min(1).max(100)) }),
+  z.object({
+    type: z.literal('FETCH'),
+    source: fetchSourceSchema,
+    set: z.record(z.string(), z.string().min(1).max(100)),
+    rows: z.object({ into: z.string().min(1), set: z.record(z.string(), z.string().min(1).max(100)) }).optional(),
+  }),
   z.object({ type: z.literal('SHOW_MESSAGE'), message: z.string().min(1).max(500) }),
   z.object({ type: z.literal('REDIRECT'), url: z.string().min(1).max(500) }),
 ]);
@@ -923,8 +928,15 @@ function checkEvents(def: FormDefinition, ctx: z.RefinementCtx) {
         }
         case 'FETCH': {
           for (const ref of paramReferences(action.source.params).fields) if (!names.has(ref)) at(`Parameter refers to unknown field "${ref}"`);
-          if (!Object.keys(action.set).length) at('Choose at least one field to fill in');
+          if (!Object.keys(action.set).length && !action.rows) at('Choose at least one field to fill in');
           for (const name of Object.keys(action.set)) calculable(name, at);
+          if (action.rows) {
+            const section = byName.get(action.rows.into);
+            const repeat = section && isRepeat(section) ? formShape(def.fields).repeats.find((r) => r.field.id === section.id) : undefined;
+            if (!repeat) at(`"${action.rows.into}" is not a repeating section`);
+            else if (!Object.keys(action.rows.set).length) at(`Choose at least one question of "${section!.label || section!.name}" to fill in`);
+            else for (const name of Object.keys(action.rows.set)) if (!repeat.valueChildren.some((c) => c.name === name)) at(`"${name}" is not a question of "${section!.label || section!.name}"`);
+          }
           break;
         }
         case 'REDIRECT':

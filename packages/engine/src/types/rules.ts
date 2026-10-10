@@ -108,13 +108,22 @@ export interface FetchSource {
   params?: Record<string, string>;
 }
 
+/**
+ * A look-up can also fill a repeating section, one row of it for each row that comes back (an order's lines, a
+ * policy's nominees): `into` names the section, `set` says which property goes into which of its questions.
+ */
+export interface FetchRows {
+  into: string;
+  set: Record<string, string>;
+}
+
 export type FormEventAction =
   /** Fills the target once; the person can change it afterwards. */
   | { type: 'SET_VALUE'; target: string; value: string }
   /** Steps mode: `step` is the name of the top-level section to open. */
   | { type: 'GO_TO_STEP'; step: string }
   /** Reads the first row of a data source and copies its properties into fields: `{ fieldName: 'row.property' }`. */
-  | { type: 'FETCH'; source: FetchSource; set: Record<string, string> }
+  | { type: 'FETCH'; source: FetchSource; set: Record<string, string>; rows?: FetchRows }
   /** After a submit: the text shown instead of the standard success or error message. */
   | { type: 'SHOW_MESSAGE'; message: string }
   /** After a successful submit: go to this address instead of showing a message. */

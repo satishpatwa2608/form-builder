@@ -3,7 +3,7 @@ import { Button } from '@ui/button';
 import { Input } from '@ui/input';
 import { Switch } from '@ui/switch';
 import type { Condition, FormDefinition, FormEvent, FormEventAction, FormField } from '../../types';
-import { isExpressionCondition, MAX_EVENTS } from '../../engine';
+import { MAX_EVENTS, isExpressionCondition, isValueField } from '../../engine';
 import { useDataSources } from '../../adapters/data-source/data-source-adapter';
 import { ConditionEditor, defaultCondition } from '../components/ConditionEditor';
 import { ChoiceSelect } from '../components/settings';
@@ -56,6 +56,54 @@ function Pairs({ label, left, right, value, onChange }: { label: string; left: s
 }
 
 /** Where to look, what to send, and which fields the answer goes into. */
+/**
+ * The rows that come back can also fill a repeating section: an order's lines, a policy's nominees. Pick the
+ * section, then say which property of a row goes into which of its questions.
+ */
+function RowsFromLookup({ action, fields, onChange }: { action: Extract<FormEventAction, { type: 'FETCH' }>; fields: FormField[]; onChange: (action: FormEventAction) => void }) {
+  const repeats = fields.filter((f) => f.type === 'REPEAT');
+  if (!repeats.length && !action.rows) return null;
+  const section = repeats.find((f) => f.name === action.rows?.into);
+  const questions = section ? fields.filter((f) => f.parentId === section.id && isValueField(f)) : [];
+  const NONE = '__none__';
+  return (
+    <div className="fb-settings" style={{ gap: 6 }} role="group" aria-label="Fill rows">
+      <span className="fb-setting__label">Also fill the rows of</span>
+      <ChoiceSelect
+        ariaLabel="Repeating section to fill"
+        value={section?.name ?? NONE}
+        options={[{ label: 'Nothing: one row is enough', value: NONE }, ...repeats.map((r) => ({ label: fieldName(r), value: r.name }))]}
+        onChange={(into) => {
+          const { rows: _rows, ...rest } = action;
+          onChange(into === NONE ? rest : { ...rest, rows: { into, set: {} } });
+        }}
+      />
+      {section && <span className="fb-setting__hint">One row for each row that comes back. Say which property goes into which question.</span>}
+      {section &&
+        questions.map((q) => (
+          <div key={q.name} className="flex items-center gap-2">
+            <span className="text-sm" style={{ flex: 1, minWidth: 0 }}>
+              {fieldName(q)}
+            </span>
+            <Input
+              aria-label={`Row property for ${q.name}`}
+              className={VISIBLE_BORDER}
+              style={{ flex: 1 }}
+              value={action.rows?.set[q.name] ?? ''}
+              placeholder="property of the row, or leave empty"
+              onChange={(e) => {
+                const set = { ...(action.rows?.set ?? {}) };
+                if (e.target.value) set[q.name] = e.target.value;
+                else delete set[q.name];
+                onChange({ ...action, rows: { into: section.name, set } });
+              }}
+            />
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function FetchEditor({ action, fields, onChange }: { action: Extract<FormEventAction, { type: 'FETCH' }>; fields: FormField[]; onChange: (action: FormEventAction) => void }) {
   const { data: sources = [] } = useDataSources();
   const targets = targetsFor('SET_VALUE', fields);
@@ -112,6 +160,7 @@ function FetchEditor({ action, fields, onChange }: { action: Extract<FormEventAc
           />
         )}
       </div>
+      <RowsFromLookup action={action} fields={fields} onChange={onChange} />
     </div>
   );
 }
