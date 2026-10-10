@@ -77,7 +77,7 @@ Open the form named, in the builder, to see how the feature is set up.
 | **Signature and consent** | Almost every form | The last step |
 | **Values the system fills in** (channel, date, a value from the link) | Car insurance, Job application, Rental application | Hidden fields in the first step |
 | **Filled from the signed-in person, and locked** | Employee joining form, Expense claim, System access request | The field → Fill from signed-in user |
-| **CAPTCHA** | Two-wheeler insurance, Trade licence | Form settings |
+| **CAPTCHA** | Not switched on in any: it needs your own site key. The setup notes of Two-wheeler insurance and Citizen complaint say where | Form settings |
 | **Confirm with a code** | Switched off by default; the Bank account form says where to switch it on | Email or Phone field → Confirm with a code |
 | **Taking a payment** | Named in the setup notes of University application, Trade licence, Vehicle registration, New connection, Visa, Conference, Shipment, Diagnostics | Form settings → Take a payment |
 | **Workflow: statuses and buttons** | Every form, each different | Workflow → Process |

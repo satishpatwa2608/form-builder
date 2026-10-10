@@ -27,9 +27,10 @@ const refused = (key: string, values: Record<string, unknown>) => {
 };
 
 describe('industry templates at work', () => {
+  // CAPTCHA is left out as well: a form with one cannot be submitted until the organisation has put in its own key.
   it('between them they use every kind of field there is (but the one that needs an extension)', () => {
     const used = new Set(INDUSTRY_TEMPLATES.flatMap((t) => (t.definition.fields as FormField[]).map((f) => f.type)));
-    const all = ['TEXT', 'TEXTAREA', 'NUMBER', 'EMAIL', 'PHONE', 'DATE', 'DATETIME', 'TIME', 'MONTH', 'URL', 'COLOR', 'SLIDER', 'CHECKBOX', 'RADIO', 'DROPDOWN', 'MULTI_SELECT', 'FILE', 'HIDDEN', 'HTML', 'BUTTON', 'CAPTCHA', 'SWITCH', 'CHECKBOX_GROUP', 'STEPPER', 'SIGNATURE', 'CONSENT', 'IMAGE', 'COLUMNS', 'SECTION', 'TABS', 'ACCORDION', 'REPEAT'];
+    const all = ['TEXT', 'TEXTAREA', 'NUMBER', 'EMAIL', 'PHONE', 'DATE', 'DATETIME', 'TIME', 'MONTH', 'URL', 'COLOR', 'SLIDER', 'CHECKBOX', 'RADIO', 'DROPDOWN', 'MULTI_SELECT', 'FILE', 'HIDDEN', 'HTML', 'BUTTON', 'SWITCH', 'CHECKBOX_GROUP', 'STEPPER', 'SIGNATURE', 'CONSENT', 'IMAGE', 'COLUMNS', 'SECTION', 'TABS', 'ACCORDION', 'REPEAT'];
     expect(all.filter((t) => !used.has(t as FormField['type']))).toEqual([]);
   });
 

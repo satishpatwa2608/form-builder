@@ -161,7 +161,7 @@ const bike: IndustryTemplate = {
   industry: 'Insurance',
   name: 'Two-wheeler insurance',
   description: 'A short four-step proposal for a motorcycle or scooter, with long-term cover for new vehicles and a premium worked out from the engine size.',
-  setup: ['Rules: the third-party rates by engine size are examples; set your own.', 'Workflow → Process: choose who issues policies.'],
+  setup: ['Rules: the third-party rates by engine size are examples; set your own.', 'Workflow → Process: choose who issues policies.', 'Before sharing the link widely: form settings → CAPTCHA, with your own site key.'],
   definition: {
     access: 'PUBLIC',
     description: 'Cover for your motorcycle or scooter in a few minutes.',
@@ -201,10 +201,8 @@ const bike: IndustryTemplate = {
       k.section('finish', 'Confirm', [
         k.file('rcCopy', 'Registration certificate or invoice', k.req),
         k.consent('declaration', 'Declaration', 'I declare that what I have stated is true, and that I hold a valid licence for this class of vehicle.'),
-        k.captcha(),
       ]),
     ]),
-    captcha: { enabled: true, provider: 'RECAPTCHA', siteKey: '', mode: 'CHECKBOX' },
     rules: [
       k.calc('bike_premium', 'premium', 'round((if(engineBand == "ABOVE_350", 2804, if(engineBand == "151_350", 1366, if(engineBand == "76_150", 714, 538))) + if(policyType == "COMPREHENSIVE", price * 0.018 + length(addOns) * 120, 0)) * number(years))', 'Indicative premium'),
       { id: 'bike_long', name: 'Five years only when new', when: k.is('isNew', 'NO'), then: [{ type: 'SET_OPTIONS', target: 'years', values: ['1', '2', '3'] }] },

@@ -370,10 +370,8 @@ const licence: IndustryTemplate = {
         k.file('oldLicence', 'Present licence', k.showIf(k.isNot('applicationType', 'NEW'))),
         k.consent('declaration', 'Declaration', 'I declare that the particulars given are true, that the premises are not on public land, and that I will follow the conditions of the licence. I understand that a false statement can lead to the licence being cancelled.'),
         k.sign('signature', 'Signature of the applicant', k.req),
-        k.captcha(),
       ]),
     ]),
-    captcha: { enabled: true, provider: 'RECAPTCHA', siteKey: '', mode: 'CHECKBOX' },
     rules: [
       ...k.narrow('lic_trades', 'tradeGroup', 'trade', TRADES),
       k.calc('lic_fee', 'fee', 'round(max(500, areaSqFt * if(tradeGroup == "LODGING", 6, if(tradeGroup == "FOOD", 5, if(tradeGroup == "MANUFACTURING", 4, 3)))) * number(years))', 'Fee from area, trade and years'),
