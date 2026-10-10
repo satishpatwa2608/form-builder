@@ -1,3 +1,5 @@
+import { hashToken } from '../../common/crypto';
+import { APPROVAL_KEY, approvalKeys } from './approval-keys';
 import { orgLog } from '../../logs/org-log';
 import { DocumentsService } from '../../documents/documents.service';
 import { SIGNATURE_FINISHED_EVENT, SignaturesService, type SignatureFinishedEvent } from '../../signatures/signatures.service';
@@ -226,7 +228,8 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
             next.push(manager || person);
           }
           const approvers = [...new Set(next)];
-          await this.runs.updateOne({ uuid: run.uuid, status: 'WAITING' }, { $set: { 'approval.approvers': approvers } });
+          // The links in the emails of people who gave way stop working with them.
+          await this.runs.updateOne({ uuid: run.uuid, status: 'WAITING' }, { $set: { 'approval.approvers': approvers, 'approval.keys': (approval.keys ?? []).filter((k) => approvers.includes(k.userId)) } });
           await this.records.log(run.orgId, run.recordId, 'APPROVAL', '', 'No answer in time', { phase: 'late', runId: run.uuid, title: approval.title, did: 'MANAGER', approvers });
           tell(approvers.filter((a) => !(approval.approved ?? []).includes(a)), added.length ? 'Approval passed to you' : 'Approval overdue');
           continue;
@@ -499,6 +502,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     },
   ) {
     const now = new Date();
+    const keys = p.action.byEmail ? approvalKeys(p.approvers, now) : null;
     const tctx = this.templateContext({ ...run, record: p.live, values: {}, steps: p.steps, stepKey: p.key });
     const title = renderTemplate(p.action.title, { ...tctx, values: valuesFromPayload(run.definition, p.live.payload as FormValues) }, false).slice(0, 200);
     await this.runs.updateOne(
@@ -526,6 +530,8 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
             approved: [],
             whenLate: p.action.whenLate ?? 'REMIND',
             lateAt: null,
+            keys: keys?.stored ?? [],
+            keysUntil: keys?.until ?? null,
             decision: null,
             decidedBy: '',
             comment: '',
@@ -535,7 +541,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       },
       { upsert: true },
     );
-    this.records.notify(run.orgId, p.approvers, `Approval needed: ${title}${p.live.ref ? ` (${p.live.ref})` : ''}`, run.recordId, p.live.ref, run.definition.name);
+    this.records.notify(run.orgId, p.approvers, `Approval needed: ${title}${p.live.ref ? ` (${p.live.ref})` : ''}`, run.recordId, p.live.ref, run.definition.name, keys?.raw);
     return title;
   }
 
@@ -557,7 +563,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     // A rejection, or an administrator stepping in, settles it at once.
     if (run.approval.need === 'ALL' && decision === 'APPROVED' && mine && !system) {
       if ((run.approval.approved ?? []).includes(user.uuid)) throw new ConflictException('You have already approved this');
-      const noted = await this.runs.findOneAndUpdate({ uuid: runId, orgId: user.orgId, status: 'WAITING' }, { $addToSet: { 'approval.approved': user.uuid } }, { new: true }).lean();
+      const noted = await this.runs.findOneAndUpdate({ uuid: runId, orgId: user.orgId, status: 'WAITING' }, { $addToSet: { 'approval.approved': user.uuid }, $pull: { 'approval.keys': { userId: user.uuid } } }, { new: true }).lean();
       if (!noted?.approval) throw new ConflictException('This approval was already decided');
       const left = noted.approval.approvers.filter((a) => !(noted.approval!.approved ?? []).includes(a));
       if (left.length) {
@@ -604,6 +610,44 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       user.uuid,
       { runId, from: run.stepIndex + 1, steps: { ...(run.steps ?? {}), [run.approval.stepKey]: output } },
     ).catch((err) => this.logger.error(`resuming flow ${runId} failed: ${(err as Error).message}`));
+  }
+
+  /** The waiting approval a key from an email opens, and whose key it is; nothing when it is used up, out of date or not one of ours. */
+  private async byKey(key: unknown) {
+    if (typeof key !== 'string' || !APPROVAL_KEY.test(key)) return null;
+    const hash = hashToken(key);
+    const run = await this.runs.findOne({ 'approval.keys.hash': hash }).lean();
+    const mine = run?.approval?.keys?.find((k) => k.hash === hash);
+    if (!run?.approval || !mine) return null;
+    return { run, approval: run.approval, userId: mine.userId };
+  }
+
+  /**
+   * What the page behind an email link shows before anything is decided: what is asked, of whom, and whether it
+   * can still be answered. Opening the link changes nothing (mail scanners open links); only the button does.
+   */
+  async lookByKey(key: unknown) {
+    const found = await this.byKey(key);
+    if (!found) throw new NotFoundException('This link is not valid. It may have been used already.');
+    const { run, approval, userId } = found;
+    const { record, definition } = await this.records.load(run.orgId, run.recordId);
+    const person = (await this.records.contacts(run.orgId, [userId])).get(userId);
+    const open = run.status === 'WAITING' && approval.approvers.includes(userId) && !(approval.approved ?? []).includes(userId) && (!approval.keysUntil || approval.keysUntil > new Date());
+    return { title: approval.title, instructions: approval.instructions, form: definition.name, reference: record.ref ?? '', askedOf: person?.name ?? '', open, decision: approval.decision };
+  }
+
+  /** The answer given from an email link. The key is that person's alone and is spent by answering. */
+  async decideByKey(key: unknown, body: { decision?: unknown; comment?: unknown }) {
+    const found = await this.byKey(key);
+    if (!found) throw new NotFoundException('This link is not valid. It may have been used already.');
+    const { run, approval, userId } = found;
+    if (approval.keysUntil && approval.keysUntil <= new Date()) throw new ForbiddenException('This link has run out. Sign in to answer.');
+    // Still someone who works records here: a person removed since the email was sent cannot answer with it.
+    const person = (await this.records.present(run.orgId, [userId])).length ? (await this.records.contacts(run.orgId, [userId])).get(userId) : undefined;
+    if (!person || !(await this.records.worksRecords(run.orgId, userId))) throw new ForbiddenException('You can no longer answer this.');
+    await this.decide({ uuid: userId, orgId: run.orgId, name: person.name, modules: [] }, run.recordId, run.uuid, body);
+    await this.runs.updateOne({ uuid: run.uuid }, { $pull: { 'approval.keys': { userId } } });
+    return { done: true };
   }
 
   /** Everyone has signed, someone declined, or time ran out: the flow carries on from the step after, knowing which. */

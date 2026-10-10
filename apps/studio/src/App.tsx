@@ -14,6 +14,7 @@ import OverviewPage from './pages/OverviewPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
+import { AnswerApprovalPage } from './pages/auth/AnswerApprovalPage';
 import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth/TokenPages';
 
 /** The builder is most of the bundle: load it only when a form is opened. */
@@ -50,6 +51,7 @@ export default function App() {
       <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
+      <Route path="/answer" element={<AnswerApprovalPage />} />
       <Route path="/sso/complete" element={<SsoComplete />} />
       <Route element={<RequireAuth />}>
         <Route index element={<OverviewPage />} />

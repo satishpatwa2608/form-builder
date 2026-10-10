@@ -102,6 +102,7 @@ import { OrgLogController } from './logs/org-log.controller';
 import { OrgLog, OrgLogSchema } from './logs/log.schema';
 import { OrgMailController } from './mail/org-mail.controller';
 import { PortalController } from './portal/portal.controller';
+import { ApprovalLinkController } from './work/controllers/approval-link.controller';
 import { PortalPass, PortalPassSchema } from './portal/portal.schema';
 import { SignaturePublicController, SignaturesController } from './signatures/signatures.controller';
 import { FragmentRow, FragmentSchema } from './fragments/fragment.schema';
@@ -239,6 +240,7 @@ export class AppModule {
         EmailTemplatesController,
         SignaturePublicController,
         PortalController,
+        ApprovalLinkController,
         OrgMailController,
         CheckoutSettingsController,
         CheckoutPublicController,

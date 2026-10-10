@@ -1,3 +1,4 @@
+import { approvalKeys } from './approval-keys';
 import { FormUploadService, STAFF_FIELD } from './form-upload.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -278,6 +279,11 @@ export class FormRecordService {
     return (await this.directory.standIn(orgId, userId)).userId;
   }
 
+  /** Whether this person is, today, an active member who may work records. */
+  async worksRecords(orgId: string, userId: string): Promise<boolean> {
+    return (await this.findPeople(orgId, [userId])).length > 0;
+  }
+
   /** These people, with anyone who is away replaced by whoever they named. */
   present(orgId: string, userIds: string[]): Promise<string[]> {
     return this.directory.present(orgId, userIds);
@@ -528,6 +534,9 @@ export class FormRecordService {
       kind: r.kind ?? 'FLOW',
       status: r.status,
       ...r.approval!,
+      // The keys behind the links in approvers' emails are nobody's to see.
+      keys: undefined,
+      keysUntil: undefined,
       canDecide: r.status === 'WAITING' && ((r.approval!.approvers.includes(user.uuid) && !(r.approval!.approved ?? []).includes(user.uuid)) || isRecordAdmin(user)),
     }));
     const people = await this.contacts(user.orgId, [
@@ -811,8 +820,8 @@ export class FormRecordService {
   }
 
   /** In-app notification + email (NotificationsService). */
-  notify(orgId: string, userIds: string[], message: string, recordId: string, ref: string, formName: string) {
-    this.notifications.notify(orgId, userIds, message, recordId, ref, formName);
+  notify(orgId: string, userIds: string[], message: string, recordId: string, ref: string, formName: string, answerKeys: Record<string, string> = {}) {
+    this.notifications.notify(orgId, userIds, message, recordId, ref, formName, answerKeys);
   }
 
 
@@ -873,6 +882,7 @@ export class FormRecordService {
     const now = new Date();
     const runId = uuidv4();
     const title = `${action.label}: ${record.ref || definition.name}`;
+    const keys = action.approval!.byEmail ? approvalKeys(approvers, now) : null;
     await this.runs.create({
       uuid: runId,
       orgId: user.orgId,
@@ -897,6 +907,8 @@ export class FormRecordService {
         approved: [],
         whenLate: action.approval!.whenLate ?? 'REMIND',
         lateAt: null,
+        keys: keys?.stored ?? [],
+        keysUntil: keys?.until ?? null,
         decision: null,
         decidedBy: '',
         comment: '',
@@ -904,7 +916,7 @@ export class FormRecordService {
       },
     });
     await this.log(user.orgId, record.uuid, 'APPROVAL', user.uuid, comment, { phase: 'requested', runId, action: action.key, actionLabel: action.label, approvers });
-    this.notify(user.orgId, approvers, `Approval needed: ${title}`, record.uuid, record.ref, definition.name);
+    this.notify(user.orgId, approvers, `Approval needed: ${title}`, record.uuid, record.ref, definition.name, keys?.raw);
   }
 
   /** An approver decided on a pending action: make the move (or the reject move). */

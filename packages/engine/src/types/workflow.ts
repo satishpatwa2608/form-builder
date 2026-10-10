@@ -65,6 +65,8 @@ export interface WorkflowAction {
     /** How long the approvers have; when it runs out, `whenLate` happens. */
     dueInHours?: number;
     whenLate?: ApprovalWhenLate;
+    /** The email to each approver carries a private link to approve or reject without signing in. */
+    byEmail?: boolean;
     /** Only needs approval when this holds (e.g. $work.compensationAmount >= 50000); otherwise it just moves. */
     if?: Condition;
   };
@@ -199,7 +201,7 @@ export type AutomationAction = StepMeta &
    * step), or all of them when `need` is ALL. When `dueInHours` runs out, `whenLate` happens (left out: the
    * approvers are reminded). Output: { decision: 'APPROVED' | 'REJECTED', decidedBy, comment }.
    */
-  | { type: 'APPROVAL'; to: RecipientRef[]; title: string; instructions?: string; dueInHours?: number; need?: ApprovalNeed; whenLate?: ApprovalWhenLate }
+  | { type: 'APPROVAL'; to: RecipientRef[]; title: string; instructions?: string; dueInHours?: number; need?: ApprovalNeed; whenLate?: ApprovalWhenLate; byEmail?: boolean }
   /** A task in the Tasks module: the first recipient is accountable, the rest responsible. */
   | { type: 'CREATE_TASK'; title: string; description?: string; to: RecipientRef[]; dueInHours?: number }
   /**

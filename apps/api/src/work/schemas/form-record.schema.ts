@@ -91,6 +91,12 @@ export class FlowApproval {
   whenLate?: 'REMIND' | 'MANAGER' | 'REJECT';
   /** Set once, when the time ran out and `whenLate` was done. */
   lateAt?: Date | null;
+  /**
+   * Answering from the email: one private key per approver (only its hash is kept), good until `keysUntil` and
+   * for one answer. Never sent to a screen.
+   */
+  keys?: { userId: string; hash: string }[];
+  keysUntil?: Date | null;
   decision: 'APPROVED' | 'REJECTED' | null;
   decidedBy: string;
   comment: string;

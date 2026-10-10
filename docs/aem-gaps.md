@@ -49,7 +49,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | A manager sees and moves their people's tasks | Manager view | Built (10 Oct): "My team's work" |
 | Finish several like tasks at once | Workspace overview, To-do lists | Built (10 Oct): tick items in the inbox, then give them to someone, set their priority, take them, or approve or reject them. Named actions (such as Resolve) are still one record at a time |
 | Staff attach files and notes to a task | To-do lists, Starting processes | Built (10 Oct): a Files tab on the record lists what came with the form and what staff added; staff add files, checked like any upload |
-| Answer a task from the email | To-do lists | **Missing.** Emails link to the record |
+| Answer a task from the email | To-do lists | Built (10 Oct): "Let approvers answer from the email" on an approval. Each approver's email has their own link; the page it opens asks them to press Approve or Reject. Off unless switched on |
 | Branches that run side by side (AND split) | OSGi and JEE | **Missing.** "Everyone must approve" covers the common case |
 | Jump back to an earlier step; typed variables | Variables | **Part.** "Run only if" on each step and the results of earlier steps; no jumping back |
 | A calendar of what is due | Inbox | **Missing** |

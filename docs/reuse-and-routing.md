@@ -100,6 +100,7 @@ approval) there are three choices:
 | Who must approve | *Any one of them*: the first answer decides. *Every one of them*: it goes ahead when all have approved, and one rejection refuses it |
 | Time to answer (hours) | Left empty, it waits for as long as it takes |
 | If nobody answers in time | *Remind them*, *Ask their manager instead* (each person who has not answered gives way to their manager), or *Treat it as rejected* |
+| Let approvers answer from the email | Each approver's email carries a link that is theirs alone. It opens a page with what is asked and two buttons; nothing is decided until one is pressed. The link works once, for 7 days, and stops working if the person no longer works records. Off unless you switch it on, because it lets someone answer without signing in |
 
 ## How this compares with AEM Forms
 

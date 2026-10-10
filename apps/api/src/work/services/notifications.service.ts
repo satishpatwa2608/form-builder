@@ -21,7 +21,7 @@ export class NotificationsService {
   ) {}
 
   /** Fire and forget: a notification failing never fails the action that caused it. */
-  notify(orgId: string, userIds: string[], message: string, recordId = '', ref = '', formName = '') {
+  notify(orgId: string, userIds: string[], message: string, recordId = '', ref = '', formName = '', answerKeys: Record<string, string> = {}) {
     const ids = [...new Set(userIds.filter(Boolean))];
     if (!ids.length) return;
     void (async () => {
@@ -30,7 +30,10 @@ export class NotificationsService {
       const contacts = await this.people.contacts(orgId, ids);
       const link = recordId ? `${this.config.APP_URL}/work?record=${encodeURIComponent(recordId)}` : this.config.APP_URL;
       for (const p of contacts.values()) {
-        await this.mailer.send({ to: p.email, subject: formName ? `${formName}: ${ref || 'update'}` : 'Form Builder', text: `${text}\n\n${link}` }).catch(() => undefined);
+        // An approver who may answer from the email gets their own private link, in the email only.
+        const key = answerKeys[p.uuid];
+        const answer = key ? `\n\nTo approve or reject without signing in (this link is yours alone, works once, for 7 days):\n${this.config.APP_URL}/answer?key=${key}` : '';
+        await this.mailer.send({ to: p.email, subject: formName ? `${formName}: ${ref || 'update'}` : 'Form Builder', text: `${text}\n\n${link}${answer}` }).catch(() => undefined);
       }
     })().catch((e) => this.logger.warn(`notify failed: ${(e as Error).message}`));
   }

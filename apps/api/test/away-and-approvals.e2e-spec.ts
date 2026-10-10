@@ -226,6 +226,76 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
     });
   });
 
+  describe('answering an approval from the email', () => {
+    const keyFor = (email: string) => {
+      const mail = [...h.outbox].reverse().find((m) => m.to === email && m.text.includes('/answer?key='));
+      return mail ? /answer\?key=(fbap_[A-Za-z0-9_-]+)/.exec(mail.text)![1]! : undefined;
+    };
+    const waitForKey = async (email: string) => {
+      for (let i = 0; i < 200; i++) {
+        const key = keyFor(email);
+        if (key) return key;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error(`no approval link was emailed to ${email}`);
+    };
+    const look = (key: string, expected = 200) => h.api().post('/public/approvals/look').send({ key }).expect(expected);
+    const answer = (key: string, decision: string, expected = 200) => h.api().post('/public/approvals/decide').send({ key, decision, comment: 'From my phone' }).expect(expected);
+
+    beforeAll(async () => {
+      const both = [{ kind: 'USER', userId: nia }, { kind: 'USER', userId: sam }];
+      await publish(form('MAILAP', { approval: { to: both, need: 'ALL', byEmail: true } }));
+    });
+
+    it('a form that has not asked for it sends no such link', async () => {
+      h.outbox.length = 0;
+      await askToClose(await send('ANYAP2'));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(h.outbox.some((m) => m.text.includes('/answer?key='))).toBe(false);
+    });
+
+    it('each approver gets their own link; opening it decides nothing; the button does, once', async () => {
+      h.outbox.length = 0;
+      const id = await send('MAILAP');
+      const run = await askToClose(id);
+      const niaKey = await waitForKey('nia@acme.test');
+      const samKey = await waitForKey('sam@acme.test');
+      expect(niaKey).not.toBe(samKey);
+      // Nothing about the keys reaches a screen.
+      expect(JSON.stringify(await record(id))).not.toMatch(/fbap_|"keys"|hash/);
+
+      expect((await look(niaKey)).body).toEqual({ title: run.runId ? expect.any(String) : '', instructions: '', form: 'Request MAILAP', reference: expect.stringMatching(/^MAI-/), askedOf: 'Nia', open: true, decision: null });
+      expect((await record(id)).record.status).toBe('NEW');
+
+      expect((await answer(niaKey, 'APPROVED')).body).toEqual({ done: true });
+      // Everyone must approve: hers is noted, the record waits for Sam, and her link is spent.
+      expect((await record(id)).record.status).toBe('NEW');
+      await look(niaKey, 404);
+      await answer(niaKey, 'APPROVED', 404);
+
+      await answer(samKey, 'APPROVED');
+      const after = await record(id);
+      expect(after.record.status).toBe('DONE');
+      expect(after.events.some((e) => e.type === 'APPROVAL' && e.message === 'From my phone')).toBe(true);
+    });
+
+    it('a made-up key, an answer that is neither, and a link whose time has passed are all refused', async () => {
+      h.outbox.length = 0;
+      const id = await send('MAILAP');
+      await askToClose(id);
+      const key = await waitForKey('sam@acme.test');
+      await look('fbap_' + 'x'.repeat(40), 404);
+      await look('not a key', 404);
+      await answer(key, 'MAYBE', 400);
+      // Someone who no longer works records cannot answer with an old email.
+      await h.api().patch(`/members/${sam}`).set(h.bearer(owner)).send({ status: 'DISABLED' }).expect(200);
+      await answer(key, 'APPROVED', 403);
+      await h.api().patch(`/members/${sam}`).set(h.bearer(owner)).send({ status: 'ACTIVE' }).expect(200);
+      samToken = (await h.login('sam@acme.test')).token;
+      expect((await record(id)).record.status).toBe('NEW');
+    });
+  });
+
   describe('several records at once', () => {
     const bulk = (token: string, body: object, expected = 200) => h.api().post('/records/bulk').set(h.bearer(token)).send(body).expect(expected);
 
@@ -288,8 +358,9 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
       expect(waiting.record.status).toBe('NEW');
       expect(waiting.events.some((e) => e.data?.phase === 'approved-by-one')).toBe(true);
       // It is no longer waiting on the one who has answered.
-      expect((await h.api().get('/records?waiting=me').set(h.bearer(niaToken)).expect(200)).body.total).toBe(0);
-      expect((await h.api().get('/records?waiting=me').set(h.bearer(samToken)).expect(200)).body.total).toBeGreaterThanOrEqual(1);
+      const waitingOn = async (token: string) => ((await h.api().get('/records?waiting=me').set(h.bearer(token)).expect(200)).body.rows as { uuid: string }[]).map((r) => r.uuid);
+      expect(await waitingOn(niaToken)).not.toContain(id);
+      expect(await waitingOn(samToken)).toContain(id);
       await decide(samToken, id, run.runId, 'APPROVED');
       expect((await record(id)).record.status).toBe('DONE');
     });

@@ -313,6 +313,7 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
 }
 
 export interface ApprovalRuleValues {
+  byEmail?: boolean;
   need?: 'ANY' | 'ALL';
   dueInHours?: number;
   whenLate?: 'REMIND' | 'MANAGER' | 'REJECT';
@@ -349,6 +350,12 @@ export function ApprovalRules({ value, onChange }: { value: ApprovalRuleValues; 
           onChange={(whenLate) => onChange({ whenLate: whenLate === 'REMIND' ? undefined : (whenLate as 'MANAGER' | 'REJECT') })}
         />
       )}
+      <SwitchSetting
+        label="Let approvers answer from the email"
+        hint="Their email carries a private link to approve or reject without signing in. It is theirs alone, works once and for 7 days. Leave off where an approval must be given by someone signed in."
+        checked={!!value.byEmail}
+        onChange={(on) => onChange({ byEmail: on || undefined })}
+      />
     </>
   );
 }
