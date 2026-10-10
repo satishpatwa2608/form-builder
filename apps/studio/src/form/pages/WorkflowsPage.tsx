@@ -68,6 +68,15 @@ export default function WorkflowsPage() {
     },
   ];
 
+  // The designer takes the page; the list comes back when it is closed.
+  if (editing !== undefined) {
+    return (
+      <div className="p-6">
+        <LibraryWorkflowDialog key={editing?.id ?? 'new'} initial={editing} readOnly={!canManagePages} onClose={() => setEditing(undefined)} />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4" style={{ flexWrap: 'wrap' }}>
@@ -89,7 +98,6 @@ export default function WorkflowsPage() {
         pagination={false}
         emptyText={canManagePages ? 'No shared workflows yet. Build one here, or open a form\'s Workflow and choose "Save to library".' : 'No shared workflows yet. An administrator can add them.'}
       />
-      {editing !== undefined && <LibraryWorkflowDialog key={editing?.id ?? 'new'} initial={editing} readOnly={!canManagePages} onClose={() => setEditing(undefined)} />}
       <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </div>
   );

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@ui/dialog';
 import { Input } from '@ui/input';
 import type { FormDefinition, FormField, SelectOption } from '../../types';
 import { FormDefinitionError, isOptionField, sharedWorkflowForm, workflowFormFields, type SharedWorkflowField } from '../../engine';
@@ -138,7 +137,10 @@ interface LibraryWorkflowDialogProps {
   onClose: () => void;
 }
 
-/** Builds or changes a workflow in the library, with the same editors a form's own workflow has. */
+/**
+ * Builds or changes a workflow in the library, with the same editors a form's own workflow has. It takes the whole
+ * page (the Workflows page shows it in place of the list), so there is room for the picture and the flows.
+ */
 export function LibraryWorkflowDialog({ initial, readOnly, onClose }: LibraryWorkflowDialogProps) {
   const { data: people = [] } = usePeople(true);
   const { data: customWorkflows = [] } = useCustomWorkflows(true);
@@ -171,52 +173,18 @@ export function LibraryWorkflowDialog({ initial, readOnly, onClose }: LibraryWor
     }
   };
 
+  // A page of its own: the workflow is the whole screen, with its picture, its parts and Save always in reach.
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent size="large" style={{ width: 'min(1180px, calc(100vw - 2rem))', maxWidth: 'none', maxHeight: 'calc(100vh - 2rem)', overflowY: 'auto' }}>
-        <DialogHeader>
-          <DialogTitle>{initial ? initial.name : 'New workflow'}</DialogTitle>
-          <DialogDescription>A workflow in the library can be used by any number of forms. Each form says which of its fields the workflow reads.</DialogDescription>
-        </DialogHeader>
-        <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-          <div className="fb-source" style={{ alignItems: 'flex-start' }}>
-            <div style={{ flex: '1 1 260px', maxWidth: 380 }}>
-              <TextSetting label="Name" value={draft.name} placeholder="e.g. Complaint handling" onChange={(name) => setDraft((d) => ({ ...d, name }))} />
-            </div>
-            <div style={{ flex: '2 1 320px' }}>
-              <TextSetting label="What it is for" value={draft.description} placeholder="Shown to designers choosing a workflow" onChange={(description) => setDraft((d) => ({ ...d, description }))} />
-            </div>
-          </div>
-        </fieldset>
-        <WorkflowTabs
-          form={form}
-          people={people}
-          customWorkflows={customWorkflows}
-          publishedKeys={publishedKeys}
-          readOnly={readOnly}
-          shared
-          first={{
-            value: 'answers',
-            label: `Form answers${draft.fields.length ? ` (${draft.fields.length})` : ''}`,
-            content: <AnswersEditor fields={draft.fields} used={used} settled={settled} onChange={(fields) => setDraft((d) => ({ ...d, fields }))} />,
-          }}
-          onChange={(changes) =>
-            setDraft((d) => ({
-              ...d,
-              ...('workflow' in changes && changes.workflow ? { workflow: changes.workflow } : {}),
-              ...('automations' in changes ? { automations: changes.automations ?? [] } : {}),
-            }))
-          }
-        />
-        {!!problems.length && (
-          <div className="fb-issues" role="alert">
-            <div className="fb-issues__title">This workflow can't be saved yet</div>
-            {problems.map((p) => (
-              <div key={p}>{p}</div>
-            ))}
-          </div>
-        )}
-        <DialogFooter>
+    <section className="fb-designer" aria-label="Workflow designer">
+      <header className="fb-designer__head">
+        <div>
+          <button type="button" className="fb-link" onClick={onClose}>
+            ← All workflows
+          </button>
+          <h1 className="text-2xl font-semibold text-gray-900">{initial ? initial.name : 'New workflow'}</h1>
+          <p className="text-sm text-muted-foreground">A workflow in the library can be used by any number of forms. Each form says which of its fields the workflow reads.</p>
+        </div>
+        <div className="fb-designer__actions">
           <Button type="button" variant="ghost" onClick={onClose}>
             {readOnly ? 'Close' : 'Cancel'}
           </Button>
@@ -225,8 +193,48 @@ export function LibraryWorkflowDialog({ initial, readOnly, onClose }: LibraryWor
               Save workflow
             </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </header>
+      {!!problems.length && (
+        <div className="fb-issues" role="alert">
+          <div className="fb-issues__title">This workflow can't be saved yet</div>
+          {problems.map((p) => (
+            <div key={p}>{p}</div>
+          ))}
+        </div>
+      )}
+      <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <div className="fb-source" style={{ alignItems: 'flex-start' }}>
+          <div style={{ flex: '1 1 260px', maxWidth: 380 }}>
+            <TextSetting label="Name" value={draft.name} placeholder="e.g. Complaint handling" onChange={(name) => setDraft((d) => ({ ...d, name }))} />
+          </div>
+          <div style={{ flex: '2 1 320px' }}>
+            <TextSetting label="What it is for" value={draft.description} placeholder="Shown to designers choosing a workflow" onChange={(description) => setDraft((d) => ({ ...d, description }))} />
+          </div>
+        </div>
+      </fieldset>
+      <WorkflowTabs
+        form={form}
+        people={people}
+        customWorkflows={customWorkflows}
+        publishedKeys={publishedKeys}
+        readOnly={readOnly}
+        shared
+        // One that exists opens on its picture; a new one opens on what it reads from a form, which comes first.
+        startOn={initial ? 'map' : undefined}
+        first={{
+          value: 'answers',
+          label: `Form answers${draft.fields.length ? ` (${draft.fields.length})` : ''}`,
+          content: <AnswersEditor fields={draft.fields} used={used} settled={settled} onChange={(fields) => setDraft((d) => ({ ...d, fields }))} />,
+        }}
+        onChange={(changes) =>
+          setDraft((d) => ({
+            ...d,
+            ...('workflow' in changes && changes.workflow ? { workflow: changes.workflow } : {}),
+            ...('automations' in changes ? { automations: changes.automations ?? [] } : {}),
+          }))
+        }
+      />
+    </section>
   );
 }

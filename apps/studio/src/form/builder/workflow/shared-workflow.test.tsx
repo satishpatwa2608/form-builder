@@ -221,7 +221,7 @@ describe('The workflow library', () => {
     page();
     expect(await screen.findByText(/No shared workflows yet/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'New workflow' }));
-    const dialog = screen.getByRole('dialog');
+    const dialog = screen.getByRole('region', { name: 'Workflow designer' });
     await user.click(within(dialog).getByRole('button', { name: 'Save workflow' }));
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Give the workflow a name');
 
@@ -249,6 +249,23 @@ describe('The workflow library', () => {
     expect(row).toHaveTextContent('No form yet');
   });
 
+  it('a workflow opens as a page of its own, on its picture, and the list comes back when it is closed', async () => {
+    const user = userEvent.setup();
+    seedLocalWorkflows([handling()]);
+    page();
+    await user.click(await screen.findByRole('button', { name: 'Edit Complaint handling' }));
+    const designer = screen.getByRole('region', { name: 'Workflow designer' });
+    // The whole page is the workflow: no list behind it, no pop-up.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New workflow' })).not.toBeInTheDocument();
+    expect(within(designer).getByRole('heading', { name: 'Complaint handling' })).toBeInTheDocument();
+    expect(within(designer).getByRole('tab', { name: 'Picture' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(designer).getByRole('group', { name: 'The process' })).toBeInTheDocument();
+    await user.click(within(designer).getByRole('button', { name: '← All workflows' }));
+    expect(screen.queryByRole('region', { name: 'Workflow designer' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New workflow' })).toBeInTheDocument();
+  });
+
   it('a workflow in use says which forms use it and is not deleted; an unused one is', async () => {
     const user = userEvent.setup();
     seedLocalWorkflows([
@@ -272,7 +289,7 @@ describe('The workflow library', () => {
     await user.click(await screen.findByRole('button', { name: 'View Complaint handling' }));
     expect(screen.queryByRole('button', { name: 'New workflow' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete Complaint handling' })).not.toBeInTheDocument();
-    const dialog = screen.getByRole('dialog');
+    const dialog = screen.getByRole('region', { name: 'Workflow designer' });
     expect(within(dialog).getByRole('textbox', { name: 'Name' })).toBeDisabled();
     expect(within(dialog).queryByRole('button', { name: 'Save workflow' })).not.toBeInTheDocument();
   });

@@ -1502,3 +1502,26 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* The workflow designer as a page of its own: a head that stays in reach, then the picture and its parts. */
+.fb-designer {
+  display: grid;
+  gap: 18px;
+}
+.fb-designer__head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  background: var(--background, #fff);
+  border-bottom: 1px solid var(--border);
+}
+.fb-designer__actions {
+  display: flex;
+  gap: 8px;
+}

@@ -23,7 +23,9 @@ test('an admin builds a workflow in the library, saying in plain words what it r
   await expect(page.getByText(/No shared workflows yet/)).toBeVisible();
 
   await page.getByRole('button', { name: 'New workflow' }).click();
-  const dialog = page.getByRole('dialog', { name: 'New workflow' });
+  // The workflow is built on a page of its own, not in a pop-up.
+  const dialog = page.getByRole('region', { name: 'Workflow designer' });
+  await expect(dialog.getByRole('heading', { name: 'New workflow' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Save workflow' }).click();
   await expect(dialog.getByRole('alert')).toContainText('Give the workflow a name');
 
@@ -147,7 +149,10 @@ test('a designer sees the library but cannot change it', async ({ page }) => {
   await expect(page.getByRole('row').filter({ hasText: 'Request handling' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'New workflow' })).toHaveCount(0);
   await page.getByRole('button', { name: 'View Request handling' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Request handling' });
+  const dialog = page.getByRole('region', { name: 'Workflow designer' });
+  // It opens on the picture of the workflow, which anyone may look at.
+  await expect(dialog.getByRole('img', { name: /The process: New, then In progress, then Closed/ })).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/workflow-designer.png` });
   await expect(dialog.getByLabel('Name', { exact: true })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Save workflow' })).toHaveCount(0);
 });

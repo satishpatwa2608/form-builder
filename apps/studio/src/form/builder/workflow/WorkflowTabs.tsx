@@ -25,16 +25,18 @@ interface WorkflowTabsProps {
   shared?: boolean;
   /** A tab shown before the others. */
   first?: { value: string; label: string; content: ReactNode };
+  /** The tab to open on, when it should not be the first one. */
+  startOn?: string;
   onChange: (changes: Partial<FormDefinition>) => void;
 }
 
 /** The workflow editors, the same for a form's own workflow and for one in the library. */
-export function WorkflowTabs({ form, people, customWorkflows, publishedKeys, readOnly, shared = false, first, onChange }: WorkflowTabsProps) {
+export function WorkflowTabs({ form, people, customWorkflows, publishedKeys, readOnly, shared = false, first, startOn, onChange }: WorkflowTabsProps) {
   // With a team, records (and approvals) can only go to its members.
   const access = form.recordAccess;
   // With a workflow to look at, the picture comes first: what it is, before the tabs where each part is changed.
   // With none yet, Process comes first, since that is where tracking is switched on.
-  const [tab, setTab] = useState(first?.value ?? (form.workflow?.enabled ? 'map' : 'process'));
+  const [tab, setTab] = useState(startOn ?? first?.value ?? (form.workflow?.enabled ? 'map' : 'process'));
   const [openAutomation, setOpenAutomation] = useState<number>();
   const teamPeople = access ? people.filter((p) => access.userIds.includes(p.uuid) || (!!p.department && access.departments.includes(p.department))) : people;
   return (
