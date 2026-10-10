@@ -44,12 +44,14 @@ Added because a form needed it:
 - **`pow(value, n)`** in calculations. Without it a loan instalment could only
   be approximated.
 
+- **Taking a payment** with a response (see [payments-and-codes.md](payments-and-codes.md)).
+  A form names a number field as the amount; the organisation chooses its
+  payment service once.
+- **Confirming a mobile number or email with a one-time code**, a switch on
+  any email or phone field.
+
 Missing, and worth deciding on:
 
-- **Taking a payment.** The premium, the application fee and the licence fee
-  are worked out, but nothing collects them.
-- **Verifying a mobile number or email with a one-time code.** Account opening
-  and insurance usually require it.
 - **Choosing an appointment from free slots.** The hospital form can only ask
   for a preferred time.
 - **Lists that depend on another list, set up in one place.** It works, but

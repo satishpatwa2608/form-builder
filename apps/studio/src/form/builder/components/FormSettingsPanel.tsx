@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@ui/button';
-import { isTimeZone, languageName, languagesOf } from '../../engine';
+import { formShape, isNumberField, isTimeZone, languageName, languagesOf } from '../../engine';
 import { LanguagesDialog } from './LanguagesDialog';
 import type { FontFamily, FormActionConfig, FormDefinition, FormTheme, SubmissionConfig } from '../../types';
 import { Checkbox } from '@ui/checkbox';
@@ -19,6 +19,54 @@ function toLocalInput(iso: string | undefined): string {
 function fromLocalInput(value: string): string | undefined {
   const d = value ? new Date(value) : undefined;
   return d && !Number.isNaN(d.getTime()) ? d.toISOString() : undefined;
+}
+
+const CURRENCIES = [
+  { label: 'Indian rupee (INR)', value: 'INR' },
+  { label: 'US dollar (USD)', value: 'USD' },
+  { label: 'Canadian dollar (CAD)', value: 'CAD' },
+  { label: 'Euro (EUR)', value: 'EUR' },
+  { label: 'British pound (GBP)', value: 'GBP' },
+  { label: 'UAE dirham (AED)', value: 'AED' },
+  { label: 'Singapore dollar (SGD)', value: 'SGD' },
+  { label: 'Australian dollar (AUD)', value: 'AUD' },
+];
+
+/** Money taken before a response is accepted: which number of the form is the amount, and in what currency. */
+function PaymentSettings({ form, onChange }: Pick<FormSettingsPanelProps, 'form' | 'onChange'>) {
+  const pay = form.payment;
+  const inRows = formShape(form.fields).repeatOf;
+  const amounts = form.fields.filter((f) => isNumberField(f) && !inRows.has(f.name)).map((f) => ({ label: f.label || f.name, value: f.name }));
+  const set = (changes: Partial<NonNullable<FormDefinition['payment']>>) => onChange({ payment: { enabled: true, amountField: amounts[0]?.value ?? '', currency: 'INR', ...pay, ...changes } });
+  return (
+    <>
+      <SwitchSetting
+        label="Take a payment with each response"
+        hint="The person pays on your payment service's page, and the response is accepted only once the money has arrived. Choose the service in Organisation settings → Payments."
+        checked={pay?.enabled === true}
+        onChange={(enabled) => (enabled ? set({ enabled: true }) : onChange({ payment: pay ? { ...pay, enabled: false } : undefined }))}
+      />
+      {pay?.enabled && (
+        <>
+          {amounts.length ? (
+            <SelectSetting
+              label="Amount to pay"
+              value={pay.amountField}
+              options={amounts}
+              onChange={(amountField) => set({ amountField })}
+              hint="A number field of this form, usually one a rule works out (a fee, a premium). When it comes to 0, nothing is asked for."
+            />
+          ) : (
+            <p className="fb-setting__hint" role="alert">
+              Add a number field for the amount first.
+            </p>
+          )}
+          <SelectSetting label="Currency" value={pay.currency} options={CURRENCIES} onChange={(currency) => set({ currency })} />
+          <TextSetting label="What the payment is for" value={pay.description} placeholder={form.name} hint="Shown on the payment page and on the person's statement." onChange={(description) => set({ description: description || undefined })} />
+        </>
+      )}
+    </>
+  );
 }
 
 interface FormSettingsPanelProps {
@@ -176,6 +224,7 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
             onChange={(on) => onChange({ listOnPortal: on || undefined })}
           />
         )}
+        <PaymentSettings form={form} onChange={onChange} />
         <SwitchSetting
           label="Keep a PDF of each response"
           hint="Made by the server as each response arrives and stored with it. Without this, a PDF is still made the first time someone opens it from Responses."

@@ -68,6 +68,29 @@ const PREFILL_SOURCES: Choice<UserPrefillSource | 'NONE'>[] = [
   { label: 'User ID', value: 'USER_ID' },
 ];
 
+/** Email and phone fields: ask the person to prove the address or number is theirs, with a code sent to it. */
+function CodeSettings({ field, onChange }: Pick<PanelProps, 'field' | 'onChange'>) {
+  const on = field.props?.verify === true;
+  return (
+    <div className="fb-section fb-settings">
+      <SwitchSetting
+        label="Confirm with a code"
+        checked={on}
+        onChange={(verify) => {
+          const { verify: _was, ...rest } = field.props ?? {};
+          const props = verify ? { ...rest, verify: true } : rest;
+          onChange({ props: Object.keys(props).length ? props : undefined });
+        }}
+        hint={
+          field.type === 'EMAIL'
+            ? 'The person is sent a 6-digit code by email and types it in. The form cannot be sent until they have.'
+            : 'The person is sent a 6-digit code by text message and types it in. Needs your SMS service (Organisation settings → Text messages).'
+        }
+      />
+    </div>
+  );
+}
+
 /** Pre-fill a visible field from the signed-in user; anonymous visitors type it. */
 function PrefillSettings({ field, onChange }: Pick<PanelProps, 'field' | 'onChange'>) {
   return (
@@ -450,6 +473,7 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns, canMana
       )}
 
       {PREFILL_TYPES.has(field.type) && !isRowField(form.fields, field) && <PrefillSettings field={field} onChange={onChange} />}
+      {(field.type === 'EMAIL' || field.type === 'PHONE') && !isRowField(form.fields, field) && <CodeSettings field={field} onChange={onChange} />}
       {isValueField(field) && !hidden && (
         <>
           <SwitchSetting label="Required" checked={!!field.required} onChange={(required) => onChange({ required: required || undefined })} />

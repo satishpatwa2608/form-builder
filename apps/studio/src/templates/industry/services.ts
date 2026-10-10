@@ -10,7 +10,7 @@ const account: IndustryTemplate = {
   industry: 'Banking',
   name: 'Bank account opening (KYC)',
   description: 'Savings, salary or current account for one or several holders: identity and address, occupation and income, tax residency abroad, nominee, the services wanted, documents and signature.',
-  setup: ['Workflow → Process: choose the branch operations team that verifies KYC.', 'Review the declarations with your compliance team.', 'The form asks for identity documents: check who can see its records.'],
+  setup: ['Workflow → Process: choose the branch operations team that verifies KYC.', 'To have the mobile number and email confirmed with a code: select each field → Confirm with a code.', 'Review the declarations with your compliance team.', 'The form asks for identity documents: check who can see its records.'],
   definition: {
     access: 'PUBLIC',
     description: 'Open an account without visiting the branch. Keep your PAN and an address proof ready.',
@@ -302,7 +302,7 @@ const licence: IndustryTemplate = {
   industry: 'Government',
   name: 'Trade licence application',
   description: 'A citizen applies for a new licence or a renewal: the applicant, the business and its partners, the premises, safety, the fee worked out from the area and the trade, documents and declaration. Moves through scrutiny, inspection and payment.',
-  setup: ['Replace the trades and the wards with your own.', 'Rules: set your fee per square foot and by trade.', 'Workflow → Process: send applications to the officer of each ward ("Depends on an answer": Ward).', 'Working time: set the office calendar the service time is counted in.'],
+  setup: ['Replace the trades and the wards with your own.', 'Rules: set your fee per square foot and by trade.', 'To collect the fee: form settings → Take a payment with each response → Amount to pay: Licence fee.', 'Workflow → Process: send applications to the officer of each ward ("Depends on an answer": Ward).', 'Working time: set the office calendar the service time is counted in.'],
   definition: {
     access: 'PUBLIC',
     description: 'Apply for a licence to run a trade or shop. You will get an application number to track it.',

@@ -6,6 +6,7 @@ import { PlanUsageCard } from '../components/PlanUsage';
 import { BrandingCard, DomainsCard, PortalCard } from '../components/SiteSettings';
 import { SsoCard } from '../components/SsoSettings';
 import { MailCard } from '../components/MailSettings';
+import { PaymentsCard, SmsCard } from '../components/CheckoutSettings';
 
 export default function SettingsPage() {
   const { me, reload } = useAuth();
@@ -50,6 +51,8 @@ export default function SettingsPage() {
         <DomainsCard />
         <PortalCard />
         <MailCard />
+        <SmsCard />
+        <PaymentsCard />
         <Card title="Security" subtitle="Protect every account in the organisation.">
           <div className="st-stack">
             <div className="st-row" style={{ justifyContent: 'space-between' }}>

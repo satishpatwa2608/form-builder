@@ -2,6 +2,8 @@ import { useFormContext } from 'react-hook-form';
 import { FormControl, FormField } from '@ui/form';
 import { Input } from '@ui/input';
 import type { FieldType } from '../../types';
+import { needsCode } from '../../engine';
+import { CodeConfirm } from './CodeConfirm';
 import { FieldShell } from './FieldShell';
 import type { FieldComponentProps } from './types';
 
@@ -45,6 +47,7 @@ export function TextField({ field, required }: FieldComponentProps) {
               aria-required={required}
             />
           </FormControl>
+          {needsCode(field) && !field.disabled && <CodeConfirm field={field} value={(rhf.value as string | undefined) ?? ''} />}
         </FieldShell>
       )}
     />

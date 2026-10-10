@@ -1163,3 +1163,32 @@
 .fb-step.flex {
   display: flex;
 }
+
+.fb-code {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  justify-items: start;
+}
+.fb-code__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.fb-code__hint {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.fb-code__error {
+  font-size: 13px;
+  color: var(--destructive);
+}
+.fb-code--ok {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #15803d;
+}

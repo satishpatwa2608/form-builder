@@ -2,6 +2,7 @@ import type { FormDefinition, FormValues } from '@fb/engine';
 import type { SubmissionAdapter } from '@form/adapters/submission/submission-adapter';
 import type { DataSourceAdapter } from '@form/adapters/data-source/data-source-adapter';
 import { describeFiles } from '@form/adapters/submission/submission-adapter';
+import { proofsFor, type CodeConfirmer } from '@form/adapters/codes/code-confirmer';
 import { PublicApiError, publicApi } from './api';
 
 /** Browser -> private storage (pre-signed link) -> server checks the real type -> upload id. */
@@ -26,10 +27,20 @@ export const httpSubmissionAdapter: SubmissionAdapter = {
         const files = Array.isArray(values[f.name]) ? (values[f.name] as unknown[]) : [];
         body[f.name] = await Promise.all(files.filter((x): x is File => x instanceof File).map((file) => uploadFile(definition, f.name, file)));
       }
-      const data = await publicApi<{ submissionId: string; ref?: string; payload: FormValues }>(
-        `/forms/${encodeURIComponent(definition.code)}/submissions?org=${encodeURIComponent(definition.orgId)}`,
-        { method: 'POST', body: { values: body, idempotencyKey: crypto.randomUUID(), channel: systemContext.sourceChannel, urlParams: systemContext.urlParams, timeZone: systemContext.timeZone, language: systemContext.language } },
-      );
+      const send = { values: body, idempotencyKey: crypto.randomUUID(), channel: systemContext.sourceChannel, urlParams: systemContext.urlParams, timeZone: systemContext.timeZone, language: systemContext.language, proofs: proofsFor(definition, values) };
+      const at = (what: string) => `/forms/${encodeURIComponent(definition.code)}/${what}?org=${encodeURIComponent(definition.orgId)}`;
+      type Done = { submissionId: string; ref?: string; payload: FormValues };
+      let data: Done;
+      if (definition.payment?.enabled) {
+        // The answers are checked and held by the server; the person pays on the payment service's page and comes back to /pay/….
+        const started = await publicApi<{ payment?: { url: string }; submitted?: Done }>(at('payments'), { method: 'POST', body: send });
+        if (started.payment) {
+          window.location.assign(started.payment.url);
+          // The page is leaving: nothing more to show here.
+          return await new Promise<never>(() => undefined);
+        }
+        data = started.submitted!;
+      } else data = await publicApi<Done>(at('submissions'), { method: 'POST', body: send });
       return { ok: true, submissionId: data.submissionId, ref: data.ref || undefined, payload: data.payload };
     } catch (e) {
       const err = e as PublicApiError;
@@ -49,3 +60,14 @@ export function publicDataSourceAdapter(def: FormDefinition): DataSourceAdapter 
     },
   };
 }
+
+/** Codes that confirm an email address or phone number are sent and checked by the server. */
+export const httpCodeConfirmer: CodeConfirmer = {
+  async send(def, field, value) {
+    await publicApi(`/forms/${encodeURIComponent(def.code)}/codes?org=${encodeURIComponent(def.orgId)}`, { method: 'POST', body: { field, value } });
+  },
+  async check(def, field, value, code) {
+    const { proof } = await publicApi<{ proof: string }>(`/forms/${encodeURIComponent(def.code)}/codes/check?org=${encodeURIComponent(def.orgId)}`, { method: 'POST', body: { field, value, code } });
+    return proof;
+  },
+};

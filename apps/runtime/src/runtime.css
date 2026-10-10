@@ -234,3 +234,20 @@
 .rt-portal__forms a {
   font-weight: 600;
 }
+
+.rt-pay__amount {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 12px 0;
+}
+.rt-pay__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.rt-pay__primary {
+  background: var(--fb-accent, #4f46e5);
+  color: #fff;
+  border-color: transparent;
+}

@@ -291,7 +291,7 @@ const university: IndustryTemplate = {
   industry: 'Education',
   name: 'University application',
   description: 'Undergraduate, postgraduate and doctoral applications in one form: programme by school, every qualification and entrance test on its own line, work experience, statement of purpose, referees, hostel and scholarship, with the application fee worked out.',
-  setup: ['Replace the schools and programmes with your own (the two fields and the rule that links them).', 'Rules: set your application fees.', 'Workflow → Process: choose the admissions officers.'],
+  setup: ['Replace the schools and programmes with your own (the two fields and the rule that links them).', 'Rules: set your application fees.', 'To collect the fee: form settings → Take a payment with each response → Amount to pay: Application fee.', 'Workflow → Process: choose the admissions officers.'],
   definition: {
     access: 'PUBLIC',
     description: 'Apply to one programme. You can save your application and finish it later.',
