@@ -124,6 +124,12 @@ export type FormEventAction =
   | { type: 'GO_TO_STEP'; step: string }
   /** Reads the first row of a data source and copies its properties into fields: `{ fieldName: 'row.property' }`. */
   | { type: 'FETCH'; source: FetchSource; set: Record<string, string>; rows?: FetchRows }
+  /** Puts the cursor in a question (opening its step, tab or panel first if it is not showing). */
+  | { type: 'FOCUS'; target: string }
+  /** Sends the form, as pressing Submit would: every check still runs first. */
+  | { type: 'SUBMIT' }
+  /** Empties the form back to how it opened. */
+  | { type: 'RESET' }
   /** After a submit: the text shown instead of the standard success or error message. */
   | { type: 'SHOW_MESSAGE'; message: string }
   /** After a successful submit: go to this address instead of showing a message. */

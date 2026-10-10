@@ -33,6 +33,8 @@ export interface RecordApproval {
   /** ALL = every approver must approve; `approved` are the ones who have so far. */
   need?: 'ANY' | 'ALL';
   approved?: string[];
+  /** Set on a step that asks several approvals at once: how many. Each is listed as its own approval. */
+  parts?: number;
   decision: 'APPROVED' | 'REJECTED' | null;
   decidedBy: string;
   comment: string;

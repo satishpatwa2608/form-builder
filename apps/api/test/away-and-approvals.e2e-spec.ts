@@ -296,6 +296,83 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
     });
   });
 
+  describe('approvals asked at the same time', () => {
+    const waitFor = async <T>(get: () => Promise<T | undefined | false>, what: string): Promise<T> => {
+      for (let i = 0; i < 200; i++) {
+        const v = await get();
+        if (v) return v;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error(`timed out waiting for ${what}`);
+    };
+    const decision = (way: 'APPROVED' | 'REJECTED') => ({ field: '$steps.ask.decision', operator: 'equals', value: way });
+    /** The approvals of a record that are waiting for someone, by title. */
+    const waiting = async (id: string) => (await record(id)).approvals.filter((a) => a.status === 'WAITING' && a.approvers.length) as unknown as { runId: string; title: string; approvers: string[] }[];
+
+    beforeAll(async () => {
+      await publish({
+        ...form('TOGETHER'),
+        automations: [
+          {
+            id: 'a',
+            name: 'Legal and finance',
+            enabled: true,
+            when: 'SUBMITTED',
+            actions: [
+              { id: 'ask', type: 'APPROVAL', to: [{ kind: 'USER', userId: nia }], title: 'Legal', together: [{ to: [{ kind: 'USER', userId: sam }], title: 'Finance' }] },
+              { id: 'yes', type: 'SET_STATUS', status: 'DONE', if: decision('APPROVED') },
+              { id: 'no', type: 'SET_STATUS', status: 'REFUSED', if: decision('REJECTED') },
+            ],
+          },
+        ],
+      });
+    });
+
+    it('each person is asked their own question at once; the flow goes on only when both have approved', async () => {
+      const id = await send('TOGETHER');
+      const asked = await waitFor(async () => ((await waiting(id)).length === 2 ? waiting(id) : undefined), 'both approvals to be asked');
+      expect(asked.map((a) => [a.title, a.approvers]).sort()).toEqual([['Finance', [sam]], ['Legal', [nia]]]);
+      // Each sees only their own, and cannot answer the other's.
+      const legal = asked.find((a) => a.title === 'Legal')!;
+      const finance = asked.find((a) => a.title === 'Finance')!;
+      await decide(samToken, id, legal.runId, 'APPROVED', 403);
+
+      await decide(niaToken, id, legal.runId, 'APPROVED');
+      expect((await record(id)).record.status).toBe('NEW');
+      expect((await waiting(id)).map((a) => a.title)).toEqual(['Finance']);
+      await decide(samToken, id, finance.runId, 'APPROVED');
+      await waitFor(async () => (await record(id)).record.status === 'DONE', 'the flow to carry on');
+      expect((await record(id)).events.filter((e) => e.data?.phase === 'part')).toHaveLength(2);
+    });
+
+    it('one rejection settles it: the other is no longer asked, and the rejected branch runs', async () => {
+      const id = await send('TOGETHER');
+      const asked = await waitFor(async () => ((await waiting(id)).length === 2 ? waiting(id) : undefined), 'both approvals to be asked');
+      const finance = asked.find((a) => a.title === 'Finance')!;
+      const legal = asked.find((a) => a.title === 'Legal')!;
+      await decide(samToken, id, finance.runId, 'REJECTED');
+      await waitFor(async () => (await record(id)).record.status === 'REFUSED', 'the rejected branch');
+      expect(await waiting(id)).toEqual([]);
+      await decide(niaToken, id, legal.runId, 'APPROVED', 409);
+    });
+
+    it('both answering at the same moment carries the flow on once', async () => {
+      const id = await send('TOGETHER');
+      const asked = await waitFor(async () => ((await waiting(id)).length === 2 ? waiting(id) : undefined), 'both approvals to be asked');
+      await Promise.all([decide(niaToken, id, asked.find((a) => a.title === 'Legal')!.runId, 'APPROVED'), decide(samToken, id, asked.find((a) => a.title === 'Finance')!.runId, 'APPROVED')]);
+      await waitFor(async () => (await record(id)).record.status === 'DONE', 'the flow to carry on');
+      await new Promise((r) => setTimeout(r, 200));
+      const moves = (await record(id)).events.filter((e) => e.type === 'STATUS');
+      expect(moves).toHaveLength(1);
+    });
+
+    it('a part with nobody to ask stops the step, and a form must say who and what for each', async () => {
+      const bad = { ...form('TOGBAD'), automations: [{ id: 'a', name: 'A', enabled: true, when: 'SUBMITTED', actions: [{ id: 'ask', type: 'APPROVAL', to: [{ kind: 'USER', userId: nia }], title: 'Legal', together: [{ to: [], title: '' }] }] }] };
+      const made = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: bad }).expect(201)).body.definition.id as string;
+      expect(JSON.stringify((await h.api().post(`/forms/${made}/publish`).set(h.bearer(owner)).expect(400)).body)).toContain('each approval asked at the same time needs who approves and what they approve');
+    });
+  });
+
   describe('what is due, by date', () => {
     it('records are found by when they are due, for a calendar to show', async () => {
       await publish({ ...form('DUEFORM'), workflow: { ...(form('DUEFORM').workflow as object), sla: { resolutionHours: 48 } } });

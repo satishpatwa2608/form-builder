@@ -360,6 +360,8 @@ function FormRuntime({
    * look a row up. All of it is a convenience for the person filling in - the
    * server trusts none of it and applies every rule again on submit.
    */
+  // What an event can ask the form itself to do. They are made further down, so events reach them through this.
+  const formActions = useRef<{ focus: (name: string) => void; reset: () => void; submit: () => Promise<void> }>({ focus: () => undefined, reset: () => undefined, submit: async () => undefined });
   const watched = useMemo(() => watchedFields(definition), [definition]);
   const lastSeen = useRef<Record<string, string>>();
   const pendingChanges = useRef(new Set<string>());
@@ -378,6 +380,9 @@ function FormRuntime({
       setNotice(null);
       for (const action of eventActions(definition, trigger, current(), context)) {
         if (action.type === 'SET_VALUE') fill(action.target, evaluateExpression(action.value, current(), context).value);
+        else if (action.type === 'FOCUS') formActions.current.focus(action.target);
+        else if (action.type === 'RESET') formActions.current.reset();
+        else if (action.type === 'SUBMIT') await formActions.current.submit();
         else if (action.type === 'GO_TO_STEP') {
           const index = stepsRef.current?.findIndex((st) => st.section?.name === action.step) ?? -1;
           if (index >= 0) setStepIndex(index);
@@ -611,6 +616,8 @@ function FormRuntime({
       focusField(name);
     }
   });
+
+  formActions.current = { focus: focusField, reset: resetForm, submit: () => onSubmit({ preventDefault: () => undefined } as FormEvent) };
 
   // Switched off by a rule, or filled in by one: either way not for typing into.
   const readOnly = useMemo(() => new Set([...formState.disabled, ...formState.calculated]), [formState]);

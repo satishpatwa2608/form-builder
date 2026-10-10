@@ -189,6 +189,31 @@ describe('FormContainer — form events', () => {
     expect((rows[1]!.querySelector('input[name$="item"]') as HTMLInputElement).value).toBe('Ink');
   });
 
+  it('a button can put the cursor in a question, start the form again, or send it (with every check still made)', async () => {
+    const events: FormEvent[] = [
+      { id: 'f', on: { type: 'CLICK', field: 'find' }, do: [{ type: 'FOCUS', target: 'phone' }] },
+      { id: 'r', on: { type: 'CLICK', field: 'idle' }, do: [{ type: 'RESET' }] },
+    ];
+    const first = renderForm(form(events));
+    await first.user.type(screen.getByLabelText(/^Full name/), 'Asha');
+    await first.user.click(screen.getByRole('button', { name: 'Find me' }));
+    await waitFor(() => expect(screen.getByLabelText(/^Phone/)).toHaveFocus());
+    await first.user.click(screen.getByRole('button', { name: 'Does nothing' }));
+    await waitFor(() => expect(value(/^Full name/)).toBe(''));
+  });
+
+  it('a button that sends the form does not get past a required answer', async () => {
+    const required = flat.map((f) => (f.name === 'fullName' ? { ...f, required: true } : f));
+    const send: FormEvent = { id: 's', on: { type: 'CLICK', field: 'find' }, do: [{ type: 'SUBMIT' }] };
+    const { user } = renderForm(form([send], { fields: required }));
+    await user.click(screen.getByRole('button', { name: 'Find me' }));
+    expect((await screen.findAllByText(/Full name is required/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Thanks, all done.')).toBeNull();
+    await user.type(screen.getByLabelText(/^Full name/), 'Asha');
+    await user.click(screen.getByRole('button', { name: 'Find me' }));
+    expect(await screen.findByText('Thanks, all done.')).toBeInTheDocument();
+  });
+
   it('a button opens another step', async () => {
     const steps: FormField[] = [
       { id: 's1', type: 'SECTION', name: 'about', label: 'About you' },

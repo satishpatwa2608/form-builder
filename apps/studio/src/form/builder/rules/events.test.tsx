@@ -95,6 +95,23 @@ describe('event edits', () => {
     expect(said({ into: 'email', set: { item: 'x' } })).toContain('is not a repeating section');
   });
 
+  it('a button may put the cursor somewhere, send the form or start it again; an ending may not', () => {
+    const click = (action: FormEvent['do'][number]): FormEvent => ({ id: 'e', on: { type: 'CLICK', field: 'find' }, do: [action] });
+    const said = (event: FormEvent) => {
+      const result = validateFormDefinition({ ...form(), events: [event] });
+      return result.success ? '' : JSON.stringify(result.issues);
+    };
+    expect(eventActionOf('SUBMIT', fields)).toEqual({ type: 'SUBMIT' });
+    expect(eventActionOf('FOCUS', fields)).toEqual({ type: 'FOCUS', target: watchableFields(fields)[0]!.name });
+    for (const action of [{ type: 'SUBMIT' as const }, { type: 'RESET' as const }, eventActionOf('FOCUS', fields)]) expect(said(click(action))).toBe('');
+    // The cursor goes in a question, not in a button.
+    expect(said(click({ type: 'FOCUS', target: 'find' }))).toContain('is not a question the cursor can be put in');
+    expect(said({ id: 'e', on: { type: 'SUBMIT_SUCCESS' }, do: [{ type: 'RESET' }] })).toContain('This action does not fit when the event happens');
+    // Opening the form may point at a question, and nothing more drastic.
+    expect(said({ id: 'e', on: { type: 'LOAD' }, do: [eventActionOf('FOCUS', fields)] })).toBe('');
+    expect(said({ id: 'e', on: { type: 'LOAD' }, do: [{ type: 'SUBMIT' }] })).toContain('This action does not fit when the event happens');
+  });
+
   it('reports what stops an event from publishing, per event and in the issues list', () => {
     const def = form([
       { id: 'a', on: { type: 'SUBMIT_SUCCESS' }, do: [{ type: 'REDIRECT', url: 'javascript:alert(1)' }] },

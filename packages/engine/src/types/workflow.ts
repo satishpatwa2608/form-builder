@@ -72,6 +72,15 @@ export interface WorkflowAction {
   };
 }
 
+/**
+ * Another approval asked at the same moment as the step's own (legal and finance, each about their own part).
+ * The flow goes on when every one of them is approved; one rejection settles the step as rejected.
+ */
+export interface ApprovalPart {
+  to: RecipientRef[];
+  title: string;
+}
+
 /** Whose answer settles an approval: the first one, or everyone's. */
 export type ApprovalNeed = 'ANY' | 'ALL';
 /** What happens when an approval's time runs out: remind the approvers, also ask their managers, or refuse it. */
@@ -201,7 +210,7 @@ export type AutomationAction = StepMeta &
    * step), or all of them when `need` is ALL. When `dueInHours` runs out, `whenLate` happens (left out: the
    * approvers are reminded). Output: { decision: 'APPROVED' | 'REJECTED', decidedBy, comment }.
    */
-  | { type: 'APPROVAL'; to: RecipientRef[]; title: string; instructions?: string; dueInHours?: number; need?: ApprovalNeed; whenLate?: ApprovalWhenLate; byEmail?: boolean }
+  | { type: 'APPROVAL'; to: RecipientRef[]; title: string; instructions?: string; dueInHours?: number; need?: ApprovalNeed; whenLate?: ApprovalWhenLate; byEmail?: boolean; together?: ApprovalPart[] }
   /** A task in the Tasks module: the first recipient is accountable, the rest responsible. */
   | { type: 'CREATE_TASK'; title: string; description?: string; to: RecipientRef[]; dueInHours?: number }
   /**

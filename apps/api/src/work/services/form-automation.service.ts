@@ -28,7 +28,7 @@ import {
 } from '@fb/engine';
 import { FORM_RECORD_FIELDS_EVENT, FORM_RECORD_STATUS_EVENT, FORM_SUBMITTED_EVENT, WORKFLOW } from '../constants';
 import { FormSubmission, FormSubmissionDocument } from '../schemas/form-submission.schema';
-import { FormFlowRun, FormFlowRunDocument } from '../schemas/form-record.schema';
+import { FlowApproval, FormFlowRun, FormFlowRunDocument } from '../schemas/form-record.schema';
 import { FormRecordService, isRecordAdmin, recordPath, type RecordFieldsEvent, type RecordStatusEvent } from './form-record.service';
 import { escalationAt } from './sla';
 import { FormHandlerRegistry, type FormHandlerContext, type FormHandlerResult } from './form-workflow.registry';
@@ -457,8 +457,11 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         // Participant step: save where we are and stop; a decision resumes from the next step.
         // Anyone away is replaced by whoever they named.
         const approvers = await this.records.present(run.orgId, await this.userIds(action.to, { orgId: run.orgId, record: live }));
-        if (approvers.length) {
-          const title = await this.pause(automation, run, { runId, depth, actor, index, key, steps, approvers, action, live });
+        // Approvals asked at the same moment: each needs someone to ask, or the step has nobody to wait for.
+        const together: { approvers: string[]; title: string }[] = [];
+        for (const part of action.together ?? []) together.push({ approvers: await this.records.present(run.orgId, await this.userIds(part.to, { orgId: run.orgId, record: live })), title: part.title });
+        if (approvers.length && together.every((part) => part.approvers.length)) {
+          const title = await this.pause(automation, run, { runId, depth, actor, index, key, steps, approvers, action, live, together });
           await log(`waiting for approval: ${title}`, { ...base, ok: true, waiting: true, approvers });
           return;
         }
@@ -499,6 +502,8 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       approvers: string[];
       action: Extract<AutomationAction, { type: 'APPROVAL' }>;
       live: RecordRow;
+      /** Other approvals to ask at the same time as the step's own. */
+      together?: { approvers: string[]; title: string }[];
     },
   ) {
     const now = new Date();
@@ -541,6 +546,52 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       },
       { upsert: true },
     );
+    if (p.together?.length) {
+      // Several at once: each is its own approval, answered on its own; the paused flow waits for all of them.
+      const render = (text: string) => renderTemplate(text, { ...tctx, values: valuesFromPayload(run.definition, p.live.payload as FormValues) }, false).slice(0, 200);
+      const parts = [{ approvers: p.approvers, title }, ...p.together.map((part) => ({ approvers: part.approvers, title: render(part.title) }))];
+      for (const part of parts) {
+        const partKeys = p.action.byEmail ? approvalKeys(part.approvers, now) : null;
+        await this.runs.create({
+          uuid: uuidv4(),
+          orgId: run.orgId,
+          recordId: run.recordId,
+          formId: run.definition.id,
+          automationId: automation.id,
+          trigger: run.trigger,
+          kind: 'PART',
+          parentRunId: p.runId,
+          depth: p.depth,
+          actor: p.actor,
+          status: 'WAITING',
+          stepIndex: p.index,
+          steps: {},
+          approval: {
+            stepKey: p.key,
+            title: part.title,
+            instructions: (p.action.instructions ?? '').slice(0, 2000),
+            approvers: part.approvers,
+            requestedAt: now,
+            dueAt: p.action.dueInHours ? new Date(now.getTime() + p.action.dueInHours * 3600_000) : null,
+            need: p.action.need ?? 'ANY',
+            approved: [],
+            whenLate: p.action.whenLate ?? 'REMIND',
+            lateAt: null,
+            keys: partKeys?.stored ?? [],
+            keysUntil: partKeys?.until ?? null,
+            decision: null,
+            decidedBy: '',
+            comment: '',
+            decidedAt: null,
+          },
+        });
+        this.records.notify(run.orgId, part.approvers, `Approval needed: ${part.title}${p.live.ref ? ` (${p.live.ref})` : ''}`, run.recordId, p.live.ref, run.definition.name, partKeys?.raw);
+      }
+      const all = `${parts.length} approvals at the same time: ${parts.map((part) => part.title).join('; ')}`.slice(0, 400);
+      // The flow itself is answered by nobody: it has no approvers, no deadline and no email links of its own.
+      await this.runs.updateOne({ uuid: p.runId }, { $set: { 'approval.approvers': [], 'approval.keys': [], 'approval.dueAt': null, 'approval.parts': parts.length, 'approval.title': all } });
+      return all;
+    }
     this.records.notify(run.orgId, p.approvers, `Approval needed: ${title}${p.live.ref ? ` (${p.live.ref})` : ''}`, run.recordId, p.live.ref, run.definition.name, keys?.raw);
     return title;
   }
@@ -580,12 +631,39 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     );
     if (!claimed) throw new ConflictException('This approval was already decided');
 
+    if (run.kind === 'PART') {
+      // One of several asked at once. It is settled; whether the flow goes on depends on the others.
+      await this.runs.updateOne({ uuid: runId }, { $set: { status: 'DONE' } });
+      await this.records.log(user.orgId, recordId, 'APPROVAL', user.uuid, comment, { phase: 'part', runId, title: run.approval.title, decision });
+      const waiting = decision === 'APPROVED' ? await this.runs.countDocuments({ parentRunId: run.parentRunId, kind: 'PART', status: 'WAITING' }) : 0;
+      if (waiting) return;
+      // The last approval, or the first rejection: the rest are no longer asked, and the flow is answered as one.
+      await this.runs.updateMany({ parentRunId: run.parentRunId, kind: 'PART', status: 'WAITING' }, { $set: { status: 'STOPPED' } });
+      const parent = await this.runs.findOneAndUpdate(
+        { uuid: run.parentRunId, orgId: user.orgId, status: 'WAITING' },
+        { $set: { status: 'RUNNING', 'approval.decision': decision, 'approval.decidedBy': user.uuid, 'approval.comment': comment, 'approval.decidedAt': decidedAt } },
+        { new: true },
+      ).lean();
+      // Two answers landing together: one of them carries the flow on, the other has nothing left to do.
+      if (!parent?.approval) return;
+      return this.carryOn(parent as FormFlowRun & { approval: FlowApproval }, decision, user, comment, decidedAt);
+    }
+    // An administrator answering for the whole step: the approvals it was waiting for are no longer asked.
+    if (run.approval.parts) await this.runs.updateMany({ parentRunId: runId, kind: 'PART', status: 'WAITING' }, { $set: { status: 'STOPPED' } });
+
     if (run.kind === 'ACTION') {
       // A named action waiting for approval: the decision makes (or refuses) the move.
       await this.runs.updateOne({ uuid: runId }, { $set: { status: 'DONE' } });
       await this.records.completeActionApproval(user.orgId, recordId, run.actionKey, decision, user.uuid, comment, runId);
       return;
     }
+    return this.carryOn(run as FormFlowRun & { approval: FlowApproval }, decision, user, comment, decidedAt);
+  }
+
+  /** The paused flow has its answer: write it on the record and run the steps after the approval. */
+  private async carryOn(run: FormFlowRun & { approval: FlowApproval }, decision: 'APPROVED' | 'REJECTED', user: { uuid: string; orgId: string; name?: string }, comment: string, decidedAt: Date) {
+    const runId = run.uuid;
+    const recordId = run.recordId;
     const { record, definition } = await this.records.load(user.orgId, recordId);
     const automation = (definition.automations ?? []).find((a) => a.id === run.automationId);
     const output = { decision, decidedBy: user.uuid, decidedByName: user.name ?? '', comment, decidedAt: decidedAt.toISOString() };

@@ -138,15 +138,18 @@ export const EVENT_ACTION_LABEL: Record<EventActionType, string> = {
   SET_VALUE: 'Set the value of',
   FETCH: 'Look up and fill in',
   GO_TO_STEP: 'Go to step',
+  FOCUS: 'Put the cursor in',
+  SUBMIT: 'Send the form',
+  RESET: 'Start the form again',
   SHOW_MESSAGE: 'Show this message',
   REDIRECT: 'Go to this address',
 };
 
 /** What can happen at each moment (mirrors what publishing accepts). */
 export const EVENT_ACTIONS_FOR: Record<TriggerType, EventActionType[]> = {
-  LOAD: ['SET_VALUE', 'FETCH'],
-  CLICK: ['SET_VALUE', 'FETCH', 'GO_TO_STEP'],
-  CHANGE: ['FETCH', 'SET_VALUE'],
+  LOAD: ['SET_VALUE', 'FETCH', 'FOCUS'],
+  CLICK: ['SET_VALUE', 'FETCH', 'GO_TO_STEP', 'FOCUS', 'SUBMIT', 'RESET'],
+  CHANGE: ['FETCH', 'SET_VALUE', 'FOCUS'],
   SUBMIT_SUCCESS: ['SHOW_MESSAGE', 'REDIRECT'],
   SUBMIT_ERROR: ['SHOW_MESSAGE'],
 };
@@ -162,6 +165,11 @@ export function eventActionOf(type: EventActionType, fields: FormField[]): FormE
       return { type, source: { url: '', method: 'GET' }, set: {} };
     case 'GO_TO_STEP':
       return { type, step: stepsOf(fields)[0]?.name ?? '' };
+    case 'FOCUS':
+      return { type, target: watchableFields(fields)[0]?.name ?? '' };
+    case 'SUBMIT':
+    case 'RESET':
+      return { type };
     case 'SHOW_MESSAGE':
       return { type, message: '' };
     case 'REDIRECT':

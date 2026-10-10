@@ -51,7 +51,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | Staff attach files and notes to a task | To-do lists, Starting processes | Built (10 Oct): a Files tab on the record lists what came with the form and what staff added; staff add files, checked like any upload |
 | Answer a task from the email | To-do lists | Built (10 Oct): "Let approvers answer from the email" on an approval. Each approver's email has their own link; the page it opens asks them to press Approve or Reject. Off unless switched on |
 | A workflow drawn as a picture (the workflow model editor) | Workflow | **Part.** Built (10 Oct): the workflow opens on a Picture tab: statuses left to right, an arrow for each button, approvals and rejections marked, each automation as a row of steps; clicking a part opens where it is changed. An approval's two outcomes are drawn as branches side by side, each with its own steps and its own "Add a step". A workflow in the library is built on a page of its own (Workflows, then New workflow or Edit), opening on its picture. Not yet: steps that run side by side, and dragging boxes by hand (it lays itself out) |
-| Branches that run side by side (AND split) | OSGi and JEE | **Missing.** "Everyone must approve" covers the common case |
+| Branches that run side by side (AND split) | OSGi and JEE | **Part.** Built (10 Oct): an approval step can "Ask at the same time" up to five more approvals, each of its own people about its own part; the flow goes on when all are approved, and one rejection settles it. Other kinds of step still run one after another |
 | Jump back to an earlier step; typed variables | Variables | **Part.** "Run only if" on each step and the results of earlier steps; no jumping back |
 | A calendar of what is due | Inbox | Built (10 Oct): the Work inbox has a third layout, Calendar: the same view as a month, each record on the day it is due |
 | History of a task | To-do lists | Built: the History tab |
@@ -84,7 +84,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 |---|---|---|
 | Show, hide, enable, set a value, validate, otherwise | Rule editor | Built |
 | Clear a value; add or remove a row; set focus; display formats | Rule editor | **Part.** Built (10 Oct): "Clear the answer to" in the rules dialog. Rows can follow an answer (a repeating section's setting, "As many as the answer to..."; the browser does this, the server does not insist on the count). Setting focus and display formats are still missing |
-| Save, submit or reset the form from a rule | Rule editor | **Missing** |
+| Save, submit or reset the form from a rule | Rule editor | **Part.** Built (10 Oct): a button can "Send the form" or "Start the form again", and a button, a changed answer or the form opening can "Put the cursor in" a question. Saving a draft from a rule is not there |
 | Functions written by the customer for rules | Rule editor | Not for us in the builder: authoring stays dropdowns and plain words. Extensions cover checks |
 | Answers save themselves as people go | Drafts and portal | Built (10 Oct): the form setting "Save answers as people go"; kept every 30 seconds and found again on the same device, with "Start again". Off unless the form's owner turns it on |
 | The portal lists a person's unfinished forms | Drafts and portal | Built (10 Oct): forms saved while signed in to the portal appear under "Started and not sent", with Continue and Discard |

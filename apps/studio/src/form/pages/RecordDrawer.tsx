@@ -140,6 +140,8 @@ function describe(
     case "ASK":
       return e.data.phase === "answered" ? `Answered ${who(e.data.askedBy)}: "${e.message}"` : `Asked ${who(e.data.to)} for their view: "${e.message}"`;
     case "APPROVAL":
+      if (e.data.phase === "part")
+        return `${String(e.data.title ?? "Approval")}: ${e.data.decision === "APPROVED" ? "approved" : "rejected"}${e.message ? ` - "${e.message}"` : ""}`;
       if (e.data.phase === "approved-by-one")
         return `${String(e.data.title ?? "Approval")}: approved, still waiting for ${((e.data.waitingFor as string[]) ?? []).map(who).join(", ")}${e.message ? ` - "${e.message}"` : ""}`;
       if (e.data.phase === "late")
@@ -565,7 +567,8 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
                 style={{ gap: 10 }}
                 aria-label="Approvals"
               >
-                {data.approvals.map((a) => (
+                {/* A step that asks several at once shows each of them; the step itself is answered by nobody. */}
+                {data.approvals.filter((a) => !a.parts || a.status !== "WAITING").map((a) => (
                   <ApprovalCard
                     key={a.runId}
                     approval={a}

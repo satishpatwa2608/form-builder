@@ -281,7 +281,7 @@ export function stepSummary(s: AutomationAction, form: FormDefinition, people: P
     case 'HANDLER':
       return customWorkflows.find((w) => w.key === s.key)?.label ?? (s.key || 'Choose a custom API');
     case 'APPROVAL':
-      return `By ${who(s.to)}${s.dueInHours ? ` · due in ${s.dueInHours}h` : ''}`;
+      return `By ${who(s.to)}${s.together?.length ? ` · and ${s.together.length} more at the same time` : ''}${s.dueInHours ? ` · due in ${s.dueInHours}h` : ''}`;
     case 'SIGN':
       return `By ${who(s.to)}${s.to.length > 1 ? (s.order === 'PARALLEL' ? ' · all at once' : ' · one after another') : ''}`;
   }

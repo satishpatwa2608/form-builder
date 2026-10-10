@@ -197,6 +197,37 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
               {() => <RecipientsEditor form={form} people={people} usersOnly value={action.to} onChange={(to) => onChange({ ...action, to })} />}
             </Setting>
             <ApprovalRules value={action} onChange={(rules) => onChange({ ...action, ...rules })} />
+            <Setting label="Ask at the same time" hint="Other approvals asked at the same moment, each of its own people about its own part. The flow goes on when every one is approved; one rejection settles it as rejected.">
+              {() => (
+                <div className="fb-settings" style={{ gap: 10 }}>
+                  {(action.together ?? []).map((part, i) => (
+                    <div key={i} className="fb-panel fb-settings" style={{ gap: 8, padding: 10 }} role="group" aria-label={`Approval ${i + 2} at the same time`}>
+                      <TextSetting label="What to approve" value={part.title} onChange={(title) => onChange({ ...action, together: action.together!.map((x, j) => (j === i ? { ...x, title } : x)) })} />
+                      <RecipientsEditor form={form} people={people} usersOnly value={part.to} onChange={(to) => onChange({ ...action, together: action.together!.map((x, j) => (j === i ? { ...x, to } : x)) })} />
+                      <div>
+                        <button
+                          type="button"
+                          className="fb-link"
+                          onClick={() => {
+                            const rest = action.together!.filter((_, j) => j !== i);
+                            onChange({ ...action, together: rest.length ? rest : undefined });
+                          }}
+                        >
+                          Remove this approval
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {(action.together ?? []).length < 5 && (
+                    <div>
+                      <button type="button" className="fb-link" onClick={() => onChange({ ...action, together: [...(action.together ?? []), { to: [], title: '' }] })}>
+                        + Add an approval asked at the same time
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Setting>
             <TextSetting label="What to approve" value={action.title} onChange={(title) => onChange({ ...action, title })} />
             <TextSetting
               label="Instructions"

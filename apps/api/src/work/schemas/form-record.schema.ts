@@ -97,6 +97,8 @@ export class FlowApproval {
    */
   keys?: { userId: string; hash: string }[];
   keysUntil?: Date | null;
+  /** On the paused flow itself, when its step asks several approvals at once: how many. Nobody answers this one; they answer its parts. */
+  parts?: number;
   decision: 'APPROVED' | 'REJECTED' | null;
   decidedBy: string;
   comment: string;
@@ -154,9 +156,15 @@ export class FormFlowRun {
   @Prop({ type: String, default: '' })
   signatureRequestId: string;
 
-  /** FLOW = an automation paused at an approval step; ACTION = a named action waiting for approval. */
+  /**
+   * FLOW = an automation paused at an approval step; ACTION = a named action waiting for approval; PART = one of
+   * several approvals a step asks at the same time (its `parentRunId` is the paused flow they all belong to).
+   */
   @Prop({ type: String, default: 'FLOW' })
-  kind: 'FLOW' | 'ACTION';
+  kind: 'FLOW' | 'ACTION' | 'PART';
+
+  @Prop({ type: String, default: '' })
+  parentRunId: string;
 
   /** ACTION runs: the action and who asked. */
   @Prop({ type: String, default: '' })
@@ -170,6 +178,7 @@ export type FormFlowRunDocument = HydratedDocument<FormFlowRun>;
 export const FormFlowRunSchema = SchemaFactory.createForClass(FormFlowRun);
 FormFlowRunSchema.index({ uuid: 1 }, { unique: true });
 FormFlowRunSchema.index({ orgId: 1, recordId: 1 });
+FormFlowRunSchema.index({ parentRunId: 1, status: 1 }, { partialFilterExpression: { parentRunId: { $gt: '' } } });
 FormFlowRunSchema.index({ orgId: 1, status: 1, 'approval.approvers': 1 });
 
 /** The org's working time for SLAs (one per org; absent = Mon-Fri 09:00-18:00 IST). */

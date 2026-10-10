@@ -90,6 +90,9 @@ const fetchSourceSchema = z.object({
 const eventActionSchema: z.ZodType<FormEventAction> = z.union([
   z.object({ type: z.literal('SET_VALUE'), target: z.string().min(1), value: expressionText }),
   z.object({ type: z.literal('GO_TO_STEP'), step: z.string().min(1) }),
+  z.object({ type: z.literal('FOCUS'), target: z.string().min(1) }),
+  z.object({ type: z.literal('SUBMIT') }),
+  z.object({ type: z.literal('RESET') }),
   z.object({
     type: z.literal('FETCH'),
     source: fetchSourceSchema,
@@ -279,6 +282,7 @@ const actionSchema = z.union([
     need: z.enum(['ANY', 'ALL']).optional(),
     whenLate: z.enum(['REMIND', 'MANAGER', 'REJECT']).optional(),
     byEmail: z.boolean().optional(),
+    together: z.array(z.object({ to: recipients, title: z.string().max(120) })).max(5).optional(),
   }),
   z.object({
     ...stepMeta,
@@ -513,6 +517,7 @@ function checkWorkflow(def: FormDefinition, ctx: z.RefinementCtx) {
         missing(action.type === 'APPROVAL' ? 'choose who approves' : action.type === 'SIGN' ? 'choose who signs' : 'add who it goes to');
       }
       if (action.type === 'APPROVAL' && !action.title.trim()) missing('the approval needs a title');
+      if (action.type === 'APPROVAL' && action.together?.some((part) => !part.to.length || !part.title.trim())) missing('each approval asked at the same time needs who approves and what they approve');
       if (action.type === 'SIGN' && !action.title.trim()) missing('say what is being signed');
       if (action.type === 'EMAIL' && (!action.subject.trim() || !action.body.trim())) missing('the email needs a subject and a message');
       if (action.type === 'NOTIFY' && !action.message.trim()) missing('the notification needs a message');
@@ -864,9 +869,9 @@ function checkPaymentAndCodes(def: FormDefinition, ctx: z.RefinementCtx) {
 
 /** Which actions make sense for which trigger. */
 const EVENT_ACTIONS: Record<string, ReadonlySet<FormEventAction['type']>> = {
-  LOAD: new Set(['SET_VALUE', 'FETCH']),
-  CLICK: new Set(['SET_VALUE', 'FETCH', 'GO_TO_STEP']),
-  CHANGE: new Set(['SET_VALUE', 'FETCH']),
+  LOAD: new Set(['SET_VALUE', 'FETCH', 'FOCUS']),
+  CLICK: new Set(['SET_VALUE', 'FETCH', 'GO_TO_STEP', 'FOCUS', 'SUBMIT', 'RESET']),
+  CHANGE: new Set(['SET_VALUE', 'FETCH', 'FOCUS']),
   SUBMIT_SUCCESS: new Set(['SHOW_MESSAGE', 'REDIRECT']),
   SUBMIT_ERROR: new Set(['SHOW_MESSAGE']),
 };
@@ -939,6 +944,16 @@ function checkEvents(def: FormDefinition, ctx: z.RefinementCtx) {
           }
           break;
         }
+        case 'FOCUS': {
+          const target = byName.get(action.target);
+          if (!target) at(`Acts on unknown field "${action.target}"`);
+          else if (!isValueField(target) || target.type === 'HIDDEN' || target.type === 'CAPTCHA') at(`"${target.name}" is not a question the cursor can be put in`);
+          else if (formShape(def.fields).repeatOf.has(target.name)) at(`"${target.name}" is inside a repeating section; an event cannot point at one of its rows`);
+          break;
+        }
+        case 'SUBMIT':
+        case 'RESET':
+          break;
         case 'REDIRECT':
           if (!safeLinkUrl(action.url)) at('The address must start with https:// or be a path on this site (/…)');
           break;

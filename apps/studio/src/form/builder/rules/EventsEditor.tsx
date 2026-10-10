@@ -198,6 +198,17 @@ function EventActionRow({ action, allowed, fields, names, onChange, onRemove }: 
             />
           </div>
         )}
+        {action.type === 'FOCUS' && (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <ChoiceSelect
+              ariaLabel="Question"
+              placeholder="Choose a question"
+              value={watchableFields(fields).some((f) => f.name === action.target) ? action.target : undefined}
+              options={watchableFields(fields).map((f) => ({ label: fieldName(f), value: f.name }))}
+              onChange={(target) => onChange({ ...action, target })}
+            />
+          </div>
+        )}
         {action.type === 'GO_TO_STEP' && (
           <div style={{ flex: 1, minWidth: 0 }}>
             <ChoiceSelect

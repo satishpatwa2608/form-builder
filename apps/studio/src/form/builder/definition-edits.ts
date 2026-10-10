@@ -26,6 +26,7 @@ function renameInEvent(event: FormEvent, from: string, to: string): FormEvent {
     ...(event.when ? { when: renameInWhen(event.when, from, to) } : {}),
     do: event.do.map((a) => {
       if (a.type === 'SET_VALUE') return { ...a, target: swap(a.target), value: renameExpressionField(a.value, from, to) };
+      if (a.type === 'FOCUS') return { ...a, target: swap(a.target) };
       if (a.type === 'GO_TO_STEP') return { ...a, step: swap(a.step) };
       if (a.type !== 'FETCH') return a;
       const source = a.source.params ? { ...a.source, params: renameInParams(a.source.params, from, to) } : a.source;

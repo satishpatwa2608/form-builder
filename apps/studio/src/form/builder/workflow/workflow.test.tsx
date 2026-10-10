@@ -420,6 +420,24 @@ describe('Workflow dialog', () => {
     expect(within(screen.getByRole('group', { name: 'If rejected, after step 1' })).getByText(/^4\. /)).toBeInTheDocument();
   });
 
+  it('an approval step can ask others at the same time, each with their own people and their own question', async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    const steps = [{ id: 'ask', type: 'APPROVAL' as const, to: [{ kind: 'MANAGER' as const }], title: 'Legal' }];
+    render(<Harness initial={{ ...basic, workflow: STARTER_WORKFLOW, automations: [{ id: 'a', name: 'Sign-off', enabled: true, when: 'SUBMITTED', actions: steps }] }} spy={spy} />);
+    await user.click(screen.getByRole('tab', { name: /Automations/ }));
+    await user.click(screen.getByRole('button', { name: /^1\. / }));
+    await user.click(screen.getByRole('button', { name: '+ Add an approval asked at the same time' }));
+    const part = screen.getByRole('group', { name: 'Approval 2 at the same time' });
+    await user.type(within(part).getByRole('textbox', { name: 'What to approve' }), 'Finance');
+    const step = () => spy.mock.lastCall![0].automations[0].actions[0];
+    expect(step().together).toEqual([{ to: [], title: 'Finance' }]);
+    // The step's box says so, so the flow reads right at a glance.
+    expect(screen.getByRole('button', { name: /^1\. / })).toHaveTextContent('and 1 more at the same time');
+    await user.click(within(part).getByRole('button', { name: 'Remove this approval' }));
+    expect(step().together).toBeUndefined();
+  });
+
   it('read-only: tabs work, editors are locked', async () => {
     const user = userEvent.setup();
     render(<Harness initial={{ ...basic, workflow: STARTER_WORKFLOW }} readOnly spy={vi.fn()} />);
