@@ -6,6 +6,7 @@ import { messageOf } from '../adapters/backend';
 import { useDeployStatus, useExtensions, useRefreshExtension, type ExtensionInfo, type ExtensionOffer } from '../adapters/extensions';
 import { useFormPermissions } from '../hooks/useFormPermissions';
 import { ExtensionDeploy } from './ExtensionDeploy';
+import { ExtensionRepo } from './ExtensionRepo';
 import '../styles/form-builder.css';
 
 const STATUS: Record<ExtensionInfo['status'], string> = { NEW: 'Not started yet', OK: 'Running', UNREACHABLE: 'Not answering' };
@@ -55,6 +56,7 @@ export default function ExtensionsPage() {
           it offers appears here and in the builder.
         </div>
       )}
+      {canManagePages && <ExtensionRepo />}
       {canManagePages && <ExtensionDeploy running={data.length > 0} />}
       {data.map((ext) => (
         <section key={ext.id} className="fb-extension" aria-label={ext.name}>

@@ -1112,3 +1112,20 @@
   max-height: 260px;
   white-space: pre-wrap;
 }
+
+.fb-builds {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.fb-builds th,
+.fb-builds td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.fb-builds th {
+  font-weight: 600;
+  color: var(--muted-foreground);
+}

@@ -30,6 +30,8 @@ x-api-env: &api-env
   # Customers deploying their own code by themselves: their image spaces, and the role that hands out push passwords.
   EXT_REGISTRY: ${EXT_REGISTRY:-}
   EXT_PUSH_ROLE_ARN: ${EXT_PUSH_ROLE_ARN:-}
+  # The build project that builds customers' extensions from their own repositories.
+  EXT_BUILD_PROJECT: ${EXT_BUILD_PROJECT:-}
   FILE_SCANNER: none
   JOBS_POLL: "true"
 

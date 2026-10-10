@@ -21,6 +21,55 @@ Once it is running, what it offers appears in the builder:
 
 There are no webhooks to host and no servers for you to run.
 
+## Two ways to deploy
+
+| | From your repository (the usual way) | Building it yourselves |
+|---|---|---|
+| You need | The repository's address | Docker on a developer's computer or pipeline |
+| A deployment is | **Deploy now**, or every commit to the branch you chose | Build, push, choose the version, **Deploy** |
+| Good for | Almost everyone | Teams whose code may not be read from outside |
+
+Both end the same way: the version runs, and if it does not start the one before
+keeps running.
+
+## Deploying from your repository
+
+In Form Builder open **Administration → Extensions**, the part called **Deploy
+from your repository**.
+
+1. **Link it.** Paste the repository's address, for example
+   `https://github.com/your-company/your-extension`, and press **Link the
+   repository**. GitHub, GitLab and Bitbucket work.
+2. **Let Form Builder read it.** The page shows a key. Add it to the repository
+   (in GitHub: *Settings → Deploy keys → Add deploy key*, leaving "Allow write
+   access" off). It can read that one repository and change nothing. Press
+   **I have added it: check**.
+3. **Choose the branch** to deploy. The list is your repository's own branches.
+4. **Deploy now** builds that branch as it stands and deploys it. The **Builds**
+   list shows each build: what started it, the commit, the result, and what was
+   printed if it failed.
+
+### On every commit
+
+Tick **Deploy on every commit to this branch**. The page shows an address; add
+it to the repository so it tells Form Builder when the branch changes (in
+GitHub: *Settings → Webhooks → Add webhook*, content type `application/json`,
+"Just the push event"). From then on a commit to that branch is built and
+deployed by itself. Commits to other branches are ignored. If a commit arrives
+while a build is under way, it is built when that one finishes.
+
+Keep that address to yourselves: anyone who has it can start a build of your
+branch (of your own code, and nothing else). **Unlink** and link again to get a
+new one.
+
+### What your repository must contain
+
+The starter kit as we give it: `package.json`, `tsconfig.json`, `src/` and
+`vendor/`. Form Builder builds it with its own build file; a `Dockerfile` in
+your repository is not used.
+
+The rest of this guide is about building it yourselves.
+
 ## Who does what
 
 | Person | Does |

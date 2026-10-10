@@ -120,9 +120,9 @@ export function ExtensionDeploy({ running }: { running: boolean }) {
   return (
     <section className="fb-extension" aria-label="Deploy your own code">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">Deploy your own code</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Or build it yourselves</h2>
         <p className="fb-muted">
-          Your developers build the extension as a Docker image and push it to your organisation's own image space. You choose the version and press Deploy: it runs beside Form Builder, for your
+          For teams that would rather build the image on their own machines or pipeline. Your developers build the extension as a Docker image and push it to your organisation's own image space. You choose the version and press Deploy: it runs beside Form Builder, for your
           organisation only, and what it offers appears in the builder. A version that does not start changes nothing: the one before keeps running.
         </p>
       </div>

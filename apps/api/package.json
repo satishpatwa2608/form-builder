@@ -15,6 +15,7 @@
     "extension": "node dist/cli/extension.js"
   },
   "dependencies": {
+    "@aws-sdk/client-codebuild": "^3.1012.0",
     "@aws-sdk/client-ecr": "^3.1012.0",
     "@aws-sdk/client-kms": "^3.1012.0",
     "@aws-sdk/client-s3": "^3.1012.0",

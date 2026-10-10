@@ -16,6 +16,7 @@ Not the production design (see `infra/terraform` and `docs/hosting.md`): one ser
 | Images | ECR `fb-api`, `fb-studio`, `fb-runtime` | Tagged with the git commit they were built from |
 | Customers' images | ECR `fb-ext/<organisation id>`, one per customer, made when they first ask to push | Their own extension images; the last ten versions are kept |
 | Push role | IAM `fb-pilot-ext-push` | Customers' push passwords are one-hour sessions of it, each narrowed to that customer's space. Only the server's role can take it |
+| Build project | CodeBuild `fb-pilot-ext-build` (role `fb-pilot-ext-build`) | Builds a customer's extension from its linked repository, on a machine of its own per build. Its role can only write its log; the API hands each build what it needs. Charged per build minute, nothing when idle |
 | Settings | Parameter store `/fb-pilot/*` | Host names, bucket, key, plan, sender address, and the two generated secrets |
 
 Addresses (temporary names that resolve to the server's address; a real domain replaces them):
@@ -58,6 +59,11 @@ the server, is the only thing that starts a container. It keeps each extension's
 in `/opt/fb/ext/` (root only), and runs each on a network of its own with the API and the worker and no way
 out: an extension here cannot call the internet or the customer's systems yet.
 
+With `EXT_BUILD_PROJECT` set, customers can also link a repository and have it built for them: the API starts a
+build in CodeBuild, the build asks the API (with a token for that one build) for the repository, the customer's
+read-only key and a push sign-in, pushes the image, and reports back; the result is then deployed as above.
+A build's full log is in CloudWatch, log group `/aws/codebuild/fb-pilot-ext-build`.
+
 - What it is doing: `journalctl -u fb-ext-deployer -n 50`
 - What is running: `docker ps --filter name=fb-ext-`
 - A customer's output: `docker logs --tail 50 fb-ext-<first 8 of the organisation id>-main`
@@ -75,5 +81,5 @@ files are already in the bucket, which keeps earlier versions. To restore: copy 
 ## Taking it all away
 
 Turn off termination protection on the server, terminate it, release the address, empty and delete the
-bucket, delete the ECR repositories (the customers' `fb-ext/*` too), the roles (`fb-pilot-server`, `fb-pilot-ext-push`) and instance profile, the firewall group, the parameters, and
+bucket, delete the ECR repositories (the customers' `fb-ext/*` too), the build project and the roles (`fb-pilot-server`, `fb-pilot-ext-push`, `fb-pilot-ext-build`) and instance profile, the firewall group, the parameters, and
 schedule the KMS key for deletion. Everything carries the tag `Project=form-builder-pilot`.

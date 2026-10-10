@@ -167,7 +167,11 @@ called **Deploy your own code**, and you do not wait for us:
    page shows how it went; if the version did not start it says why, shows
    what your code printed, and the version before keeps running.
 
-To deploy on every commit instead, make a **deploy key** on the same page and
+The simplest way is **Deploy from your repository** on the same page: link the
+repository, add the read-only key it shows, choose the branch, and press
+**Deploy now** or tick **Deploy on every commit**. Nothing to install.
+
+If you build the image yourselves and want that on every commit, make a **deploy key** on the same page and
 give it to your pipeline: the starter kit's `.github/workflows/deploy.yml` does
 the rest (see [extension-deploy-guide.md](extension-deploy-guide.md)).
 

@@ -88,6 +88,9 @@ import { EcrImageStore, ExtensionDeployService, IMAGE_STORE } from './extensions
 import { ExtensionDeploy, ExtensionDeploySchema } from './extensions/extension-deploy.schema';
 import { ExtensionDeployKey, ExtensionDeployKeySchema } from './extensions/extension-deploy-key.schema';
 import { ExtensionPipelineController } from './extensions/extension-pipeline.controller';
+import { ExtensionBuildController, ExtensionRepoController } from './extensions/extension-repo.controller';
+import { ExtensionBuild, ExtensionBuildSchema, ExtensionRepo, ExtensionRepoSchema } from './extensions/extension-repo.schema';
+import { BUILD_RUNNER, CodeBuildRunner, ExtensionRepoService, GIT_REMOTE, GitCli } from './extensions/extension-repo.service';
 import { OperatorController } from './operator/operator.controller';
 import { OrgLogController } from './logs/org-log.controller';
 import { OrgLog, OrgLogSchema } from './logs/log.schema';
@@ -173,6 +176,8 @@ export class AppModule {
           { name: OrgLog.name, schema: OrgLogSchema },
           { name: ExtensionDeploy.name, schema: ExtensionDeploySchema },
           { name: ExtensionDeployKey.name, schema: ExtensionDeployKeySchema },
+          { name: ExtensionRepo.name, schema: ExtensionRepoSchema },
+          { name: ExtensionBuild.name, schema: ExtensionBuildSchema },
           { name: FormDraft.name, schema: FormDraftSchema },
           { name: SsoState.name, schema: SsoStateSchema },
           { name: Job.name, schema: JobSchema },
@@ -213,6 +218,8 @@ export class AppModule {
         WorkflowsController,
         ExtensionsController,
         ExtensionPipelineController,
+        ExtensionRepoController,
+        ExtensionBuildController,
         FragmentsController,
         SignaturePublicController,
         PortalController,
@@ -285,6 +292,9 @@ export class AppModule {
         OrgLogService,
         OperatorService,
         ExtensionDeployService,
+        ExtensionRepoService,
+        { provide: GIT_REMOTE, useValue: new GitCli() },
+        { provide: BUILD_RUNNER, useValue: config.EXT_BUILD_PROJECT ? new CodeBuildRunner(config.AWS_REGION, config.EXT_BUILD_PROJECT) : null },
         {
           provide: IMAGE_STORE,
           // Only where the installation is set up for it: otherwise the page says it is not switched on.

@@ -64,6 +64,8 @@ const schema = z.object({
   EXT_REGISTRY: z.string().regex(/^(\d{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com)?$/).default(''),
   EXT_PUSH_ROLE_ARN: z.string().default(''),
   EXT_PLATFORM: z.string().default('linux/arm64'),
+  /** The build project (AWS CodeBuild) that builds customers' extensions from their own repositories; empty: not offered. */
+  EXT_BUILD_PROJECT: z.string().regex(/^[A-Za-z0-9_-]{0,150}$/).default(''),
   /** Secure cookies (https only). Must be true outside local development. */
   COOKIE_SECURE: z
     .enum(['true', 'false'])

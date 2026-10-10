@@ -12,6 +12,8 @@ RUN pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/sdk --filter @
 RUN pnpm --filter @fb/api deploy --prod /out
 
 FROM node:20-bookworm-slim
+# git and ssh: to read the branches of the repository a customer links for its extension (extension-repo.service.ts).
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build --chown=node:node /out .
 RUN mkdir -p /data/uploads && chown node:node /data/uploads

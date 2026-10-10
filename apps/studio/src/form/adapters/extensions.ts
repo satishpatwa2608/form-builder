@@ -182,3 +182,82 @@ export function useDeployKey() {
     onSuccess: ({ newKey: _shownOnce, ...status }) => qc.setQueryData(DEPLOY, status),
   });
 }
+
+// ── Building from the organisation's own repository ──────────────────────
+
+export interface ExtensionBuildRow {
+  id: string;
+  trigger: 'MANUAL' | 'COMMIT';
+  branch: string;
+  commit: string;
+  commitMessage: string;
+  status: 'BUILDING' | 'DEPLOYING' | 'LIVE' | 'FAILED';
+  message: string;
+  output: string;
+  at: string | null;
+}
+export interface RepoView {
+  available: boolean;
+  repo: { url: string; host: string; branch: string; auto: boolean; publicKey: string; hookUrl: string } | null;
+  builds: ExtensionBuildRow[];
+}
+type RepoAsk = { link: string } | { branch?: string; auto?: boolean } | 'unlink' | 'build';
+
+let localRepo: { view: RepoView; branches: string[] | Error; asked: RepoAsk[] } | undefined;
+/** Tests: what the API would answer about the repository, and what gets asked of it. */
+export const seedLocalRepo = (seed?: { view: RepoView; branches: string[] | Error }) => {
+  localRepo = seed && { ...seed, asked: [] };
+  return localRepo;
+};
+const REPO = [...KEY, 'repo'] as const;
+export const buildUnderWay = (v?: RepoView) => !!v?.builds.some((b) => b.status === 'BUILDING' || b.status === 'DEPLOYING');
+
+export function useRepo() {
+  return useQuery({
+    queryKey: REPO,
+    queryFn: async () => (USE_API ? unwrap<RepoView>(await adminApi.get('/extensions/repo')) : (localRepo?.view ?? { available: false, repo: null, builds: [] })),
+    refetchInterval: (q) => (buildUnderWay(q.state.data) ? 3000 : false),
+    retry: false,
+  });
+}
+
+/** The repository's branches, read with the organisation's key; failing means the key has not been added yet. */
+export function useRepoBranches(enabled: boolean) {
+  return useQuery({
+    queryKey: [...REPO, 'branches'],
+    enabled,
+    queryFn: async () => {
+      if (USE_API) return unwrap<string[]>(await adminApi.get('/extensions/repo/branches'));
+      if (localRepo?.branches instanceof Error) throw localRepo.branches;
+      return localRepo?.branches ?? [];
+    },
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+/** Every change to the link: linking, the branch, deploying on commits, unlinking, and "Deploy now". */
+export function useRepoChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ask: RepoAsk) => {
+      if (!USE_API) {
+        const l = localRepo!;
+        l.asked.push(ask);
+        if (ask === 'unlink') l.view = { ...l.view, repo: null };
+        else if (ask === 'build') l.view = { ...l.view, builds: [{ id: `b${l.asked.length}`, trigger: 'MANUAL', branch: l.view.repo!.branch, commit: '', commitMessage: '', status: 'BUILDING', message: '', output: '', at: null }, ...l.view.builds] };
+        else if ('link' in ask) l.view = { ...l.view, repo: { url: ask.link, host: 'github.com', branch: 'main', auto: false, publicKey: 'ssh-ed25519 AAAAlocal form-builder-deploy', hookUrl: 'https://api.forms.test/extensions/repo/hook/local-token' } };
+        else l.view = { ...l.view, repo: { ...l.view.repo!, ...ask } };
+        return l.view;
+      }
+      if (ask === 'unlink') return unwrap<RepoView>(await adminApi.delete('/extensions/repo'));
+      if (ask === 'build') return unwrap<RepoView>(await adminApi.post('/extensions/repo/builds'));
+      if ('link' in ask) return unwrap<RepoView>(await adminApi.put('/extensions/repo', { url: ask.link }));
+      return unwrap<RepoView>(await adminApi.patch('/extensions/repo', ask));
+    },
+    onSuccess: (view) => {
+      qc.setQueryData(REPO, view);
+      void qc.invalidateQueries({ queryKey: DEPLOY });
+    },
+  });
+}

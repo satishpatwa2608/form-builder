@@ -4,7 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FormDefinition } from '../types';
-import { seedLocalDeploy, seedLocalExtensions, type DeployStatus, type ExtensionInfo } from '../adapters/extensions';
+import { seedLocalDeploy, seedLocalExtensions, seedLocalRepo, type DeployStatus, type ExtensionInfo, type RepoView } from '../adapters/extensions';
 import { FormSettingsPanel } from '../builder/components/FormSettingsPanel';
 import ExtensionsPage from './ExtensionsPage';
 
@@ -38,6 +38,7 @@ beforeEach(() => {
   admin.value = true;
   seedLocalExtensions([acme], [{ key: CHECK, label: 'Acme rules: One claim per invoice' }]);
   seedLocalDeploy();
+  seedLocalRepo();
 });
 
 describe('The Extensions page', () => {
@@ -234,5 +235,89 @@ describe('Extensions page: deploying your own code', () => {
     const area = await screen.findByRole('region', { name: 'Deploy your own code' });
     expect(area).toHaveTextContent('Your plan does not include extensions.');
     expect(within(area).queryByRole('button')).not.toBeInTheDocument();
+  });
+});
+
+describe('Extensions page: deploying from the repository', () => {
+  const linked: RepoView['repo'] = { url: 'https://github.com/hac/plant-tools', host: 'github.com', branch: 'main', auto: false, publicKey: 'ssh-ed25519 AAAAkey form-builder-deploy', hookUrl: 'https://api.forms.test/extensions/repo/hook/tok' };
+  const on = (view: Partial<RepoView> = {}, branches: string[] | Error = ['dev', 'main']) => seedLocalRepo({ view: { available: true, repo: null, builds: [], ...view }, branches })!;
+  const area = () => screen.findByRole('region', { name: 'Deploy from your repository' });
+
+  it('is not offered where the installation does not have it', async () => {
+    wrap(<ExtensionsPage />);
+    expect(await screen.findByRole('heading', { name: 'Acme rules' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Deploy from your repository' })).not.toBeInTheDocument();
+  });
+
+  it('links a repository by its address, then shows the key to add and how to check it', async () => {
+    const seeded = on({}, new Error('The repository could not be read. Check that the key shown here has been added to it.'));
+    wrap(<ExtensionsPage />);
+    const a = await area();
+    expect(within(a).getByRole('button', { name: 'Link the repository' })).toBeDisabled();
+    await userEvent.type(within(a).getByLabelText('Repository address'), 'https://github.com/hac/plant-tools');
+    await userEvent.click(within(a).getByRole('button', { name: 'Link the repository' }));
+    expect(seeded.asked).toEqual([{ link: 'https://github.com/hac/plant-tools' }]);
+    expect(await within(a).findByLabelText('Key to add to the repository')).toHaveTextContent('ssh-ed25519 AAAAlocal form-builder-deploy');
+    expect(a).toHaveTextContent('Settings → Deploy keys → Add deploy key');
+    // Until the key is there, nothing can be deployed and the page says what to check.
+    expect(await within(a).findByText(/Check that the key shown here has been added/)).toBeInTheDocument();
+    expect(within(a).getByRole('button', { name: 'Deploy now' })).toBeDisabled();
+    expect(within(a).getByLabelText('Branch')).toBeDisabled();
+  });
+
+  it('chooses the branch from the repository\'s own, and deploys it now', async () => {
+    const seeded = on({ repo: linked });
+    wrap(<ExtensionsPage />);
+    const a = await area();
+    expect(await within(a).findByText('Form Builder can read the repository.')).toBeInTheDocument();
+    expect(within(a).queryByLabelText('Key to add to the repository')).not.toBeInTheDocument();
+    const branch = within(a).getByLabelText('Branch');
+    await within(a).findByRole('option', { name: 'dev' });
+    await userEvent.selectOptions(branch, 'dev');
+    await userEvent.click(within(a).getByRole('button', { name: 'Deploy now' }));
+    expect(seeded.asked).toEqual([{ branch: 'dev' }, 'build']);
+    const builds = await within(a).findByRole('table', { name: 'Builds' });
+    expect(within(builds).getByRole('row', { name: /Deploy now dev.*Building/ })).toBeInTheDocument();
+    expect(within(a).getByRole('button', { name: 'Deploy now' })).toBeDisabled();
+  });
+
+  it('deploying on every commit shows the address the repository must call', async () => {
+    const seeded = on({ repo: linked });
+    wrap(<ExtensionsPage />);
+    const a = await area();
+    expect(within(a).queryByLabelText('Address to call when the code changes')).not.toBeInTheDocument();
+    await userEvent.click(await within(a).findByRole('checkbox', { name: 'Deploy on every commit to this branch' }));
+    expect(seeded.asked).toEqual([{ auto: true }]);
+    expect(await within(a).findByLabelText('Address to call when the code changes')).toHaveTextContent('https://api.forms.test/extensions/repo/hook/tok');
+    expect(a).toHaveTextContent('Settings → Webhooks → Add webhook');
+  });
+
+  it('shows each build: what started it, the commit, and why a failed one failed', async () => {
+    on({
+      repo: linked,
+      builds: [
+        { id: 'b2', trigger: 'COMMIT', branch: 'main', commit: 'a1b2c3d', commitMessage: 'Tighten the triage rules', status: 'FAILED', message: 'The code did not build. What the build printed is below.', output: "error TS2304: Cannot find name 'triage'.", at: '2026-10-10T09:05:00.000Z' },
+        { id: 'b1', trigger: 'MANUAL', branch: 'main', commit: 'ffeeddc', commitMessage: 'First version', status: 'LIVE', message: 'Version ffeeddc is running.', output: '', at: '2026-10-10T08:00:00.000Z' },
+      ],
+    });
+    wrap(<ExtensionsPage />);
+    const builds = await screen.findByRole('table', { name: 'Builds' });
+    const failed = within(builds).getByRole('row', { name: /A commit main a1b2c3d Tighten the triage rules/ });
+    expect(failed).toHaveTextContent('Failed');
+    expect(failed).toHaveTextContent("error TS2304: Cannot find name 'triage'.");
+    expect(within(builds).getByRole('row', { name: /Deploy now main ffeeddc First version/ })).toHaveTextContent('Running');
+  });
+
+  it('unlinks only after being asked', async () => {
+    const seeded = on({ repo: linked });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    wrap(<ExtensionsPage />);
+    const a = await area();
+    await userEvent.click(await within(a).findByRole('button', { name: 'Unlink' }));
+    expect(seeded.asked).toEqual([]);
+    await userEvent.click(within(a).getByRole('button', { name: 'Unlink' }));
+    expect(seeded.asked).toEqual(['unlink']);
+    expect(await within(a).findByLabelText('Repository address')).toBeInTheDocument();
+    confirm.mockRestore();
   });
 });

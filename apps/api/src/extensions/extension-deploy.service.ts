@@ -112,6 +112,29 @@ export class ExtensionDeployService {
     @InjectModel(ExtensionDeployKey.name) private readonly keys: Model<ExtensionDeployKeyDocument>,
   ) {}
 
+  private readonly finished: ((deployId: string) => Promise<void>)[] = [];
+  /** Told when a deployment finishes, however it went (the builds that lead to deployments listen). */
+  onFinished(listener: (deployId: string) => Promise<void>) {
+    this.finished.push(listener);
+  }
+
+  isAvailable() {
+    return !!this.store && !!this.registry;
+  }
+
+  async assertIncluded(orgId: string) {
+    await this.allowed(orgId);
+  }
+
+  /** A push sign-in for an organisation's own space, for a build of its own repository (never shown to a person). */
+  async pushLoginFor(orgId: string) {
+    const store = this.available();
+    const repository = spaceOf(orgId);
+    await store.ensureSpace(repository);
+    const { password } = await store.pushPassword(repository);
+    return { registry: this.registry, image: `${this.registry}/${repository}`, password, platform: this.config.EXT_PLATFORM };
+  }
+
   private get registry() {
     return this.config.EXT_REGISTRY;
   }
@@ -258,5 +281,6 @@ export class ExtensionDeployService {
     await this.audit.record({ orgId: row.orgId, actorId: 'system:deploy' }, { action: status === 'LIVE' ? 'extension.deployed' : status === 'REMOVED' ? 'extension.undeployed' : 'extension.deploy_failed', targetType: 'extension', targetId: id, after: { tag: row.tag } });
     if (status === 'FAILED') orgLog.error(row.orgId, 'extensions', `Deployment failed${row.tag ? ` (version ${row.tag})` : ''}: ${message}`, { deploy: id });
     else orgLog.info(row.orgId, 'extensions', status === 'LIVE' ? `Version ${row.tag} is running` : 'The extension was removed', { deploy: id });
+    for (const listener of this.finished) await listener(id).catch((e: Error) => this.logger.warn(`after deployment ${id}: ${e.message}`));
   }
 }
