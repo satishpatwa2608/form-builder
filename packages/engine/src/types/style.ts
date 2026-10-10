@@ -36,6 +36,8 @@ export interface FormStyle {
   props: StyleProps;
 }
 
+export type Corners = 'square' | 'rounded' | 'pill';
+export type Spacing = 'compact' | 'comfortable' | 'roomy';
 export type FontFamily = 'default' | 'serif' | 'rounded' | 'mono';
 
 /** Whole-form look: brand colour, font, logo, and an optional master style for the form body. */
@@ -44,6 +46,12 @@ export interface FormTheme {
   primaryColor?: string;
   backgroundColor?: string;
   fontFamily?: FontFamily;
+  /** The colour of a mistake: the message under a question, and the edge of its box. */
+  errorColor?: string;
+  /** How round boxes and buttons are. Left out: the product's own. */
+  corners?: Corners;
+  /** How much room there is between questions. Left out: the product's own. */
+  spacing?: Spacing;
   /** https:// or site-relative image URL shown above the title. */
   logoUrl?: string;
   styleId?: string;

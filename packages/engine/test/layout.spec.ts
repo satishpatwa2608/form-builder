@@ -89,6 +89,19 @@ describe('style CSS', () => {
     expect(css).toContain('.scope .fps-box [data-slot="form-label"],.scope .fps-box label{color:#123456}');
   });
 
+  it('a theme sets the colour of mistakes, the corners and the room between questions from fixed choices', () => {
+    const css = buildFormCss('.scope', { errorColor: '#b91c1c', corners: 'pill', spacing: 'roomy' }, []);
+    expect(css).toContain('--destructive:#b91c1c');
+    expect(css).toContain('--radius:22px');
+    expect(css).toContain('.scope .fp-grid{gap:34px 22px}');
+    // On a phone, roomy gives way: there is no room to spare.
+    expect(css).toContain('@media (max-width:640px){.scope .fp-grid{gap:18px 12px}}');
+    // Anything that is not one of the choices, or not a colour, is left out, not written into the page.
+    const evil = buildFormCss('.scope', { errorColor: 'red;}body{display:none', corners: '0;position:fixed' as never, spacing: 'x' as never }, []);
+    expect(evil).toBe('');
+    expect(buildFormCss('.scope', {}, [])).toBe('');
+  });
+
   it('drops anything that is not a valid value - no CSS injection', () => {
     const evil: FormStyle = {
       id: 'x;}body{display:none',

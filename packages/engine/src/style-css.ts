@@ -30,6 +30,14 @@ export const FONT_STACKS: Record<FontFamily, string | undefined> = {
   mono: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 };
 
+/** Fixed choices, never a number someone typed: a theme cannot produce a size the layout was not made for. */
+const CORNERS: Record<string, string> = { square: '2px', rounded: '10px', pill: '22px' };
+const SPACING: Record<string, { wide: string; phone: string }> = {
+  compact: { wide: '12px 12px', phone: '10px 10px' },
+  comfortable: { wide: '22px 16px', phone: '18px 12px' },
+  roomy: { wide: '34px 22px', phone: '18px 12px' },
+};
+
 /** Style ids become class names - keep them to a safe charset. */
 export const styleClass = (id: string) => `fps-${id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
@@ -83,16 +91,29 @@ export function buildFormCss(scope: string, theme: FormTheme | undefined, styles
   const background = isHexColor(theme?.backgroundColor) ? theme!.backgroundColor : undefined;
   const font = theme?.fontFamily ? FONT_STACKS[theme.fontFamily] : undefined;
   const formStyle = theme?.styleId ? styles.find((s) => s.id === theme.styleId) : undefined;
+  const mistake = isHexColor(theme?.errorColor) ? theme!.errorColor : undefined;
+  const corners = theme?.corners ? CORNERS[theme.corners] : undefined;
+  const gap = theme?.spacing ? SPACING[theme.spacing] : undefined;
   return [
     block(scope, [
       // Buttons, focus rings and checked states read these design-system variables.
       ['--primary', primary],
       ['--ring', primary],
+      // The message under a question and the edge of a box with a mistake in it read this one.
+      ['--destructive', mistake],
+      // The sizes worked out from it are fixed where they are declared (the page root), so each is set here too.
+      ['--radius', corners],
+      ['--radius-sm', corners],
+      ['--radius-md', corners],
+      ['--radius-lg', corners],
       ['font-family', font],
       ['background-color', background],
       ['padding', background ? 20 : undefined],
       ['border-radius', background ? 12 : undefined],
     ]),
+    // Room between questions; on a phone "roomy" is no roomier than "comfortable", since the screen has none to spare.
+    gap ? block(`${scope} .fp-grid`, [['gap', gap.wide]]) : '',
+    gap ? `@media (max-width:640px){${block(`${scope} .fp-grid`, [['gap', gap.phone]])}}` : '',
     ...styles.map((s) => styleToCss(scope, s)),
     // A form-level master style applies to the form root itself.
     formStyle ? propsToCss(scope, formStyle.props ?? {}) : '',

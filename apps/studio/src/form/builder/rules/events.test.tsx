@@ -275,3 +275,43 @@ describe('form settings — time zone', () => {
     expect(last(spy).timeZone).toBeUndefined();
   });
 });
+
+describe('form settings — look and feel', () => {
+  it('corners and room between questions are chosen from a list, and choosing the default takes the choice away', async () => {
+    const spy = vi.fn();
+    const user = userEvent.setup();
+    function Panel() {
+      const [def, setDef] = useState(form());
+      return (
+        <FormSettingsPanel
+          form={def}
+          readOnly={false}
+          codeLocked={false}
+          onChange={(changes) =>
+            setDef((f) => {
+              const next = { ...f, ...changes };
+              spy(next);
+              return next;
+            })
+          }
+        />
+      );
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <Panel />
+      </QueryClientProvider>,
+    );
+    const theme = () => (spy.mock.calls.at(-1)![0] as FormDefinition).theme;
+    await user.click(screen.getByRole('combobox', { name: 'Corners' }));
+    await user.click(await screen.findByRole('option', { name: 'Very round' }));
+    expect(theme()).toMatchObject({ corners: 'pill' });
+    await user.click(screen.getByRole('combobox', { name: 'Room between questions' }));
+    await user.click(await screen.findByRole('option', { name: 'Compact' }));
+    expect(theme()).toMatchObject({ corners: 'pill', spacing: 'compact' });
+    expect(validateFormDefinition(spy.mock.calls.at(-1)![0]).success).toBe(true);
+    await user.click(screen.getByRole('combobox', { name: 'Corners' }));
+    await user.click(await screen.findByRole('option', { name: 'Form Builder default' }));
+    expect(theme()?.corners).toBeUndefined();
+  });
+});

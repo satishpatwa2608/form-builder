@@ -333,6 +333,30 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           ]}
           onChange={(fontFamily) => setTheme({ fontFamily: fontFamily === 'default' ? undefined : fontFamily })}
         />
+        <ColorSetting label="Colour of mistakes" value={theme.errorColor} onChange={(errorColor) => setTheme({ errorColor })} hint="The message under a question that needs fixing, and the edge of its box." />
+        <SelectSetting
+          label="Corners"
+          value={theme.corners ?? 'default'}
+          options={[
+            { label: 'Form Builder default', value: 'default' },
+            { label: 'Square', value: 'square' },
+            { label: 'Rounded', value: 'rounded' },
+            { label: 'Very round', value: 'pill' },
+          ]}
+          onChange={(corners) => setTheme({ corners: corners === 'default' ? undefined : (corners as 'square' | 'rounded' | 'pill') })}
+        />
+        <SelectSetting
+          label="Room between questions"
+          value={theme.spacing ?? 'default'}
+          options={[
+            { label: 'Form Builder default', value: 'default' },
+            { label: 'Compact', value: 'compact' },
+            { label: 'Comfortable', value: 'comfortable' },
+            { label: 'Roomy', value: 'roomy' },
+          ]}
+          hint="On a phone, Roomy is shown as Comfortable."
+          onChange={(spacing) => setTheme({ spacing: spacing === 'default' ? undefined : (spacing as 'compact' | 'comfortable' | 'roomy') })}
+        />
         <TextSetting
           label="Logo URL"
           value={theme.logoUrl}

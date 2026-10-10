@@ -1031,6 +1031,9 @@ const formDefinitionShapeObject = z.object({
       primaryColor: z.string().optional(),
       backgroundColor: z.string().optional(),
       fontFamily: z.enum(['default', 'serif', 'rounded', 'mono']).optional(),
+      errorColor: z.string().optional(),
+      corners: z.enum(['square', 'rounded', 'pill']).optional(),
+      spacing: z.enum(['compact', 'comfortable', 'roomy']).optional(),
       logoUrl: z.string().optional(),
       styleId: z.string().optional(),
     })
