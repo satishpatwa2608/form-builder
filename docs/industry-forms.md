@@ -66,6 +66,7 @@ Open the form named, in the builder, to see how the feature is set up.
 |---|---|---|
 | **Steps with a last look before sending** | Every form | Form settings → Layout |
 | **Fragments** (a section kept once in the library, used by many forms) | *Address* in 22 forms; *Bank account* in the health claim, farm subsidy, scholarship and joining form | Administration → Fragments; on Bank account opening the same fragment is used twice (`permanent_…`, `mailing_…`) |
+| **A shared workflow** (one process kept in the library, used by several forms) | *Service request* runs Transfer of an electricity connection, Account transfer to another branch, and Birth, death or marriage certificate; each keeps its own reference numbers | Workflows; on the form, Workflow → "uses a shared workflow" |
 | **Calculations** | Loan application (instalment), Car insurance (insured value, premium), Vehicle registration (tax and fees) | Rules |
 | **Calculations inside each row, and totals across rows** | New electricity connection (load from appliances), Shipment booking (volumetric weight), Diagnostic test booking (each person's bill), Scholarship (family income) | The repeating section and Rules |
 | **A list that depends on another** | Car insurance (model by make), Job application (role by department), Warranty claim (fault by product), Telecom (plan by service) | Rules: "… for …" |
@@ -98,8 +99,7 @@ Open the form named, in the builder, to see how the feature is set up.
 | **Listed on the requests portal** | Trade licence, Certificates, Citizen complaint | Form settings |
 | **Signed-in people only** | Employee joining form, Expense claim, System access request | Form settings → Who can open it |
 
-Not shown, because each needs something of the organisation's own: a **shared
-workflow** used by several forms, **connectors** (lists and look-ups from your
+Not shown, because each needs something of the organisation's own: **connectors** (lists and look-ups from your
 systems, and sending responses to them), your **extension's** steps and
 checks, **webhooks** and automation tools, **translations**, your **styles**,
 and a team that alone sees a form's records. **Tasks** are not available in

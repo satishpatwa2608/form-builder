@@ -95,7 +95,13 @@ describe('expressions — functions', () => {
 
   it('dates', () => {
     expect(calc('today()')).toBe('2026-10-08');
-    expect(calc('now()')).toBe('2026-10-08T20:30:00.000Z');
+    // The clock where the form is filled in, written as a date-and-time field writes its answer.
+    expect(evaluateExpression('now()', {}, { now: new Date('2026-10-08T20:30:00Z'), timeZone: 'Asia/Kolkata' }).value).toBe('2026-10-09T02:00:00');
+    expect(evaluateExpression('now()', {}, { now: new Date('2026-10-08T20:30:00Z'), timeZone: 'America/Toronto' }).value).toBe('2026-10-08T16:30:00');
+    // So "10:30 this morning", typed in India at 11:00, is in the past on a server anywhere.
+    const at11inIndia = { now: new Date('2026-10-09T05:30:00Z'), timeZone: 'Asia/Kolkata' };
+    expect(evaluateExpression('admitted > now()', { admitted: '2026-10-09T10:30' }, at11inIndia).value).toBe(false);
+    expect(evaluateExpression('admitted > now()', { admitted: '2026-10-09T11:30' }, at11inIndia).value).toBe(true);
     expect(calc('dateAdd(d, 30)', { d: '2026-10-08' })).toBe('2026-11-07');
     expect(calc('dateAdd(d, 1, "months")', { d: '2026-01-31' })).toBe('2026-02-28');
     expect(calc('dateAdd(d, -1, "years")', { d: '2024-02-29' })).toBe('2023-02-28');

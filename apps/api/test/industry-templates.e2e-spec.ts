@@ -10,7 +10,7 @@ interface Template {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { INDUSTRY_TEMPLATES } = require(join(__dirname, '../../studio/src/templates/industry')) as { INDUSTRY_TEMPLATES: Template[] };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { TEMPLATE_FRAGMENTS } = require(join(__dirname, '../../studio/src/templates/industry/kit')) as { TEMPLATE_FRAGMENTS: { id: string; name: string; description: string; fields: unknown[] }[] };
+const { TEMPLATE_FRAGMENTS, TEMPLATE_WORKFLOWS } = require(join(__dirname, '../../studio/src/templates/industry/kit')) as { TEMPLATE_FRAGMENTS: { id: string; name: string; description: string; fields: unknown[] }[]; TEMPLATE_WORKFLOWS: ({ id: string } & Record<string, unknown>)[] };
 
 /** The long forms offered by industry (apps/studio/src/templates/industry), taken through the server as a customer would. */
 describe('Industry templates: created, published and served (e2e)', () => {
@@ -19,6 +19,7 @@ describe('Industry templates: created, published and served (e2e)', () => {
   let orgId: string;
   let folder: string;
   const library = new Map<string, string>();
+  const shared = (def: Record<string, unknown>) => (def.workflowRef ? { workflowRef: { ...(def.workflowRef as { id: string }), id: library.get((def.workflowRef as { id: string }).id)! } } : {});
   type Field = { name: string; props?: { fragment?: { id: string; prefix?: string } } };
   const linked = (fields: unknown[]) => (fields as Field[]).map((f) => (f.props?.fragment ? { ...f, props: { ...f.props, fragment: { ...f.props.fragment, id: library.get(f.props.fragment.id)! } } } : f));
 
@@ -30,12 +31,14 @@ describe('Industry templates: created, published and served (e2e)', () => {
     folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Industry' }).expect(201)).body[0].id;
     // The fragments the forms share go into the library first, as "New form" does.
     for (const f of TEMPLATE_FRAGMENTS) library.set(f.id, (await h.api().post('/fragments').set(h.bearer(owner)).send({ name: f.name, description: f.description, fields: f.fields }).expect(201)).body.id);
+    // And the workflow three of them share.
+    for (const { id, ...w } of TEMPLATE_WORKFLOWS) library.set(id, (await h.api().post('/workflows').set(h.bearer(owner)).send(w).expect(201)).body.id);
   });
   afterAll(async () => h?.close());
 
   it.each(INDUSTRY_TEMPLATES.map((t) => [t.key, t] as const))('%s: becomes a draft, is published as it comes, and is served to the people it is for', async (key, t) => {
     const code = key.toUpperCase().replace(/-/g, '_');
-    const made = await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: { businessId: '', ...t.definition, fields: linked(t.definition.fields), name: t.name, code } });
+    const made = await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: { businessId: '', ...t.definition, ...shared(t.definition), fields: linked(t.definition.fields), name: t.name, code } });
     expect([made.status, made.body.message]).toEqual([201, undefined]);
     const published = await h.api().post(`/forms/${made.body.definition.id}/publish`).set(h.bearer(owner));
     expect([published.status, published.status === 200 ? undefined : JSON.stringify(published.body.errors ?? published.body.issues ?? published.body.message)]).toEqual([200, undefined]);

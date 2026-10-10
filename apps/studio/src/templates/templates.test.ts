@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { validateFormDefinition } from '@fb/engine';
-import { FORM_TEMPLATES, linkTemplateFragments, prepareTemplate } from './index';
+import { FORM_TEMPLATES, linkTemplateFragments, linkTemplateWorkflow, prepareTemplate } from './index';
 
 const supplier = FORM_TEMPLATES.find((t) => t.key === 'supplier')!.definition;
 const usesHighlight = (def: Record<string, unknown>) => (def.fields as { styleId?: string }[]).some((f) => f.styleId === 'highlight-box');
@@ -79,6 +79,42 @@ describe('creating a form from a template', () => {
       const blank = FORM_TEMPLATES.find((t) => t.key === 'blank')!.definition;
       expect(await linkTemplateFragments(blank, { existing, add: async () => ({ id: 'x' }) })).toEqual({ definition: blank, linked: [] });
       expect(existing).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a form that runs on a workflow from the library', () => {
+    const transfer = FORM_TEMPLATES.find((t) => t.key === 'bank-account-transfer')!.definition;
+
+    it('three forms share "Service request", and carry no workflow of their own', () => {
+      const sharing = FORM_TEMPLATES.filter((t) => (t.definition.workflowRef as { id?: string } | undefined)?.id === 'tpl-service-request');
+      expect(sharing.map((t) => t.key).sort()).toEqual(['bank-account-transfer', 'energy-connection-transfer', 'gov-certificate']);
+      for (const t of sharing) expect(t.definition.workflow, t.key).toBeUndefined();
+    });
+
+    it('the workflow is added to a library that lacks it, and the form points at it, keeping its own reference numbers', async () => {
+      const add = vi.fn(async (w: Record<string, unknown>) => ({ id: `lib-${String(w.name)}` }));
+      const { definition, shared } = await linkTemplateWorkflow(transfer, { existing: async () => [], add });
+      expect(add).toHaveBeenCalledTimes(1);
+      expect(add.mock.calls[0]![0]).toMatchObject({ name: 'Service request', fields: [{ name: 'email', type: 'EMAIL' }] });
+      expect(add.mock.calls[0]![0]).not.toHaveProperty('id');
+      expect(shared).toBe('Service request');
+      expect(definition.workflowRef).toEqual({ id: 'lib-Service request', refPrefix: 'AT' });
+    });
+
+    it('the one already in the library is used', async () => {
+      const add = vi.fn(async () => ({ id: 'new' }));
+      const { definition } = await linkTemplateWorkflow(transfer, { existing: async () => [{ id: 'theirs', name: 'Service request' }], add });
+      expect(add).not.toHaveBeenCalled();
+      expect((definition.workflowRef as { id: string }).id).toBe('theirs');
+    });
+
+    it('when the library cannot be changed, the form is given the workflow as its own and still works', async () => {
+      const { definition, shared } = await linkTemplateWorkflow(transfer, { existing: async () => [], add: async () => Promise.reject(new Error('Forbidden')) });
+      expect(shared).toBeNull();
+      expect(definition.workflowRef).toBeUndefined();
+      expect((definition.workflow as { refPrefix: string; statuses: unknown[] }).refPrefix).toBe('AT');
+      expect((definition.workflow as { statuses: unknown[] }).statuses).toHaveLength(5);
+      expect((definition.automations as unknown[]).length).toBe(3);
     });
   });
 });

@@ -222,3 +222,34 @@ export function make(
     },
   };
 }
+
+/**
+ * A workflow kept once in the organisation's library and used by several forms. A form names it instead of
+ * building its own; when the form is published the workflow is copied into that version. "New form" adds it to
+ * the library the first time a form needs it.
+ */
+export const TEMPLATE_WORKFLOWS = [
+  {
+    id: 'tpl-service-request',
+    name: 'Service request',
+    description: 'A request someone sends in and a desk completes: received, in hand, waiting for the person, done or declined. Used as it is by several forms.',
+    // What it reads from whichever form uses it.
+    fields: [{ name: 'email', label: "The requester's email", type: 'EMAIL' }],
+    workflow: flow(
+      'SR',
+      [st('RECEIVED', 'Received', 'OPEN', 8), st('IN_HAND', 'In hand', 'IN_PROGRESS', 24), st('WAITING', 'Waiting for the requester', 'IN_PROGRESS'), st('COMPLETED', 'Completed', 'DONE'), st('DECLINED', 'Declined', 'DONE')],
+      [
+        act('start', 'Start work', ['RECEIVED', 'WAITING'], 'IN_HAND'),
+        act('ask', 'Ask the requester', ['RECEIVED', 'IN_HAND'], 'WAITING', { requireComment: true }),
+        act('complete', 'Complete', ['IN_HAND'], 'COMPLETED'),
+        act('decline', 'Decline', ['RECEIVED', 'IN_HAND'], 'DECLINED', { requireComment: true }),
+      ],
+      { contactEmailField: 'email', requestInfoStatus: 'WAITING', reopen: { to: 'IN_HAND', withinDays: 15 }, sla: { calendar: 'WORKING', responseHours: 8, resolutionHours: 40, pauseIn: ['WAITING'], warnAtPercent: 80 } },
+    ),
+    automations: [
+      { id: 'sr_received', name: 'Tell the requester we have it', enabled: true, when: 'SUBMITTED', actions: [{ type: 'EMAIL', to: [{ kind: 'FIELD', field: 'email' }], subject: 'We have your request', body: 'Thank you. Your request has reached us and you will hear from us when it is done.' }] },
+      { id: 'sr_done', name: 'Tell the requester it is done', enabled: true, when: 'STATUS_CHANGED', toStatus: 'COMPLETED', actions: [{ type: 'EMAIL', to: [{ kind: 'FIELD', field: 'email' }], subject: 'Your request is complete', body: 'Your request has been completed. Reply within 15 days if anything is not right and we will look again.' }] },
+      { id: 'sr_late', name: 'Raise a late request', enabled: true, when: 'SLA_BREACHED', sla: 'RESOLUTION', actions: [{ type: 'NOTIFY', to: [{ kind: 'MANAGER' }], message: 'A service request has passed its service time.' }] },
+    ],
+  },
+];

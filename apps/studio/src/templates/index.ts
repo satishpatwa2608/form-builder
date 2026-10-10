@@ -3,7 +3,8 @@ import plantIssueReport from './plant-issue-report.json';
 import supplierRegistration from './supplier-registration.json';
 import { FORM_TEMPLATES as PROCESS_TEMPLATES } from '../form/builder/templates';
 import { INDUSTRY_TEMPLATES } from './industry';
-import { TEMPLATE_FRAGMENTS } from './industry/kit';
+import { resolveSharedWorkflow, type SharedWorkflow } from '@fb/engine';
+import { TEMPLATE_FRAGMENTS, TEMPLATE_WORKFLOWS } from './industry/kit';
 
 /** Starting points for "New form" until the visual builder (and its process templates) is ported. */
 export interface FormTemplate {
@@ -143,4 +144,29 @@ export async function linkTemplateFragments(definition: Record<string, unknown>,
     }
   }
   return { definition: { ...definition, fields: fields.map((f) => (f.props?.fragment?.id && real.has(f.props.fragment.id) ? { ...f, props: { ...f.props, fragment: { ...f.props.fragment, id: real.get(f.props.fragment.id)! } } } : f)) }, linked };
+}
+
+interface WorkflowLibrary {
+  existing: () => Promise<{ id: string; name: string }[]>;
+  add: (workflow: Record<string, unknown>) => Promise<{ id: string }>;
+}
+
+/**
+ * A template can run on a workflow from the library ("Service request") instead of one of its own. Before the
+ * form is created that workflow is found in the organisation's library by name, or added to it, and the form
+ * is pointed at it. Where the library cannot be changed the workflow is written into the form itself, so the
+ * form still works: it is then the form's own, and no longer shared.
+ */
+export async function linkTemplateWorkflow(definition: Record<string, unknown>, library: WorkflowLibrary): Promise<{ definition: Record<string, unknown>; shared: string | null }> {
+  const ref = definition.workflowRef as { id: string; refPrefix?: string } | undefined;
+  const ours = ref && TEMPLATE_WORKFLOWS.find((w) => w.id === ref.id);
+  if (!ref || !ours) return { definition, shared: null };
+  try {
+    const { id: _id, ...body } = ours;
+    const found = (await library.existing()).find((w) => w.name === ours.name) ?? (await library.add(body));
+    return { definition: { ...definition, workflowRef: { ...ref, id: found.id } }, shared: ours.name };
+  } catch {
+    const { workflowRef: _ref, ...own } = resolveSharedWorkflow(definition as never, ours as unknown as SharedWorkflow).definition as unknown as Record<string, unknown>;
+    return { definition: own, shared: null };
+  }
 }

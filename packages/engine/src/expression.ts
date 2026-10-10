@@ -341,6 +341,24 @@ function today(ctx: SystemContext): string {
   }
 }
 
+/**
+ * The time on the clock where the form is being filled in, written the way a date-and-time field writes its
+ * answer (no zone). A person who types "10:30" means 10:30 where they are: compared with this, on their own
+ * device or on a server in another zone, it comes out the same. Without `ctx.timeZone` it is this machine's clock.
+ */
+function wallClock(ctx: SystemContext): string {
+  const now = ctx.now ?? new Date();
+  if (ctx.timeZone) {
+    try {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: ctx.timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(now).map((p) => [p.type, p.value]));
+      return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+    } catch {
+      /* an unknown zone: this machine's clock */
+    }
+  }
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+
 function addMonths(time: number, months: number): number {
   const d = new Date(time);
   const day = d.getUTCDate();
@@ -444,7 +462,7 @@ const FUNCTIONS: Record<string, ExprFunction> = {
   endsWith: { min: 2, max: 2, group: 'Text', help: 'endsWith(text, part)', run: ([v, p]) => toText(v).toLowerCase().endsWith(toText(p).toLowerCase()) },
 
   today: { min: 0, max: 0, group: 'Date', help: "today() is today's date", run: (_a, ctx) => today(ctx) },
-  now: { min: 0, max: 0, group: 'Date', help: 'now() is the current date and time', run: (_a, ctx) => (ctx.now ?? new Date()).toISOString() },
+  now: { min: 0, max: 0, group: 'Date', help: 'now() is the current date and time', run: (_a, ctx) => wallClock(ctx) },
   dateAdd: { min: 2, max: 3, group: 'Date', help: 'dateAdd(date, amount, "days") moves a date; units: minutes, hours, days, weeks, months, years', run: ([d, n, u]) => dateAdd(d, n, u) },
   dateDiff: { min: 2, max: 3, group: 'Date', help: 'dateDiff(from, to, "days") is the whole units between two dates', run: ([a, b, u]) => dateDiff(a, b, u) },
   year: { min: 1, max: 1, group: 'Date', help: 'year(date)', run: ([d]) => new Date(toTime(d)).getUTCFullYear() },

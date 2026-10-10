@@ -172,3 +172,13 @@ export function withAfterSending(t: IndustryTemplate): IndustryTemplate {
   };
   return { ...t, definition: { ...t.definition, ...(workflow ? { workflow } : {}), automations: [...(def.automations ?? []), ...(extra.automations ?? [])] } };
 }
+
+/** Forms that run on the library's "Service request" workflow instead of one of their own, each with its own reference numbers. */
+const ON_SERVICE_REQUEST: Record<string, string> = { 'energy-connection-transfer': 'CT', 'bank-account-transfer': 'AT', 'gov-certificate': 'CRT' };
+
+export function withSharedWorkflow(t: IndustryTemplate): IndustryTemplate {
+  const refPrefix = ON_SERVICE_REQUEST[t.key];
+  if (!refPrefix) return t;
+  const { workflow: _own, automations: _steps, ...rest } = t.definition;
+  return { ...t, setup: [...t.setup, 'This form uses the shared workflow "Service request" (Workflows): change it there and every form on it follows at its next publish.'], definition: { ...rest, workflowRef: { id: 'tpl-service-request', refPrefix } } };
+}

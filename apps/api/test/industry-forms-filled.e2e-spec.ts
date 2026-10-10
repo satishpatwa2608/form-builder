@@ -11,7 +11,7 @@ interface Template {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { INDUSTRY_TEMPLATES } = require(join(__dirname, '../../studio/src/templates/industry')) as { INDUSTRY_TEMPLATES: Template[] };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { TEMPLATE_FRAGMENTS } = require(join(__dirname, '../../studio/src/templates/industry/kit')) as { TEMPLATE_FRAGMENTS: { id: string; name: string; description: string; fields: unknown[] }[] };
+const { TEMPLATE_FRAGMENTS, TEMPLATE_WORKFLOWS } = require(join(__dirname, '../../studio/src/templates/industry/kit')) as { TEMPLATE_FRAGMENTS: { id: string; name: string; description: string; fields: unknown[] }[]; TEMPLATE_WORKFLOWS: ({ id: string } & Record<string, unknown>)[] };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 
 /** Every industry form, filled in from start to finish and sent, as a person would: nothing but the form itself to go on. */
@@ -30,13 +30,15 @@ describe('Industry templates: filled in and submitted (e2e)', () => {
     orgId = (await h.api().get('/auth/me').set(h.bearer(owner))).body.org.id;
     folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Industry' }).expect(201)).body[0].id;
     for (const f of TEMPLATE_FRAGMENTS) library.set(f.id, (await h.api().post('/fragments').set(h.bearer(owner)).send({ name: f.name, description: f.description, fields: f.fields }).expect(201)).body.id);
+    // And the workflow three of them share.
+    for (const { id, ...w } of TEMPLATE_WORKFLOWS) library.set(id, (await h.api().post('/workflows').set(h.bearer(owner)).send(w).expect(201)).body.id);
   });
   afterAll(async () => h?.close());
 
   it.each(INDUSTRY_TEMPLATES.map((t) => [t.key, t] as const))('%s: can be completed and sent, and becomes a record with a reference', async (key, t) => {
     const code = key.toUpperCase().replace(/-/g, '_');
     const fields = (t.definition.fields as Field[]).map((f) => (f.props?.fragment ? { ...f, props: { ...f.props, fragment: { ...f.props.fragment, id: library.get(f.props.fragment.id)! } } } : f));
-    const made = await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: { businessId: '', ...t.definition, fields, name: t.name, code } }).expect(201);
+    const made = await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: { businessId: '', ...t.definition, ...(t.definition.workflowRef ? { workflowRef: { ...(t.definition.workflowRef as { id: string }), id: library.get((t.definition.workflowRef as { id: string }).id)! } } : {}), fields, name: t.name, code } }).expect(201);
     await h.api().post(`/forms/${made.body.definition.id}/publish`).set(h.bearer(owner)).expect(200);
     const who = t.definition.access === 'AUTHENTICATED' ? h.bearer(owner) : {};
     const served = (await h.api().get(`/public/forms/${code}?org=${orgId}`).set(who).expect(200)).body;

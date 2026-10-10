@@ -8,7 +8,7 @@ import { Archive, Code2, Download, ExternalLink, FilePlus2, FolderInput, GitBran
 import { api, errorMessage } from '../lib/api';
 import { useAction, useFolders, useForms } from '../lib/queries';
 import type { Folder, FormStatus, FormSummary } from '../lib/types';
-import { codeFromName, FORM_TEMPLATES, INDUSTRIES, linkTemplateFragments, prepareTemplate } from '../templates';
+import { codeFromName, FORM_TEMPLATES, INDUSTRIES, linkTemplateFragments, linkTemplateWorkflow, prepareTemplate } from '../templates';
 import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 
 const STATUS: Record<FormStatus, { label: string; tone?: 'success' | 'warn' | 'accent' }> = {
@@ -105,7 +105,12 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
       existing: () => api<{ id: string; name: string }[]>('/fragments'),
       add: (fragment) => api<{ id: string }>('/fragments', { method: 'POST', body: fragment }),
     });
-    await api('/forms', { method: 'POST', body: { folderId, definition: { ...withFragments.definition, name: name.trim(), code: shownCode } } });
+    // A form that runs on a library workflow (Service request) is linked to the library's own.
+    const ready = await linkTemplateWorkflow(withFragments.definition, {
+      existing: () => api<{ id: string; name: string }[]>('/workflows'),
+      add: (workflow) => api<{ id: string }>('/workflows', { method: 'POST', body: workflow }),
+    });
+    await api('/forms', { method: 'POST', body: { folderId, definition: { ...ready.definition, name: name.trim(), code: shownCode } } });
     onDone(
       `"${name.trim()}" was created as a draft.${tpl.setup?.length ? ` Before publishing: ${tpl.setup.join(' ')}` : ''}${
         leftOut.length ? ` It was created without the style ${leftOut.map((n) => `"${n}"`).join(', ')}: only an admin can add styles to the library.` : ''
