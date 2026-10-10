@@ -132,12 +132,16 @@ export const SPECS: Record<ConnectorType, { label: string; blurb: string; fields
     blurb: 'Your own API: define resources as path + fields.',
     fields: [
       { name: 'baseUrl', label: 'Base URL', hint: 'https only' },
-      { name: 'auth', label: 'How it signs in', kind: 'select', options: ['none', 'bearer', 'apiKey', 'basic'], optionLabels: AUTH_LABELS },
+      { name: 'auth', label: 'How it signs in', kind: 'select', options: ['none', 'bearer', 'apiKey', 'basic', 'oauth'], optionLabels: AUTH_LABELS },
       { name: 'apiKeyHeader', label: 'API key header', optional: true, hint: 'e.g. X-API-Key', showFor: ['apiKey'] },
+      { name: 'tokenUrl', label: 'Token address', showFor: ['oauth'], hint: 'Where the API hands out tokens, e.g. https://login.example.com/oauth/token' },
+      { name: 'clientId', label: 'Client (application) ID', showFor: ['oauth'] },
+      { name: 'scope', label: 'Scope', optional: true, showFor: ['oauth'] },
       { name: 'resources', label: 'Resources (JSON)', kind: 'textarea', hint: '[{"key":"customers","path":"/customers","fields":["id","name"],"dataPath":"data"}]' },
       { name: 'token', label: 'Token / API key', secret: true, kind: 'password', showFor: ['bearer', 'apiKey'] },
       { name: 'username', label: 'User name', secret: true, showFor: ['basic'] },
       { name: 'password', label: 'Password', secret: true, kind: 'password', showFor: ['basic'] },
+      { name: 'clientSecret', label: 'Client secret', secret: true, kind: 'password', showFor: ['oauth'] },
     ],
   },
   odata: {

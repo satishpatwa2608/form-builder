@@ -142,3 +142,26 @@ export function mongoHosts(uri: string): string[] {
   const m = uri.match(/^mongodb(?:\+srv)?:\/\/(?:[^@/]*@)?([^/?]+)/);
   return m ? m[1]!.split(',').map((h) => h.replace(/:\d+$/, '')) : [];
 }
+
+const tokens = new Map<string, { token: string; until: number }>();
+
+/**
+ * An application signing in as itself (OAuth client credentials): the token it is given, kept until shortly
+ * before it runs out. The token address goes through the same network rules as the service itself.
+ */
+export async function applicationToken(ctx: ConnectorContext, s: { tokenUrl?: string; clientId?: string; scope?: string }): Promise<string> {
+  if (!s.tokenUrl || !s.clientId || !ctx.secrets.clientSecret) throw new ConnectorError('UNSUPPORTED', 'Sign-in needs a token address, a client ID and a client secret');
+  const key = `${ctx.connector.id}:${s.tokenUrl}:${s.clientId}:${ctx.secrets.clientSecret.length}`;
+  const hit = tokens.get(key);
+  if (hit && hit.until > Date.now()) return hit.token;
+  const r = await safeFetch(ctx, s.tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: s.clientId, client_secret: ctx.secrets.clientSecret, ...(s.scope ? { scope: s.scope } : {}) }).toString(),
+  });
+  const body = (r.json ?? {}) as { access_token?: string; expires_in?: number };
+  if (r.status !== 200 || !body.access_token) throw new ConnectorError('FAILED', 'Sign-in was refused: check the token address, client ID, secret and scope');
+  if (tokens.size > 200) tokens.clear();
+  tokens.set(key, { token: body.access_token, until: Date.now() + Math.max(30, (body.expires_in ?? 300) - 60) * 1000 });
+  return body.access_token;
+}

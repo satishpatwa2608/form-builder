@@ -66,7 +66,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 |---|---|---|
 | Databases, REST, OData, Salesforce, Dynamics, Azure storage | Data model 1, Data sources | Built |
 | SOAP services, Oracle, DB2 | Data sources | **Missing** |
-| REST that signs in with OAuth | Data sources | **Part.** REST offers none, bearer, API key and basic. OAuth exists on OData and Salesforce only |
+| REST that signs in with OAuth | Data sources | **Part.** Built (10 Oct): a REST connector can sign in as an application (OAuth client credentials: token address, client ID, secret, scope), as OData does. Signing in as a person (authorization code) is not there |
 | Show only chosen tables and services | Data model 1, 2 | Built |
 | One model over several sources, with "a customer has many orders" | Data model 2 | **Missing.** A look-up reads one row of one table |
 | Worked-out values kept on the model | Data model 2 | **Part.** Calculations are per form (a fragment can carry them) |

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ConnectorError } from '../registry';
 import type { ConnectorContext, ConnectorPlugin, Entity } from '../types';
-import { elapsed, filtersFrom, now, rowFrom, safeFetch, savedRow } from './shared';
+import { applicationToken, elapsed, filtersFrom, now, rowFrom, safeFetch, savedRow } from './shared';
 
 /**
  * A REST API. Each entity is a resource the connector manager defines:
@@ -19,13 +19,17 @@ const resourceSchema = z.object({
 
 const settingsSchema = z.object({
   baseUrl: z.string().url(),
-  auth: z.enum(['none', 'bearer', 'apiKey', 'basic']).default('none'),
+  auth: z.enum(['none', 'bearer', 'apiKey', 'basic', 'oauth']).default('none'),
   /** Header for apiKey auth, e.g. X-API-Key. */
   apiKeyHeader: z.string().regex(/^[A-Za-z0-9-]{1,60}$/).optional(),
+  /** oauth (an application signing in as itself): where it gets its token, who it is, and what for. */
+  tokenUrl: z.string().url().optional(),
+  clientId: z.string().max(200).optional(),
+  scope: z.string().max(500).optional(),
   resources: z.array(resourceSchema).max(50).default([]),
 });
 
-function authHeaders(ctx: ConnectorContext): Record<string, string> {
+async function authHeaders(ctx: ConnectorContext): Promise<Record<string, string>> {
   const s = ctx.connector.settings as unknown as z.infer<typeof settingsSchema>;
   switch (s.auth) {
     case 'bearer':
@@ -34,6 +38,8 @@ function authHeaders(ctx: ConnectorContext): Record<string, string> {
       return { [s.apiKeyHeader ?? 'X-API-Key']: ctx.secrets.token! };
     case 'basic':
       return { Authorization: `Basic ${Buffer.from(`${ctx.secrets.username}:${ctx.secrets.password}`).toString('base64')}` };
+    case 'oauth':
+      return { Authorization: `Bearer ${await applicationToken(ctx, s)}` };
     default:
       return {};
   }
@@ -63,13 +69,13 @@ export const restPlugin: ConnectorPlugin = {
   type: 'rest',
   label: 'REST API',
   settingsSchema: settingsSchema.extend({ resources: z.string().max(50_000).optional() }),
-  secretsSchema: z.object({ token: z.string().max(4000).optional(), username: z.string().max(200).optional(), password: z.string().max(500).optional() }),
+  secretsSchema: z.object({ token: z.string().max(4000).optional(), username: z.string().max(200).optional(), password: z.string().max(500).optional(), clientSecret: z.string().max(2000).optional() }),
   operations: ['list', 'get', 'lookup', 'insert', 'update'],
 
   async test(ctx) {
     const start = now();
     const s = resources(ctx);
-    const r = await safeFetch(ctx, s.baseUrl, { headers: authHeaders(ctx) });
+    const r = await safeFetch(ctx, s.baseUrl, { headers: await authHeaders(ctx) });
     return r.status < 500 ? { ok: true, message: `Reached ${new URL(s.baseUrl).hostname} (${r.status})`, latencyMs: elapsed(start) } : { ok: false, message: `The API answered ${r.status}` };
   },
 
@@ -84,7 +90,7 @@ export const restPlugin: ConnectorPlugin = {
     if (!res) throw new ConnectorError('UNSUPPORTED', 'Unknown resource');
     const keyField = req.entity.keyField ?? 'id';
     const url = (key?: unknown) => new URL(`${s.baseUrl.replace(/\/+$/, '')}${res.path.replace('{id}', key === undefined ? '' : encodeURIComponent(String(key)))}`);
-    const headers = { Accept: 'application/json', ...authHeaders(ctx) };
+    const headers = { Accept: 'application/json', ...(await authHeaders(ctx)) };
     switch (req.kind) {
       case 'list': {
         const u = url();

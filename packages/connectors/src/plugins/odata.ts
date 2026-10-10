@@ -2,7 +2,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { z } from 'zod';
 import { ConnectorError } from '../registry';
 import type { ConnectorContext, ConnectorPlugin, Entity, EntityField } from '../types';
-import { assertIdentifier, elapsed, filtersFrom, now, rowFrom, safeFetch, savedRow, type Primitive } from './shared';
+import { applicationToken, assertIdentifier, elapsed, filtersFrom, now, rowFrom, safeFetch, savedRow, type Primitive } from './shared';
 
 /**
  * An OData v4 service: Microsoft Dynamics 365 / Dataverse, SAP, and anything
@@ -29,8 +29,6 @@ function settingsOf(ctx: ConnectorContext): Settings {
 }
 const root = (s: Settings) => s.baseUrl.replace(/\/+$/, '');
 
-const tokens = new Map<string, { token: string; until: number }>();
-
 async function authHeaders(ctx: ConnectorContext, s: Settings): Promise<Record<string, string>> {
   switch (s.auth) {
     case 'bearer':
@@ -39,23 +37,8 @@ async function authHeaders(ctx: ConnectorContext, s: Settings): Promise<Record<s
       return { [s.apiKeyHeader ?? 'X-API-Key']: ctx.secrets.token! };
     case 'basic':
       return { Authorization: `Basic ${Buffer.from(`${ctx.secrets.username}:${ctx.secrets.password}`).toString('base64')}` };
-    case 'oauth': {
-      if (!s.tokenUrl || !s.clientId || !ctx.secrets.clientSecret) throw new ConnectorError('UNSUPPORTED', 'Sign-in needs a token address, a client ID and a client secret');
-      const key = `${ctx.connector.id}:${s.tokenUrl}:${s.clientId}:${ctx.secrets.clientSecret.length}`;
-      const hit = tokens.get(key);
-      if (hit && hit.until > Date.now()) return { Authorization: `Bearer ${hit.token}` };
-      // The token address goes through the same network rules as the service itself.
-      const r = await safeFetch(ctx, s.tokenUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-        body: new URLSearchParams({ grant_type: 'client_credentials', client_id: s.clientId, client_secret: ctx.secrets.clientSecret, ...(s.scope ? { scope: s.scope } : {}) }).toString(),
-      });
-      const body = (r.json ?? {}) as { access_token?: string; expires_in?: number };
-      if (r.status !== 200 || !body.access_token) throw new ConnectorError('FAILED', 'Sign-in was refused: check the token address, client ID, secret and scope');
-      if (tokens.size > 200) tokens.clear();
-      tokens.set(key, { token: body.access_token, until: Date.now() + Math.max(30, (body.expires_in ?? 300) - 60) * 1000 });
-      return { Authorization: `Bearer ${body.access_token}` };
-    }
+    case 'oauth':
+      return { Authorization: `Bearer ${await applicationToken(ctx, s)}` };
     default:
       return {};
   }
