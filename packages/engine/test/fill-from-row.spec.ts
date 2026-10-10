@@ -50,3 +50,52 @@ describe('what a public page is told about a form that opens with a record', () 
     expect((publicCopy({ name: 'R', code: 'R', fields } as never) as { openWith?: unknown }).openWith).toBeUndefined();
   });
 });
+
+describe('a text answer set out in a shape', () => {
+  it('is spaced the way the question asks, however it was typed', async () => {
+    const { withLetters, withSpacing } = await import('../src');
+    expect(withSpacing('fours', '123456789012')).toBe('1234 5678 9012');
+    expect(withSpacing('fours', ' 1234-5678  9012 ')).toBe('1234 5678 9012');
+    expect(withSpacing('phone', '9876543210')).toBe('98765 43210');
+    expect(withSpacing('threes', '1234567')).toBe('123 456 7');
+    // A shape of the designer's own: what is between the #s is put between the characters.
+    expect(withSpacing('##-####', 'ab1234')).toBe('ab-1234');
+    expect(withSpacing('##/##/####', '01022026')).toBe('01/02/2026');
+    // What does not fit is kept, after it; an unfinished answer is not padded out with separators.
+    expect(withSpacing('##-##', 'abcdefg')).toBe('ab-cdefg');
+    expect(withSpacing('##-##', 'ab')).toBe('ab');
+    expect(withSpacing('##-##', 'abc')).toBe('ab-c');
+    // Nothing to place, or no shape: as it was.
+    expect(withSpacing('fours', '   ')).toBe('   ');
+    expect(withSpacing(undefined, 'as typed')).toBe('as typed');
+    expect(withSpacing('no slots here', 'as typed')).toBe('as typed');
+    // Other scripts' letters and digits are placed like any others.
+    expect(withSpacing('## ##', 'कखगघ')).toBe('कख गघ');
+    // With letters too: capitals first, then the shape; and only for text questions.
+    expect(withLetters({ type: 'TEXT', props: { letters: 'upper', spacing: '##-## ####' } }, 'mh12ab1234')).toBe('MH-12 AB12' + '34');
+    expect(withLetters({ type: 'NUMBER', props: { spacing: 'fours' } }, '123456')).toBe('123456');
+  });
+});
+
+describe('rows that follow an answer', () => {
+  it('must be as many as the answer says, within the section\'s own limits, when the form is checked', async () => {
+    const { buildZodSchema } = await import('../src');
+    const def = {
+      name: 'Trip', code: 'TRIP', fields: [
+        { id: 'h', type: 'NUMBER', name: 'howMany', label: 'How many travellers' },
+        { id: 'r', type: 'REPEAT', name: 'travellers', label: 'Travellers', validation: { max: 3 }, props: { rowsFrom: 'howMany' } },
+        { id: 'n', type: 'TEXT', name: 'name', label: 'Name', parentId: 'r' },
+      ],
+    } as never;
+    const check = (values: object) => buildZodSchema(def).safeParse(values);
+    expect(check({ howMany: 2, travellers: [{ name: 'A' }, { name: 'B' }] }).success).toBe(true);
+    const short = check({ howMany: 3, travellers: [{ name: 'A' }] });
+    expect(short.success).toBe(false);
+    expect(short.error!.issues[0]).toMatchObject({ path: ['travellers'], message: 'This needs 3 rows, to match the answer it follows' });
+    expect(check({ howMany: 1, travellers: [{ name: 'A' }, { name: 'B' }] }).success).toBe(false);
+    // More than the section allows is held to what it allows.
+    expect(check({ howMany: 9, travellers: [{ name: 'A' }, { name: 'B' }, { name: 'C' }] }).success).toBe(true);
+    // No answer to follow yet: nothing to insist on.
+    expect(check({ travellers: [{ name: 'A' }] }).success).toBe(true);
+  });
+});

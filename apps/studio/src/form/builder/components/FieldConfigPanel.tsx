@@ -495,6 +495,34 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns, canMana
           }}
         />
       )}
+      {field.type === 'TEXT' && (
+        <>
+          <SelectSetting
+            label="Spacing"
+            value={typeof field.props?.spacing !== 'string' ? 'none' : ['fours', 'threes', 'phone'].includes(field.props.spacing) ? (field.props.spacing as string) : 'own'}
+            options={[
+              { label: 'As typed', value: 'none' },
+              { label: 'In fours: 1234 5678 9012', value: 'fours' },
+              { label: 'In threes: 123 456 789', value: 'threes' },
+              { label: 'Like a phone number: 98765 43210', value: 'phone' },
+              { label: 'A shape of our own', value: 'own' },
+            ]}
+            hint="However it is typed, the answer is set out this way as the person leaves the box, and kept that way."
+            onChange={(spacing) => {
+              const { spacing: _was, ...rest } = field.props ?? {};
+              onChange({ props: spacing === 'none' ? (Object.keys(rest).length ? rest : undefined) : { ...rest, spacing: spacing === 'own' ? '##-####' : spacing } });
+            }}
+          />
+          {typeof field.props?.spacing === 'string' && !['fours', 'threes', 'phone'].includes(field.props.spacing) && (
+            <TextSetting
+              label="The shape"
+              value={field.props.spacing as string}
+              hint="Put # for each letter or digit, and whatever goes between them as itself: ##-#### gives AB-1234."
+              onChange={(shape) => onChange({ props: { ...field.props, spacing: shape.slice(0, 60) } })}
+            />
+          )}
+        </>
+      )}
       {isValueField(field) && !SENSITIVE_NOT_FOR.has(field.type) && (
         <SwitchSetting
           label="Sensitive"

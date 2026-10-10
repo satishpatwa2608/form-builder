@@ -148,6 +148,19 @@ function rowCountProblem(field: FormField, count: number, required: boolean, say
 }
 
 /**
+ * A section set to have "as many rows as the answer to" a number question: the browser keeps the two in step,
+ * and this insists on it, so a response sent any other way cannot say three people and describe five.
+ */
+function rowsFollowProblem(field: FormField, count: number, values: FormValues, required: boolean, say: Say): string | null {
+  const follows = typeof field.props?.rowsFrom === 'string' ? field.props.rowsFrom : '';
+  const asked = follows ? values[follows] : undefined;
+  if (typeof asked !== 'number' || !Number.isFinite(asked)) return null;
+  const { min, max } = field.validation ?? {};
+  const wanted = Math.min(Math.max(Math.round(asked), Math.max(min ?? 0, required ? 1 : 0)), Math.min(max ?? MAX_ROWS, MAX_ROWS));
+  return count === wanted ? null : say('rowsMatch', { n: wanted });
+}
+
+/**
  * FormDefinition -> Zod schema for React Hook Form.
  *
  * Visibility and conditional-required depend on live values, so they can't be
@@ -204,7 +217,7 @@ export function buildZodSchema(def: Pick<FormDefinition, 'fields' | 'rules'> & P
       const state = states.get(field.name);
       if (!state?.visible) continue;
       const rows = rowsOf(values[field.name]);
-      const problem = rowCountProblem(field, rows.length, state.required, say) ?? errors.get(field.name);
+      const problem = rowCountProblem(field, rows.length, state.required, say) ?? rowsFollowProblem(field, rows.length, values, state.required, say) ?? errors.get(field.name);
       if (problem) issues.addIssue({ code: 'custom', path: [field.name], message: problem });
       const children = shape.repeats.find((r) => r.field === field)?.valueChildren ?? [];
       rows.forEach((row, i) => {

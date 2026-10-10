@@ -66,8 +66,41 @@ export type Letters = 'upper' | 'lower' | 'title';
 export function withLetters(field: { type: string; props?: Record<string, unknown> }, value: unknown): unknown {
   const how = field.props?.letters;
   if (field.type !== 'TEXT' || typeof value !== 'string' || !value) return value;
-  if (how === 'upper') return value.toLocaleUpperCase();
-  if (how === 'lower') return value.toLocaleLowerCase();
-  if (how === 'title') return value.toLocaleLowerCase().replace(/(^|[\s\-'’.])(\p{L})/gu, (_, gap: string, letter: string) => gap + letter.toLocaleUpperCase());
-  return value;
+  const cased =
+    how === 'upper'
+      ? value.toLocaleUpperCase()
+      : how === 'lower'
+        ? value.toLocaleLowerCase()
+        : how === 'title'
+          ? value.toLocaleLowerCase().replace(/(^|[\s\-'’.])(\p{L})/gu, (_, gap: string, letter: string) => gap + letter.toLocaleUpperCase())
+          : value;
+  return withSpacing(field.props?.spacing, cased);
+}
+
+/** The spacings offered by name; any other is a shape of the designer's own. */
+export const SPACINGS: Record<string, string> = {
+  fours: '#### #### #### #### ####',
+  threes: '### ### ### ### ### ###',
+  phone: '##### #####',
+};
+
+/**
+ * A text answer set out in a shape, however it was typed: `#` stands for each letter or digit the person gave, and
+ * anything else in the shape (a space, a dash, a stroke) is put between them. "1234 5678 9012" for an ID typed
+ * without spaces, "AB-1234" for a code. What does not fit the shape is kept, after it. A shape with no `#`, or an
+ * answer with nothing in it to place, changes nothing.
+ */
+export function withSpacing(spacing: unknown, value: string): string {
+  const shape = typeof spacing === 'string' ? (SPACINGS[spacing] ?? spacing) : '';
+  if (!shape.includes('#') || shape.length > 60) return value;
+  const given = [...value].filter((ch) => /[\p{L}\p{N}]/u.test(ch));
+  if (!given.length) return value;
+  let out = '';
+  let used = 0;
+  for (const slot of shape) {
+    if (used >= given.length) break;
+    out += slot === '#' ? given[used++] : slot;
+  }
+  // The shape ran out first: the rest follows as it is.
+  return (out + given.slice(used).join('')).trim();
 }

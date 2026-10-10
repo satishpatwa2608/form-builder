@@ -83,7 +83,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | AEM capability | Where | Form Builder |
 |---|---|---|
 | Show, hide, enable, set a value, validate, otherwise | Rule editor | Built |
-| Clear a value; add or remove a row; set focus; display formats | Rule editor | **Part.** Built (10 Oct): "Clear the answer to" in the rules dialog. Rows can follow an answer (a repeating section's setting, "As many as the answer to..."; the browser does this, the server does not insist on the count). The cursor can be put in a question from an event. A text question can keep its letters as CAPITALS, small letters or a name's capitals ("Letters" in its settings); patterns such as a phone number's spacing are not there |
+| Clear a value; add or remove a row; set focus; display formats | Rule editor | Built (10 Oct). "Clear the answer to" in the rules dialog. Rows can follow an answer (a repeating section's setting, "As many as the answer to..."), and the server insists on the count too. The cursor can be put in a question from an event. A text question can keep its letters as CAPITALS, small letters or a name's capitals ("Letters"), and its spacing in a shape ("Spacing": in fours, in threes, like a phone number, or a shape of the designer's own such as ##-####) |
 | Save, submit or reset the form from a rule | Rule editor | Built (10 Oct). A button can "Send the form", "Start the form again" or "Save the answers for later", and a button, a changed answer or the form opening can "Put the cursor in" a question |
 | Functions written by the customer for rules | Rule editor | Not for us in the builder: authoring stays dropdowns and plain words. Extensions cover checks |
 | Answers save themselves as people go | Drafts and portal | Built (10 Oct): the form setting "Save answers as people go"; kept every 30 seconds and found again on the same device, with "Start again". Off unless the form's owner turns it on |
@@ -121,7 +121,6 @@ Everything on the list that could be built has been built, each with its tests.
 - SOAP's old rpc/encoded style is refused in words, not spoken.
 - A table's rule is turned into a form's limit only when it is about one column and made of plain comparisons. Anything else gives no limit (the database still refuses a wrong value when it is saved).
 - Worked-out values are kept on the form (a fragment can carry them), not on the data source.
-- A text question can keep its letters as capitals, small letters or a name's capitals; spacing patterns (a phone number's) are not there. Rows that follow an answer are kept in step by the browser.
 
 **Not built, on purpose**: Adobe's marketing products, customer-written functions in rules, rebuilding the inbox in code, print-room output (print streams, watched folders) and machine translation.
 
