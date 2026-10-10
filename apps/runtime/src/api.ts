@@ -31,12 +31,12 @@ export class PublicApiError extends Error {
   }
 }
 
-export async function publicApi<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function publicApi<T>(path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}/public${path}`, {
       method: init.method ?? 'GET',
-      headers: { ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });
   } catch {

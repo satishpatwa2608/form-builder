@@ -1,3 +1,4 @@
+import { storedPortalSession, storePortalSession } from './portal-session';
 import { useCallback, useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { API_URL, publicApi } from './api';
 
@@ -15,6 +16,8 @@ interface Front {
 }
 interface Mine {
   email: string;
+  /** Forms started while signed in here and not sent yet. */
+  unfinished?: { id: string; form: string; code: string; savedAt: string; expiresAt: string }[];
   requests: { reference: string; form: string; sentAt: string; status: string; open: boolean; updatedAt: string }[];
 }
 interface Branding {
@@ -24,25 +27,9 @@ interface Branding {
   poweredBy: boolean;
 }
 
-const KEY = (org: string) => `fb-portal-${org}`;
 const day = (at: string) => new Date(at).toLocaleDateString(undefined, { dateStyle: 'medium' });
-
-/** The session lives for this browser tab only; closing the tab signs the person out. */
-const stored = (org: string) => {
-  try {
-    return window.sessionStorage.getItem(KEY(org)) ?? undefined;
-  } catch {
-    return undefined;
-  }
-};
-const store = (org: string, session?: string) => {
-  try {
-    if (session) window.sessionStorage.setItem(KEY(org), session);
-    else window.sessionStorage.removeItem(KEY(org));
-  } catch {
-    // Storage switched off: the person stays signed in until they leave the page.
-  }
-};
+const stored = storedPortalSession;
+const store = storePortalSession;
 
 async function portalApi<T>(org: string, path: string, session: string, method = 'GET'): Promise<T> {
   const res = await fetch(`${API_URL}/public/portal/${org}${path}`, { method, headers: { Authorization: `Portal ${session}` } });
@@ -127,6 +114,27 @@ export default function PortalPage({ org: orgFromPath }: { org: string }) {
     }
   }, [org, load]);
 
+  /** Opens the form with the answers saved so far. The way in is made now and works for this one opening. */
+  const carryOn = async (id: string) => {
+    if (!org || !session) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const { code, token } = await portalApi<{ code: string; token: string }>(org, `/drafts/${id}/continue`, session, 'POST');
+      window.location.assign(`${orgFromPath ? `/f/${org}/${code}` : `/${code}`}?resume=${encodeURIComponent(token)}`);
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  };
+  const discard = async (id: string) => {
+    if (!org || !session) return;
+    setBusy(true);
+    await portalApi(org, `/drafts/${id}`, session, 'DELETE').catch(() => undefined);
+    await load(org, session);
+    setBusy(false);
+  };
+
   const ask = async (e: FormEvent) => {
     e.preventDefault();
     if (!org) return;
@@ -184,6 +192,28 @@ export default function PortalPage({ org: orgFromPath }: { org: string }) {
                   Sign out
                 </button>
               </p>
+              {(mine.unfinished ?? []).length > 0 && (
+                <div className="rt-portal__unfinished" role="group" aria-label="Unfinished">
+                  <h3 className="rt-portal__sub">Started and not sent</h3>
+                  <ul>
+                    {mine.unfinished!.map((d) => (
+                      <li key={d.id}>
+                        <span>
+                          <strong>{d.form}</strong> <span className="rt-soft">saved {day(d.savedAt)}, kept until {day(d.expiresAt)}</span>
+                        </span>
+                        <span className="rt-portal__row">
+                          <button type="button" className="rt-sign__primary" disabled={busy} onClick={() => void carryOn(d.id)}>
+                            Continue
+                          </button>
+                          <button type="button" className="rt-save__btn" disabled={busy} onClick={() => void discard(d.id)}>
+                            Discard
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {mine.requests.length === 0 ? (
                 <p>Nothing has been sent from this address yet.</p>
               ) : (

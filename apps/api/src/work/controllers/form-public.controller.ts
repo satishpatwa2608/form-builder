@@ -16,6 +16,7 @@ import { FormUploadService } from '../services/form-upload.service';
 import { FormThrottlerGuard } from './form-throttler.guard';
 import { PlansService } from '../../plans/plans.service';
 import { DraftsService } from '../../drafts/drafts.service';
+import { PortalService } from '../../portal/portal.service';
 
 /**
  * Endpoints the public form page uses. No AuthGuard: anonymous callers are
@@ -36,6 +37,7 @@ export class FormPublicController {
     private readonly definitions: FormDefinitionService,
     private readonly plans: PlansService,
     private readonly drafts: DraftsService,
+    private readonly portal: PortalService,
   ) {}
 
   // Static routes first.
@@ -143,13 +145,15 @@ export class FormPublicController {
   /** Save and continue later: returns a token the respondent keeps (it's the only way back in). */
   @Post('forms/:code/drafts')
   @Throttle({ default: THROTTLE.submit })
-  async saveDraft(@Query('org') org: string, @Param('code') code: string, @Body() body: Record<string, unknown>, @Headers('authorization') auth?: string) {
+  async saveDraft(@Query('org') org: string, @Param('code') code: string, @Body() body: Record<string, unknown>, @Headers('authorization') auth?: string, @Headers('x-portal-session') portalSession?: string) {
     const orgId = await this.context.resolveOrgId(org);
     const user = await this.context.optionalUser(auth);
     const def = await this.submissions.publishedFor(orgId, code, user);
     const token = typeof body?.token === 'string' ? body.token : undefined;
     if (def.saveForLater === false) throw new NotFoundException('This form cannot be saved for later');
-    return this.drafts.save(orgId, def, body?.values, token, user);
+    // Saved by someone signed in to the requests portal: it is theirs there too.
+    const email = portalSession ? await this.portal.emailOf(orgId, `Portal ${portalSession}`) : '';
+    return this.drafts.save(orgId, def, body?.values, token, user, email);
   }
 
   /** The token travels in the body, not the path, so it stays out of access logs. */

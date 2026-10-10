@@ -102,6 +102,41 @@ describe('the requests portal', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('forms started and not sent are listed with Continue and Discard; without any, the heading is not shown', async () => {
+    window.sessionStorage.setItem('fb-portal-org1', 'fbps_session');
+    answers['GET /public/portal/org1/requests'] = { body: MINE };
+    const first = render(<PortalPage org="org1" />);
+    expect(await screen.findByText('Signed in as ravi@customer.test.', { exact: false })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Unfinished' })).toBeNull();
+    first.unmount();
+
+    answers['GET /public/portal/org1/requests'] = { body: { ...MINE, unfinished: [{ id: 'd1', form: 'New laptop', code: 'LAPTOP', savedAt: '2026-10-09T10:00:00.000Z', expiresAt: '2026-11-08T10:00:00.000Z' }] } };
+    answers['DELETE /public/portal/org1/drafts/d1'] = { status: 204, body: {} };
+    answers['POST /public/portal/org1/drafts/d1/continue'] = { body: { code: 'LAPTOP', token: 'fbd_fresh' } };
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, href: window.location.href, hostname: window.location.hostname, assign });
+    render(<PortalPage org="org1" />);
+    const unfinished = await screen.findByRole('group', { name: 'Unfinished' });
+    expect(within(unfinished).getByText('New laptop')).toBeInTheDocument();
+
+    // Continue asks the server for a way in made now, and opens the form with it.
+    fireEvent.click(within(unfinished).getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/f/org1/LAPTOP?resume=fbd_fresh'));
+    expect(calls.find((c) => c.path.endsWith('/drafts/d1/continue'))).toMatchObject({ method: 'POST', auth: 'Portal fbps_session' });
+  });
+
+  it('Discard removes it on the server and reads the list again', async () => {
+    window.sessionStorage.setItem('fb-portal-org1', 'fbps_session');
+    answers['GET /public/portal/org1/requests'] = { body: { ...MINE, unfinished: [{ id: 'd1', form: 'New laptop', code: 'LAPTOP', savedAt: '2026-10-09T10:00:00.000Z', expiresAt: '2026-11-08T10:00:00.000Z' }] } };
+    answers['DELETE /public/portal/org1/drafts/d1'] = { status: 204, body: {} };
+    render(<PortalPage org="org1" />);
+    const unfinished = await screen.findByRole('group', { name: 'Unfinished' });
+    answers['GET /public/portal/org1/requests'] = { body: MINE };
+    fireEvent.click(within(unfinished).getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Unfinished' })).toBeNull());
+    expect(calls.some((c) => c.method === 'DELETE' && c.path.endsWith('/drafts/d1'))).toBe(true);
+  });
+
   it('an organisation without a portal says so', async () => {
     delete answers['GET /public/portal/org1'];
     render(<PortalPage org="org1" />);

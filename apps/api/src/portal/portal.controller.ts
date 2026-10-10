@@ -43,6 +43,20 @@ export class PortalController {
     await this.portal.close(await this.context.resolveOrgId(org), authorization);
   }
 
+  @Post('drafts/:id/continue')
+  @HttpCode(200)
+  @Throttle({ default: THROTTLE.submit })
+  async continueDraft(@Param('org') org: string, @Param('id') id: string, @Headers('authorization') authorization?: string) {
+    return this.portal.reopenDraft(await this.context.resolveOrgId(org), authorization, id);
+  }
+
+  @Delete('drafts/:id')
+  @HttpCode(204)
+  @Throttle({ default: THROTTLE.submit })
+  async discardDraft(@Param('org') org: string, @Param('id') id: string, @Headers('authorization') authorization?: string) {
+    await this.portal.discardDraft(await this.context.resolveOrgId(org), authorization, id);
+  }
+
   @Get('requests')
   @Throttle({ default: THROTTLE.read })
   async requests(@Param('org') org: string, @Headers('authorization') authorization?: string) {

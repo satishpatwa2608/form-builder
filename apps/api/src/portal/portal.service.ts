@@ -1,3 +1,4 @@
+import { DraftsService } from '../drafts/drafts.service';
 import { orgLog } from '../logs/org-log';
 import { maskEmail } from '../logs/org-log.service';
 import { ForbiddenException, HttpException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
@@ -42,6 +43,7 @@ export class PortalService {
     @InjectModel(PortalPass.name) private readonly passes: Model<PortalPassDocument>,
     private readonly definitions: FormDefinitionService,
     private readonly mail: OrgMailService,
+    private readonly drafts: DraftsService,
   ) {}
 
   private async org(orgId: string) {
@@ -120,6 +122,20 @@ export class PortalService {
     return pass;
   }
 
+  /** The address behind a portal session, or '' when there is none (or it has run out): for things that are better with it and fine without. */
+  async emailOf(orgId: string, header: string | undefined): Promise<string> {
+    return this.session(orgId, header).then((pass) => pass.email, () => '');
+  }
+
+  /** Carry on with, or throw away, one of this person's unfinished forms. */
+  async reopenDraft(orgId: string, header: string | undefined, id: string) {
+    return this.drafts.reopen(orgId, (await this.session(orgId, header)).email, id);
+  }
+
+  async discardDraft(orgId: string, header: string | undefined, id: string) {
+    await this.drafts.discardMine(orgId, (await this.session(orgId, header)).email, id);
+  }
+
   async close(orgId: string, header: string | undefined) {
     const pass = await this.session(orgId, header);
     await this.passes.deleteOne({ tokenHash: pass.tokenHash });
@@ -137,6 +153,10 @@ export class PortalService {
     const latest = await this.definitions.latestByCode(orgId);
     return {
       email: pass.email,
+      // Started and not sent. Only forms that are still live and still let people save.
+      unfinished: (await this.drafts.unfinished(orgId, pass.email))
+        .filter((d) => latest.get(d.code)?.status === 'PUBLISHED' && latest.get(d.code)?.saveForLater !== false)
+        .map((d) => ({ id: d.id, form: latest.get(d.code)!.name, code: d.code, savedAt: d.savedAt, expiresAt: d.expiresAt })),
       requests: rows.map((r) => {
         const def = latest.get(r.formCode);
         const tracked = !!def?.workflow?.enabled;

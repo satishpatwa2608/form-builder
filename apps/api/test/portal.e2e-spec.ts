@@ -174,4 +174,47 @@ describe('The requests portal (e2e)', () => {
     await h.api().patch('/org').set(h.bearer(owner)).send({ portal: { enabled: false } }).expect(200);
     await h.api().get(`/public/portal/${orgId}/requests`).set(open).expect(404);
   });
+  it('forms started while signed in are listed as unfinished, can be carried on or thrown away, and are nobody else\'s', async () => {
+    await h.api().patch('/org').set(h.bearer(owner)).send({ portal: { enabled: true } }).expect(200);
+    const meena = await signIn('meena@customer.test');
+    const session = meena.Authorization.replace('Portal ', '');
+    const save = (values: object, token?: string, portal?: string) =>
+      h.api().post(`/public/forms/LAPTOP/drafts?org=${orgId}`).set(portal ? { 'x-portal-session': portal } : {}).send({ values, token }).expect(201);
+    const first = (await save({ what: 'A dock' }, undefined, session)).body.token as string;
+    const second = (await save({ what: 'A dock and a screen' }, first, session)).body.token as string;
+    // Someone not signed in to the portal: theirs is found by its link only.
+    await save({ what: 'Nothing to do with her' });
+
+    const list = (await h.api().get(`/public/portal/${orgId}/requests`).set(meena).expect(200)).body;
+    expect(list.unfinished).toEqual([{ id: expect.any(String), form: 'LAPTOP request', code: 'LAPTOP', savedAt: expect.any(String), expiresAt: expect.any(String) }]);
+    // Never the answers, never the way in.
+    expect(JSON.stringify(list)).not.toMatch(/A dock|fbd_/);
+    const id = list.unfinished[0].id as string;
+
+    // Another requester sees none of it and cannot reach it by its id.
+    const ravi = await signIn('ravi2@customer.test');
+    expect((await h.api().get(`/public/portal/${orgId}/requests`).set(ravi).expect(200)).body.unfinished).toEqual([]);
+    await h.api().post(`/public/portal/${orgId}/drafts/${id}/continue`).set(ravi).expect(404);
+    await h.api().delete(`/public/portal/${orgId}/drafts/${id}`).set(ravi).expect(204);
+    await h.api().post(`/public/portal/${orgId}/drafts/${id}/continue`).expect(401);
+
+    // Continue: a new way in, which opens the answers; the one before stops working.
+    const again = (await h.api().post(`/public/portal/${orgId}/drafts/${id}/continue`).set(meena).expect(200)).body;
+    expect(again).toEqual({ code: 'LAPTOP', token: expect.stringMatching(/^fbd_/) });
+    expect((await h.api().post(`/public/forms/LAPTOP/drafts/load?org=${orgId}`).send({ token: again.token }).expect(200)).body.values).toEqual({ what: 'A dock and a screen' });
+    await h.api().post(`/public/forms/LAPTOP/drafts/load?org=${orgId}`).send({ token: second }).expect(404);
+
+    // A link someone planted cannot make their portal the owner of what another person saves next: saved on
+    // top of her draft by someone not signed in as her, the new copy is not hers.
+    const planted = (await h.api().post(`/public/portal/${orgId}/drafts/${id}/continue`).set(meena).expect(200)).body.token as string;
+    await save({ what: 'A stranger\'s private answer' }, planted);
+    expect((await h.api().get(`/public/portal/${orgId}/requests`).set(meena).expect(200)).body.unfinished).toEqual([]);
+    const mineAgain = (await save({ what: 'Hers again' }, undefined, session)).body.token as string;
+    const idAgain = (await h.api().get(`/public/portal/${orgId}/requests`).set(meena).expect(200)).body.unfinished[0].id as string;
+
+    // Discard: gone from the list and from the server.
+    await h.api().delete(`/public/portal/${orgId}/drafts/${idAgain}`).set(meena).expect(204);
+    expect((await h.api().get(`/public/portal/${orgId}/requests`).set(meena).expect(200)).body.unfinished).toEqual([]);
+    await h.api().post(`/public/forms/LAPTOP/drafts/load?org=${orgId}`).send({ token: mineAgain }).expect(404);
+  });
 });

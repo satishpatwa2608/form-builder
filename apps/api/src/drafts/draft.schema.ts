@@ -13,6 +13,11 @@ export class FormDraft {
   @Prop({ required: true }) code: string;
   /** Set for sign-in-only forms: only that person can resume. */
   @Prop({ type: String, default: '' }) userId: string;
+  /**
+   * Whose it is on the requests portal (lower-case), when it was saved by someone signed in there: the portal
+   * then lists it under "Unfinished". Empty for everyone else, who find it by their link or their device.
+   */
+  @Prop({ type: String, default: '' }) email: string;
   @Prop({ type: MongooseSchema.Types.Mixed, required: true }) values: Record<string, unknown>;
   @Prop({ required: true }) expiresAt: Date;
   updatedAt: Date;
@@ -20,3 +25,4 @@ export class FormDraft {
 export type FormDraftDocument = HydratedDocument<FormDraft>;
 export const FormDraftSchema = SchemaFactory.createForClass(FormDraft);
 FormDraftSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+FormDraftSchema.index({ orgId: 1, email: 1 });

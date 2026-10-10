@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createAutosave } from './autosave';
+import { storedPortalSession } from './portal-session';
 import type { FormDefinition, FormValues, SubmissionResult, SystemContext } from '@fb/engine';
 import { isRtl, languageName, languagesOf, localize, pickLanguage, uiText } from '@fb/engine';
 import { FormContainer } from '@form/runtime/FormContainer/FormContainer';
@@ -88,6 +89,12 @@ function Notice({ title, children }: { title: string; children?: ReactNode }) {
 
 type Session = Awaited<ReturnType<typeof trySession>>;
 
+/** Signed in to the requests portal in this tab: what is saved is listed there as theirs. */
+const asPortal = (org: string): Record<string, string> => {
+  const session = storedPortalSession(org);
+  return session ? { 'x-portal-session': session } : {};
+};
+
 export default function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const embed = params.get('embed') === '1';
@@ -137,7 +144,8 @@ export default function App() {
           const start = () =>
             createAutosave({
               key: `fb-draft:${target.org}:${target.code}`,
-              save: (v, token) => publicApi<{ token: string }>(draftUrl(target), { method: 'POST', body: { values: v, token } }),
+              // The first save takes the place of the draft this page was opened with (from the portal, or a link).
+              save: (v, token) => publicApi<{ token: string }>(draftUrl(target), { method: 'POST', body: { values: v, token: token ?? resumeToken }, headers: asPortal(target.org) }),
             });
           auto.current = start();
           const mine = auto.current.token();
@@ -216,6 +224,7 @@ export default function App() {
         method: 'POST',
         // Sending a token only retires it (the server always issues a new one), so the link's old draft goes too.
         body: { values: draftValues(state.definition, values.current), token: draft.token ?? resumeToken },
+        headers: asPortal(target.org),
       });
       const url = new URL(window.location.href);
       url.searchParams.set('resume', saved.token);
