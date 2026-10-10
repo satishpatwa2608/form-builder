@@ -1,6 +1,6 @@
 import type { EntityField } from '../types';
 
-export type CheckDialect = 'postgres' | 'mysql' | 'mssql';
+export type CheckDialect = 'postgres' | 'mysql' | 'mssql' | 'oracle' | 'db2';
 export type CheckLimits = Pick<EntityField, 'min' | 'max' | 'minLength' | 'maxLength' | 'pattern'>;
 
 /** A column as the check reader needs to know it. */

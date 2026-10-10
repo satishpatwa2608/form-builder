@@ -6,7 +6,7 @@ import { API_URL, api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 
-type ConnectorType = 'mongodb' | 'postgres' | 'mysql' | 'mssql' | 'supabase' | 'rest' | 'odata' | 'salesforce' | 'google-sheets' | 'excel' | 'microsoft-files' | 'azure-blob' | 'aws-s3' | 'aws-cloudwatch';
+type ConnectorType = 'mongodb' | 'postgres' | 'mysql' | 'mssql' | 'oracle' | 'db2' | 'supabase' | 'rest' | 'soap' | 'odata' | 'salesforce' | 'google-sheets' | 'excel' | 'microsoft-files' | 'azure-blob' | 'aws-s3' | 'aws-cloudwatch';
 type Op = 'list' | 'get' | 'lookup' | 'insert' | 'update' | 'upload' | 'log';
 
 interface ExposedEntity {
@@ -130,6 +130,32 @@ export const SPECS: Record<ConnectorType, { label: string; blurb: string; fields
       { name: 'password', label: 'Password', secret: true, kind: 'password' },
     ],
   },
+  oracle: {
+    label: 'Oracle Database',
+    blurb: 'Tables and views in Oracle Database, with parameterised queries only.',
+    fields: [
+      { name: 'host', label: 'Host' },
+      { name: 'port', label: 'Port', kind: 'number', optional: true, hint: 'Default: 1521' },
+      { name: 'database', label: 'Service name', hint: 'The service the database is reached by, e.g. ORCLPDB1 or FREEPDB1' },
+      { name: 'schema', label: 'Schema', optional: true, hint: "Default: the user's own (Oracle keeps names in capitals)" },
+      { name: 'ssl', label: 'Use TLS', kind: 'bool' },
+      { name: 'user', label: 'User', secret: true, hint: 'A user with only the rights forms need' },
+      { name: 'password', label: 'Password', secret: true, kind: 'password' },
+    ],
+  },
+  db2: {
+    label: 'IBM Db2',
+    blurb: "Tables and views in Db2, through a gateway installed near the database (Db2's driver comes from IBM and runs there).",
+    fields: [
+      { name: 'host', label: 'Host' },
+      { name: 'port', label: 'Port', kind: 'number', optional: true, hint: 'Default: 50000' },
+      { name: 'database', label: 'Database' },
+      { name: 'schema', label: 'Schema', optional: true, hint: "Default: the user's own (Db2 keeps names in capitals)" },
+      { name: 'ssl', label: 'Use TLS', kind: 'bool' },
+      { name: 'user', label: 'User', secret: true, hint: 'A user with only the rights forms need' },
+      { name: 'password', label: 'Password', secret: true, kind: 'password' },
+    ],
+  },
   supabase: { label: 'Supabase', blurb: 'Your project through its REST API (row level security applies).', fields: [{ name: 'url', label: 'Project URL', hint: 'https://xyz.supabase.co' }, { name: 'apiKey', label: 'API key', secret: true, kind: 'password', hint: 'A restricted key, not service_role' }] },
   rest: {
     label: 'REST API',
@@ -147,6 +173,17 @@ export const SPECS: Record<ConnectorType, { label: string; blurb: string; fields
       { name: 'username', label: 'User name', secret: true, showFor: ['basic'] },
       { name: 'password', label: 'Password', secret: true, kind: 'password', showFor: ['basic'] },
       { name: 'clientSecret', label: 'Client secret', secret: true, kind: 'password', showFor: ['oauth', 'oauthUser'] },
+    ],
+  },
+  soap: {
+    label: 'SOAP web service',
+    blurb: 'An older kind of web service, described by a WSDL. Each of its operations is found for you: to look something up, or to send something.',
+    fields: [
+      { name: 'wsdlUrl', label: 'Address of the WSDL', hint: 'The description of the service, usually its address with ?wsdl on the end' },
+      { name: 'endpoint', label: 'Address to call', optional: true, hint: 'Only when calls go somewhere other than where the WSDL says' },
+      { name: 'auth', label: 'How it signs in', kind: 'select', options: ['none', 'basic', 'wsse'], optionLabels: { none: 'It does not', basic: 'A user name and password with each request', wsse: 'A user name and password inside each message (WS-Security)' } },
+      { name: 'username', label: 'User name', secret: true, showFor: ['basic', 'wsse'] },
+      { name: 'password', label: 'Password', secret: true, kind: 'password', showFor: ['basic', 'wsse'] },
     ],
   },
   odata: {
@@ -211,8 +248,11 @@ const OPS_BY_TYPE: Record<ConnectorType, Op[]> = {
   postgres: ['list', 'get', 'lookup', 'insert', 'update'],
   mysql: ['list', 'get', 'lookup', 'insert', 'update'],
   mssql: ['list', 'get', 'lookup', 'insert', 'update'],
+  oracle: ['list', 'get', 'lookup', 'insert', 'update'],
+  db2: ['list', 'get', 'lookup', 'insert', 'update'],
   supabase: ['list', 'get', 'lookup', 'insert', 'update'],
   rest: ['list', 'get', 'lookup', 'insert', 'update'],
+  soap: ['list', 'get', 'lookup', 'insert', 'update'],
   odata: ['list', 'get', 'lookup', 'insert', 'update'],
   salesforce: ['list', 'get', 'lookup', 'insert', 'update'],
   'google-sheets': ['list', 'get', 'lookup', 'insert'],

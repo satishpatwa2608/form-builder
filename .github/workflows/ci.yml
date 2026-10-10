@@ -36,8 +36,18 @@ jobs:
           MYSQL_ROOT_PASSWORD: Test-Only-Passw0rd
           MYSQL_DATABASE: fb
         ports: ['3306:3306']
+      oracle:
+        image: gvenzl/oracle-free:23-slim-faststart
+        env:
+          ORACLE_PASSWORD: Test-Only-Passw0rd
+          APP_USER: fb
+          APP_USER_PASSWORD: Test-Only-Passw0rd
+        ports: ['1521:1521']
+        options: >-
+          --health-cmd healthcheck.sh --health-interval 10s --health-timeout 5s --health-retries 30
     env:
       MSSQL_TEST: 127.0.0.1:1433:Test-Only-Passw0rd
+      ORACLE_TEST: 127.0.0.1:1521:Test-Only-Passw0rd
       PG_TEST: 127.0.0.1:5432:Test-Only-Passw0rd
       MYSQL_TEST: 127.0.0.1:3306:Test-Only-Passw0rd
       # The API's one-second promise is measured on the product's own size of machine; this runner is smaller and shared.
@@ -117,6 +127,48 @@ jobs:
           name: docker-test-results
           path: e2e/test-results
           retention-days: 7
+
+  # Db2 and IBM's driver for it exist only for some kinds of machine (this runner is one), and Db2 takes minutes
+  # to start, so the Db2 connector has a job of its own: the real database, IBM's real driver, the connector's own test.
+  db2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      db2:
+        image: icr.io/db2_community/db2:11.5.9.0
+        env:
+          LICENSE: accept
+          DB2INSTANCE: db2inst1
+          DB2INST1_PASSWORD: Test-Only-Passw0rd
+          DBNAME: testdb
+          ARCHIVE_LOGS: 'false'
+          AUTOCONFIG: 'false'
+        ports: ['50000:50000']
+        options: --privileged
+    env:
+      DB2_TEST: 127.0.0.1:50000:Test-Only-Passw0rd
+      DB2_DRIVER_PATH: /tmp/db2driver/node_modules/ibm_db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @fb/engine --filter @fb/connectors build
+      # IBM's driver, in a folder of its own: it is not part of the product, and is fetched from IBM as it installs.
+      - run: mkdir -p /tmp/db2driver && cd /tmp/db2driver && npm init -y >/dev/null && npm install ibm_db@3
+      - name: Wait for Db2 to finish setting itself up
+        run: |
+          id=$(docker ps -q --filter "ancestor=icr.io/db2_community/db2:11.5.9.0")
+          for i in $(seq 1 150); do
+            if docker logs "$id" 2>&1 | grep -q "Setup has completed"; then echo "Db2 is ready"; exit 0; fi
+            sleep 10
+          done
+          docker logs "$id" 2>&1 | tail -40
+          exit 1
+      - run: pnpm --filter @fb/connectors test -- db2-live
 
   dependencies:
     runs-on: ubuntu-latest

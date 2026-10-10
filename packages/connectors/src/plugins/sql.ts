@@ -8,13 +8,14 @@ import { ConnectionPool } from './pool';
 import { limitsFromCheck, limitsFromType } from './source-limits';
 import { assertIdentifier, assertPublicHost, elapsed, filtersFrom, now, rowFrom, type Primitive } from './shared';
 
-type Dialect = 'postgres' | 'mysql' | 'mssql';
+type Dialect = 'postgres' | 'mysql' | 'mssql' | 'oracle' | 'db2';
 
 /** Identifiers are whitelisted (assertIdentifier) and then quoted; values are always parameters. */
-const quote = (d: Dialect, name: string) => (d === 'postgres' ? `"${name}"` : d === 'mssql' ? `[${name}]` : `\`${name}\``);
-const param = (d: Dialect, i: number) => (d === 'postgres' ? `$${i}` : d === 'mssql' ? `@p${i}` : '?');
-/** "At most n rows": SQL Server says it before the columns, the others after everything else. */
-const first = (d: Dialect, n: number) => (d === 'mssql' ? { top: `TOP (${Math.floor(n)}) `, limit: '' } : { top: '', limit: ` LIMIT ${Math.floor(n)}` });
+const quote = (d: Dialect, name: string) => (d === 'mssql' ? `[${name}]` : d === 'mysql' ? `\`${name}\`` : `"${name}"`);
+const param = (d: Dialect, i: number) => (d === 'postgres' ? `$${i}` : d === 'mssql' ? `@p${i}` : d === 'oracle' ? `:${i}` : '?');
+/** "At most n rows": SQL Server says it before the columns, the others after everything else (Oracle and Db2 in the standard's own words). */
+const first = (d: Dialect, n: number) =>
+  d === 'mssql' ? { top: `TOP (${Math.floor(n)}) `, limit: '' } : d === 'oracle' || d === 'db2' ? { top: '', limit: ` FETCH FIRST ${Math.floor(n)} ROWS ONLY` } : { top: '', limit: ` LIMIT ${Math.floor(n)}` };
 
 export interface SqlStatement {
   text: string;
@@ -116,6 +117,8 @@ async function connect(d: Dialect, ctx: ConnectorContext): Promise<SqlDriver> {
         close: () => p.close(),
       };
     }
+    if (d === 'oracle') return oracleDriver({ host: String(s.host), port: Number(s.port ?? 1521), service: String(s.database), user: secret.user, password: secret.password, tls: s.ssl === true });
+    if (d === 'db2') return db2Driver({ host: String(s.host), port: Number(s.port ?? 50000), database: String(s.database), user: secret.user, password: secret.password, tls: s.ssl === true });
     const p = mysql.createPool({ host: String(s.host), port: Number(s.port ?? 3306), database: String(s.database), user: secret.user, password: secret.password, ssl: tls, connectionLimit: 5, connectTimeout: 5000 });
     return {
       async query(text, values, timeoutMs) {
@@ -128,6 +131,85 @@ async function connect(d: Dialect, ctx: ConnectorContext): Promise<SqlDriver> {
   });
 }
 
+/**
+ * Oracle, through its own driver in "thin" mode: plain JavaScript, with nothing of Oracle's to install beside it.
+ * Large text comes back as text and large binary as bytes, like any other column.
+ */
+async function oracleDriver(o: { host: string; port: number; service: string; user: string; password: string; tls: boolean }): Promise<SqlDriver> {
+  const oracledb = (await import('oracledb')).default;
+  oracledb.fetchAsString = [oracledb.CLOB, oracledb.NCLOB];
+  oracledb.fetchAsBuffer = [oracledb.BLOB];
+  const pool = await oracledb.createPool({ user: o.user, password: o.password, connectString: `${o.tls ? 'tcps' : 'tcp'}://${o.host}:${o.port}/${o.service}`, poolMin: 0, poolMax: 5, poolTimeout: 60, connectTimeout: 5 });
+  return {
+    async query(text, values, timeoutMs) {
+      const c = await pool.getConnection();
+      try {
+        c.callTimeout = Math.floor(timeoutMs);
+        // Its own "is there a database" query has a table of its own to ask.
+        const r = await c.execute(text === 'SELECT 1' ? 'SELECT 1 FROM DUAL' : text, values as never[], { outFormat: oracledb.OUT_FORMAT_OBJECT, autoCommit: true });
+        return { rows: (r.rows ?? []) as Record<string, unknown>[], affected: r.rowsAffected ?? 0 };
+      } finally {
+        await c.close();
+      }
+    },
+    close: () => pool.close(0),
+  };
+}
+
+/**
+ * Db2, through IBM's own driver. That driver is a piece of IBM's software built for particular kinds of machine
+ * (it exists for Intel/AMD Linux, Windows and macOS, not for ARM Linux), so it is loaded only when a Db2 connector
+ * is used, and where it is absent the connector says how Db2 is reached instead: through a gateway on a machine
+ * that has it.
+ */
+async function db2Driver(o: { host: string; port: number; database: string; user: string; password: string; tls: boolean }): Promise<SqlDriver> {
+  interface Db2Connection {
+    query(sql: string, values: unknown[]): Promise<Record<string, unknown>[]>;
+    prepare(sql: string): Promise<{ executeNonQuery(values: unknown[]): Promise<number>; closeSync(): void }>;
+    close(): Promise<void>;
+  }
+  let ibm: { open(connection: string): Promise<Db2Connection> };
+  try {
+    // Named in a variable so that building the product does not need IBM's driver to be there. DB2_DRIVER_PATH says
+    // where it was installed, when that is not beside the product (a gateway's own folder, say).
+    const name = process.env.DB2_DRIVER_PATH || 'ibm_db';
+    const loaded = (await import(name)) as { default?: unknown };
+    ibm = (loaded.default ?? loaded) as never;
+  } catch {
+    throw new ConnectorError('UNSUPPORTED', "Db2 needs IBM's own driver, which is not on this server. Connect to Db2 through a gateway installed on a machine near the database (Connectors, Gateways).");
+  }
+  const text = (v: string) => v.replace(/[;{}]/g, '');
+  const connection = `DATABASE=${text(o.database)};HOSTNAME=${text(o.host)};PORT=${o.port};PROTOCOL=TCPIP;UID=${text(o.user)};PWD={${o.password.replace(/}/g, '}}')}};${o.tls ? 'SECURITY=SSL;' : ''}CONNECTTIMEOUT=5;`;
+  // One connection, used for one statement at a time: IBM's driver does not share a connection between statements.
+  let open: Promise<Db2Connection> | undefined;
+  let turn: Promise<unknown> = Promise.resolve();
+  const run = <T>(work: (c: Db2Connection) => Promise<T>): Promise<T> => {
+    const next = turn.then(async () => work(await (open ??= ibm.open(connection))));
+    turn = next.catch(() => {
+      // A broken connection is dropped, so the next statement opens a new one.
+      open = undefined;
+    });
+    return next;
+  };
+  return {
+    query: (sql, values) =>
+      run(async (c) => {
+        const statement = sql === 'SELECT 1' ? 'SELECT 1 FROM SYSIBM.SYSDUMMY1' : sql;
+        if (/^\s*select/i.test(statement)) return { rows: await c.query(statement, values), affected: 0 };
+        const prepared = await c.prepare(statement);
+        try {
+          // A file goes in as the bytes it is, said to be a BLOB; everything else as itself.
+          return { rows: [], affected: await prepared.executeNonQuery(values.map((v) => (v instanceof Uint8Array ? { ParamType: 'INPUT', DataType: 'BLOB', Data: v } : v))) };
+        } finally {
+          prepared.closeSync();
+        }
+      }),
+    close: async () => {
+      await (await open?.catch(() => undefined))?.close();
+    },
+  };
+}
+
 const TYPE: Record<string, EntityField['type']> = {
   integer: 'number', bigint: 'number', smallint: 'number', numeric: 'number', decimal: 'number', real: 'number', 'double precision': 'number', int: 'number', tinyint: 'number', float: 'number', double: 'number',
   boolean: 'boolean', bool: 'boolean',
@@ -135,12 +217,36 @@ const TYPE: Record<string, EntityField['type']> = {
   json: 'object', jsonb: 'object',
   // SQL Server's own names.
   bit: 'boolean', money: 'number', smallmoney: 'number', datetime2: 'date', smalldatetime: 'date', datetimeoffset: 'date',
+  // Oracle's and Db2's own names (as their catalogues give them, lower-cased; Oracle's "timestamp(6)" is matched without its precision).
+  number: 'number', binary_float: 'number', binary_double: 'number', decfloat: 'number',
 };
 
 /** Types that hold whole numbers only. */
 const WHOLE = new Set(['integer', 'bigint', 'smallint', 'int', 'tinyint', 'mediumint']);
 
-function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql' | 'mssql'>, label: string): ConnectorPlugin {
+/** Where each database keeps the list of its columns, and of its tables' own rules, for one schema. Column names are lower-cased so every database reads the same. */
+const CATALOG: Record<Dialect, { columns: (p: string) => string; checks: (p: string) => string }> = {
+  postgres: {
+    columns: (p) => `SELECT table_name AS t, column_name AS c, data_type AS dt, is_nullable AS n, character_maximum_length AS ml, column_default AS df, numeric_precision AS np, numeric_scale AS ns FROM information_schema.columns WHERE table_schema = ${p} ORDER BY table_name, ordinal_position`,
+    checks: (p) => `SELECT tc.table_name AS t, cc.check_clause AS cl FROM information_schema.table_constraints tc JOIN information_schema.check_constraints cc ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name WHERE tc.table_schema = ${p} AND tc.constraint_type = 'CHECK'`,
+  },
+  get mysql() {
+    return this.postgres;
+  },
+  get mssql() {
+    return this.postgres;
+  },
+  oracle: {
+    columns: (p) => `SELECT table_name AS "t", column_name AS "c", data_type AS "dt", nullable AS "n", char_length AS "ml", data_default AS "df", data_precision AS "np", data_scale AS "ns" FROM all_tab_columns WHERE owner = ${p} ORDER BY table_name, column_id`,
+    checks: (p) => `SELECT table_name AS "t", search_condition_vc AS "cl" FROM all_constraints WHERE owner = ${p} AND constraint_type = 'C'`,
+  },
+  db2: {
+    columns: (p) => `SELECT tabname AS "t", colname AS "c", typename AS "dt", nulls AS "n", length AS "ml", "DEFAULT" AS "df", length AS "np", scale AS "ns" FROM syscat.columns WHERE tabschema = ${p} ORDER BY tabname, colno`,
+    checks: (p) => `SELECT tabname AS "t", text AS "cl" FROM syscat.checks WHERE tabschema = ${p} AND type = 'C'`,
+  },
+};
+
+function sqlPlugin(type: Extract<ConnectorType, Dialect>, label: string): ConnectorPlugin {
   const d: Dialect = type;
   return {
     type,
@@ -163,15 +269,11 @@ function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql' | 'mssql'>,
     },
 
     async discover(ctx): Promise<Entity[]> {
-      const schema = String(ctx.connector.settings.schema ?? (d === 'postgres' ? 'public' : d === 'mssql' ? 'dbo' : ctx.connector.settings.database));
+      // Oracle and Db2 keep each user's tables under the user's own name, in capitals, unless told otherwise.
+      const own = String(ctx.secrets.user ?? '').toUpperCase();
+      const schema = String(ctx.connector.settings.schema ?? (d === 'postgres' ? 'public' : d === 'mssql' ? 'dbo' : d === 'oracle' || d === 'db2' ? own : ctx.connector.settings.database));
       const db = await connect(d, ctx);
-      const rows = (
-        await db.query(
-          `SELECT table_name AS t, column_name AS c, data_type AS dt, is_nullable AS n, character_maximum_length AS ml, column_default AS df, numeric_precision AS np, numeric_scale AS ns FROM information_schema.columns WHERE table_schema = ${param(d, 1)} ORDER BY table_name, ordinal_position`,
-          [schema],
-          10_000,
-        )
-      ).rows;
+      const rows = (await db.query(CATALOG[d].columns(param(d, 1)), [schema], 10_000)).rows;
       const tables = new Map<string, EntityField[]>();
       const whole = new Map<string, Set<string>>();
       for (const r of rows) {
@@ -179,31 +281,31 @@ function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql' | 'mssql'>,
         if (!tables.has(t)) tables.set(t, []);
         // What the table itself insists on: a column that may not be empty, the longest text it takes, and the
         // numbers its type has room for.
-        const nullable = String(r.n ?? r.N ?? r.IS_NULLABLE ?? 'YES').toUpperCase() !== 'NO';
+        const nullable = !['NO', 'N'].includes(String(r.n ?? r.N ?? r.IS_NULLABLE ?? 'YES').toUpperCase());
         const length = Number(r.ml ?? r.ML ?? r.CHARACTER_MAXIMUM_LENGTH);
         const fallback = r.df ?? r.DF ?? r.COLUMN_DEFAULT;
-        const dataType = String(r.dt ?? r.DT ?? r.DATA_TYPE).toLowerCase();
+        // As the catalogue names it, without a precision in brackets ("timestamp(6)") or a note about time zones.
+        const named = String(r.dt ?? r.DT ?? r.DATA_TYPE).toLowerCase().replace(/\(.*$/, '').replace(/ with .*$/, '').trim();
         const name = String(r.c ?? r.C ?? r.COLUMN_NAME);
+        const digits = r.np ?? r.NP ?? r.NUMERIC_PRECISION;
         const places = Number(r.ns ?? r.NS ?? r.NUMERIC_SCALE);
+        // Oracle's one kind of number is a decimal when it is given a number of digits.
+        const dataType = named === 'number' && digits !== null && digits !== undefined ? 'numeric' : named;
+        const kind = TYPE[dataType] ?? 'string';
         if (WHOLE.has(dataType) || ((dataType === 'numeric' || dataType === 'decimal') && places === 0)) whole.set(t, (whole.get(t) ?? new Set()).add(name));
+        const given = typeof fallback === 'string' ? fallback.trim().toUpperCase() : fallback;
         tables.get(t)!.push({
           name,
-          type: TYPE[dataType] ?? 'string',
+          type: kind,
           nullable,
-          ...(Number.isFinite(length) && length > 0 && length <= 100_000 ? { maxLength: length } : {}),
-          ...(fallback !== null && fallback !== undefined && fallback !== '' ? { hasDefault: true } : {}),
-          ...limitsFromType(dataType, Number(r.np ?? r.NP ?? r.NUMERIC_PRECISION), places, d),
+          ...(kind === 'string' && Number.isFinite(length) && length > 0 && length <= 100_000 ? { maxLength: length } : {}),
+          ...(given !== null && given !== undefined && given !== '' && given !== 'NULL' ? { hasDefault: true } : {}),
+          ...limitsFromType(dataType, Number(digits), places, d),
         });
       }
       // The table's own rules (CHECK constraints): a range, a shortest length, a pattern. A database that will not
       // show them (an old version, a login without the right) simply gives none.
-      const checks = await db
-        .query(
-          `SELECT tc.table_name AS t, cc.check_clause AS cl FROM information_schema.table_constraints tc JOIN information_schema.check_constraints cc ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name WHERE tc.table_schema = ${param(d, 1)} AND tc.constraint_type = 'CHECK'`,
-          [schema],
-          10_000,
-        )
-        .then((r) => r.rows, () => []);
+      const checks = await db.query(CATALOG[d].checks(param(d, 1)), [schema], 10_000).then((r) => r.rows, () => []);
       for (const r of checks) {
         const fields = tables.get(String(r.t ?? r.T ?? r.TABLE_NAME));
         const clause = r.cl ?? r.CL ?? r.CHECK_CLAUSE;
@@ -238,4 +340,6 @@ function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql' | 'mssql'>,
 export const postgresPlugin = sqlPlugin('postgres', 'PostgreSQL');
 export const mysqlPlugin = sqlPlugin('mysql', 'MySQL');
 export const mssqlPlugin = sqlPlugin('mssql', 'SQL Server');
+export const oraclePlugin = sqlPlugin('oracle', 'Oracle Database');
+export const db2Plugin = sqlPlugin('db2', 'IBM Db2');
 export const closeSqlConnections = () => pools.closeAll();
