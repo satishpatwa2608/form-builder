@@ -348,7 +348,9 @@ export class FormRecordService {
    */
   private async scope(user: AuthUser, waiting: string[]): Promise<FilterQuery<FormSubmission> | null> {
     if (isRecordAdmin(user)) return null;
-    const [queues, reports] = await Promise.all([this.queuesOf(user), this.directory.reportsOf(user.orgId, user.uuid)]);
+    const [queues, mine, sharers] = await Promise.all([this.queuesOf(user), this.directory.reportsOf(user.orgId, user.uuid), this.directory.sharingWith(user.orgId, user.uuid)]);
+    // What a manager's people hold, and what colleagues who share their list hold.
+    const reports = [...new Set([...mine, ...sharers])];
     return {
       $or: [
         { assigneeId: user.uuid },
@@ -378,6 +380,7 @@ export class FormRecordService {
     if ((await this.waitingOn(user)).includes(id)) return found;
     if (!found.record.assigneeId && (await this.queuesOf(user)).includes(found.record.formCode)) return found;
     if (found.record.assigneeId && (await this.directory.reportsOf(user.orgId, user.uuid)).includes(found.record.assigneeId)) return found;
+    if (found.record.assigneeId && (await this.directory.sharingWith(user.orgId, user.uuid)).includes(found.record.assigneeId)) return found;
     // Asked for their view: they may read it and answer, and nothing else.
     if ((found.record.asks ?? []).some((a) => a.to === user.uuid && !a.answeredAt)) {
       if (toRead) return found;
@@ -441,6 +444,8 @@ export class FormRecordService {
     if (query.assignee === 'unassigned') filter.assigneeId = '';
     // "My team's work": what the people this person manages hold.
     if (query.assignee === 'reports') filter.assigneeId = { $in: await this.directory.reportsOf(user.orgId, user.uuid) };
+    // "Shared with me": what colleagues who share their list hold.
+    if (query.assignee === 'shared') filter.assigneeId = { $in: await this.directory.sharingWith(user.orgId, user.uuid) };
     if (query.overdue === 'true') {
       const now = new Date();
       and.push(openCondition(latest), { $or: [{ dueAt: { $lte: now } }, { resolutionDueAt: { $lte: now } }, { responseDueAt: { $lte: now }, respondedAt: null }] });

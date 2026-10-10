@@ -14,6 +14,7 @@ export const BUILT_IN_VIEWS: { key: string; name: string; filters: InboxFilters 
   { key: 'approvals', name: 'Waiting for my approval', filters: { page: 1, waiting: true, assignee: '' } },
   { key: 'unassigned', name: 'Unassigned', filters: { page: 1, assignee: 'unassigned', open: true } },
   { key: 'reports', name: "My team's work", filters: { page: 1, assignee: 'reports', open: true } },
+  { key: 'shared', name: 'Shared with me', filters: { page: 1, assignee: 'shared', open: true } },
   { key: 'overdue', name: 'Overdue', filters: { page: 1, assignee: '', overdue: true, sort: 'due' } },
   { key: 'all', name: 'Everything', filters: { page: 1, assignee: '' } },
 ];

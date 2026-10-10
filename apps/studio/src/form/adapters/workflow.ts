@@ -112,7 +112,7 @@ export interface InboxFilters {
   status?: string;
   priority?: Priority;
   /** `reports` = what the people I manage hold. `unassigned` is everything nobody holds for an admin, and my team's queue for anyone else. */
-  assignee?: 'me' | 'unassigned' | 'reports' | '';
+  assignee?: 'me' | 'unassigned' | 'reports' | 'shared' | '';
   /** Only records with an approval waiting on me. */
   waiting?: boolean;
   overdue?: boolean;
@@ -514,7 +514,7 @@ export function queryToFilters(q: Record<string, string | boolean>): InboxFilter
     formCode: typeof q.formCode === 'string' ? q.formCode : undefined,
     status: typeof q.status === 'string' ? q.status : undefined,
     priority: typeof q.priority === 'string' ? (q.priority as Priority) : undefined,
-    assignee: q.assignee === 'me' || q.assignee === 'unassigned' || q.assignee === 'reports' ? q.assignee : '',
+    assignee: q.assignee === 'me' || q.assignee === 'unassigned' || q.assignee === 'reports' || q.assignee === 'shared' ? q.assignee : '',
     waiting: q.waiting === 'me' || q.waiting === true,
     overdue: q.overdue === 'true' || q.overdue === true,
     open: q.open === 'true' || q.open === true,

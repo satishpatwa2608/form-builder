@@ -81,6 +81,12 @@ export class PeopleService {
     return [...new Set(out.filter(Boolean))];
   }
 
+  /** The people who share their list with this person: what they hold, this person may see and open too. */
+  async sharingWith(orgId: string, userId: string): Promise<string[]> {
+    if (!userId) return [];
+    return (await this.memberships.find({ orgId, sharedWith: userId, status: 'ACTIVE' }).select('userId').limit(500).lean()).map((m) => m.userId);
+  }
+
   /** The people whose manager this is. */
   async reportsOf(orgId: string, managerId: string): Promise<string[]> {
     if (!managerId) return [];

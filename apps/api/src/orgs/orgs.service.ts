@@ -108,6 +108,24 @@ export class OrgsService {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  /** Who this member shares their work list with. */
+  async sharing(auth: AuthContext) {
+    return { sharedWith: (await this.mustMember(auth.orgId, auth.userId)).sharedWith ?? [] };
+  }
+
+  /** Share my list: the colleagues named may see and open what I hold. Each must be an active member, and not me. */
+  async setSharing(auth: AuthContext, userIds: string[]) {
+    const m = await this.mustMember(auth.orgId, auth.userId);
+    const wanted = [...new Set(userIds)].filter((id) => id !== auth.userId);
+    const active = (await this.memberships.find({ orgId: auth.orgId, userId: { $in: wanted }, status: 'ACTIVE' }).select('userId').lean()).map((x) => x.userId);
+    if (active.length !== wanted.length) throw new BadRequestException('Each person you share with must be an active member');
+    const before = { sharedWith: (m.sharedWith ?? []).join(', ') };
+    m.set({ sharedWith: active });
+    await m.save();
+    await this.audit.record(actorOf(auth), { action: 'member.sharing', targetType: 'user', targetId: auth.userId, before, after: { sharedWith: active.join(', ') } });
+    return { sharedWith: active };
+  }
+
   /** Whether this member is away, until when, and who gets their new work. */
   async away(auth: AuthContext, userId: string) {
     return awayOf(await this.mustMember(auth.orgId, userId));

@@ -71,7 +71,7 @@ const LAYOUTS = ["table", "cards", "calendar"] as const;
 type Layout = (typeof LAYOUTS)[number];
 const isTheme = (v: string | undefined): v is InboxTheme =>
   INBOX_THEMES.some((t) => t.key === v);
-type Assignee = "me" | "waiting" | "unassigned" | "reports" | typeof ALL;
+type Assignee = "me" | "waiting" | "unassigned" | "reports" | "shared" | typeof ALL;
 
 /**
  * Submissions of forms that track records, across every such form: filter,
@@ -235,6 +235,7 @@ export default function RecordsInboxPage({
                   { label: "Waiting for my approval", value: "waiting" },
                   { label: admin ? "Unassigned" : "My team's queue", value: "unassigned" as const },
                   { label: "Held by my team", value: "reports" as const },
+                  { label: "Shared with me", value: "shared" as const },
                   { label: "Everyone", value: ALL },
                 ]}
                 onChange={(v) =>
@@ -348,7 +349,9 @@ export default function RecordsInboxPage({
               emptyText={
                 filters.waiting
                   ? "Nothing is waiting for your approval."
-                  : filters.assignee === "reports"
+                  : filters.assignee === "shared"
+                  ? "No colleague is sharing their list with you. (They do that under Account & security.)"
+                : filters.assignee === "reports"
                     ? "Nobody you manage holds any open work. (Managers are set on the Members page.)"
                     : filters.assignee === "unassigned" && !admin
                       ? "Nothing is waiting in your team's queue."

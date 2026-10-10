@@ -73,6 +73,13 @@ what their people hold, which they can open and give to someone else.
 To give a record to a colleague with a few words on why, use **Hand over with a
 note** on the record. The note is in their notification and in the history.
 
+## Share my list
+
+On **Account & security**, **Share my work list** lets you tick colleagues who
+may see and open the records you hold. They find them under **Shared with me**
+in their Work inbox. It goes one way, the records stay yours, and unticking a
+colleague ends it.
+
 ## Ask a colleague
 
 On a record, **Ask a colleague** takes a person and a question. The record

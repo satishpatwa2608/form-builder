@@ -188,6 +188,23 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
     });
   });
 
+  describe('sharing my list', () => {
+    it('a colleague I share with sees and opens what I hold; nobody else does; I can stop sharing', async () => {
+      const id = await send('TONIA');
+      const list = async (token: string) => ((await h.api().get('/records?assignee=shared').set(h.bearer(token)).expect(200)).body.rows as { uuid: string }[]).map((r) => r.uuid);
+      await h.api().get(`/records/${id}`).set(h.bearer(samToken)).expect(404);
+      expect((await h.api().patch('/sharing').set(h.bearer(niaToken)).send({ userIds: [sam, nia] }).expect(200)).body).toEqual({ sharedWith: [sam] });
+      expect((await h.api().get('/sharing').set(h.bearer(niaToken)).expect(200)).body).toEqual({ sharedWith: [sam] });
+      expect(await list(samToken)).toContain(id);
+      await h.api().get(`/records/${id}`).set(h.bearer(samToken)).expect(200);
+      // Sharing goes one way: Nia does not see what Sam holds.
+      expect(await list(niaToken)).toEqual([]);
+      await h.api().patch('/sharing').set(h.bearer(niaToken)).send({ userIds: ['not-a-member'] }).expect(400);
+      await h.api().patch('/sharing').set(h.bearer(niaToken)).send({ userIds: [] }).expect(200);
+      await h.api().get(`/records/${id}`).set(h.bearer(samToken)).expect(404);
+    });
+  });
+
   describe('sending it back', () => {
     it('whoever was handed a record returns it in one press to the person who handed it over, once', async () => {
       const id = await send('TONIA');

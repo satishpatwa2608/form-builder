@@ -29,6 +29,7 @@ const awayBody = z.object({
   until: z.string().datetime().optional(),
   toUserId: z.string().regex(/^[A-Za-z0-9-]{0,64}$/).optional(),
 });
+const sharingBody = z.object({ userIds: z.array(z.string().regex(/^[A-Za-z0-9-]{1,64}$/)).max(20) });
 const inviteBody = z.object({ email: z.string().trim().email().max(254), role: z.enum(ORG_ROLES) });
 const acceptBody = z.object({ token: z.string().min(10).max(200), name: z.string().trim().min(1).max(100).optional(), password });
 
@@ -61,6 +62,17 @@ export class OrgsController {
   @Patch('away')
   setAway(@Auth() auth: AuthContext, @Body(new ZodBody(awayBody)) body: z.infer<typeof awayBody>) {
     return this.orgs.setAway(auth, auth.userId, body);
+  }
+
+  /** Share my work list with colleagues: they may see and open what I hold. */
+  @Get('sharing')
+  sharing(@Auth() auth: AuthContext) {
+    return this.orgs.sharing(auth);
+  }
+
+  @Patch('sharing')
+  setSharing(@Auth() auth: AuthContext, @Body(new ZodBody(sharingBody)) body: z.infer<typeof sharingBody>) {
+    return this.orgs.setSharing(auth, body.userIds);
   }
 
   @Patch('members/:userId/away')

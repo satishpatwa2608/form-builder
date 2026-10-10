@@ -144,6 +144,8 @@ export class Membership {
   @Prop({ type: Date, default: null }) awayFrom: Date | null;
   @Prop({ type: Date, default: null }) awayUntil: Date | null;
   @Prop({ type: String, default: '' }) awayTo: string;
+  /** Colleagues this person lets see and open the records they hold ("share my list"). */
+  @Prop({ type: [String], default: [] }) sharedWith: string[];
 }
 export type MembershipDocument = HydratedDocument<Membership>;
 export const MembershipSchema = SchemaFactory.createForClass(Membership);
