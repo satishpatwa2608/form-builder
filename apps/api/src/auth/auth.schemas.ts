@@ -39,6 +39,8 @@ export class Session {
   /** Set when the session came from an org's single sign-on: it is good for that org only. */
   @Prop({ type: String, default: '' }) ssoOrgId: string;
   @Prop({ required: true }) expiresAt: Date;
+  /** When the person was last seen at work (each renewal of the session says so). Away for longer than the organisation allows, and the session ends. */
+  @Prop({ type: Date, default: null }) lastActiveAt: Date | null;
   @Prop({ type: Date, default: null }) revokedAt: Date | null;
   @Prop({ type: String, default: '' }) ip: string;
   @Prop({ type: String, default: '' }) userAgent: string;

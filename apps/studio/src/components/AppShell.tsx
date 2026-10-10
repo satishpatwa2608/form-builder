@@ -1,3 +1,4 @@
+import { IdleSignOut } from './IdleSignOut';
 import { useState } from 'react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, Building2, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, Library, LogOut, Menu, Puzzle, ScrollText, Settings, Terminal, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
@@ -68,6 +69,7 @@ export function AppShell() {
   if (!me) return null;
   return (
     <div className="st-app">
+      <IdleSignOut />
       <aside className="st-side" data-open={open}>
         <Logo />
         <nav className="st-side__nav" aria-label="Main">

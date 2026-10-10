@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Alert, Button, Card, PageHead, TextField, useSubmit } from '../components/ui';
+import { Alert, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 import { PlanUsageCard } from '../components/PlanUsage';
 import { BrandingCard, DomainsCard, PortalCard } from '../components/SiteSettings';
 import { SsoCard } from '../components/SsoSettings';
@@ -28,6 +28,13 @@ export default function SettingsPage() {
     await api('/org', { method: 'PATCH', body: { security: { requireReview: !me?.org.requireReview } } });
     await reload();
     setSaved(me?.org.requireReview ? 'Forms can be published without a review again.' : 'Forms must now be approved by someone else before they are published.');
+  });
+  const idleChoice = useRef(30);
+  const setIdle = useSubmit(async () => {
+    const minutes = idleChoice.current;
+    await api('/org', { method: 'PATCH', body: { security: { idleMinutes: minutes } } });
+    await reload();
+    setSaved(minutes ? `People are now signed out after ${minutes >= 60 ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `${minutes} minutes`} away.` : 'People are no longer signed out for being away.');
   });
   if (!me) return null;
 
@@ -76,6 +83,27 @@ export default function SettingsPage() {
               </Button>
             </div>
             {toggleReview.error && <Alert tone="error">{toggleReview.error}</Alert>}
+            <div className="st-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              <div>
+                <strong>Sign out when away</strong>
+                <div className="st-muted">Someone who leaves the builder open is signed out after this long without touching it, with a minute's warning.</div>
+              </div>
+              <div style={{ width: 200 }}>
+                <SelectField label="Sign out after" value={String(me.org.idleMinutes ?? 30)} disabled={setIdle.busy} onChange={(e) => {
+                    idleChoice.current = Number(e.target.value);
+                    void setIdle.submit();
+                  }}
+                >
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                  <option value="120">2 hours</option>
+                  <option value="480">8 hours</option>
+                  <option value="0">Never</option>
+                </SelectField>
+              </div>
+            </div>
+            {setIdle.error && <Alert tone="error">{setIdle.error}</Alert>}
           </div>
         </Card>
         <SsoCard />

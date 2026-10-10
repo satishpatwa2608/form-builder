@@ -543,7 +543,7 @@
 }
 .st-content {
   padding: 28px;
-  max-width: 1100px;
+  max-width: 1480px;
   width: 100%;
 }
 .st-page-head {
@@ -899,4 +899,79 @@
     grid-template-columns: 1fr;
     gap: 0;
   }
+}
+
+/* A row's buttons: on one line, each big enough for a finger. */
+.st-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
+.st-actions .st-btn--sm {
+  min-width: 34px;
+  min-height: 34px;
+  justify-content: center;
+}
+.st-actions__move {
+  height: 34px;
+  width: 92px;
+  padding: 0 8px;
+  font-size: 13px;
+  margin-left: 4px;
+}
+.st-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.st-pager > .st-muted {
+  margin-right: auto;
+}
+/* Tablets and narrow windows: the name and the status stay; the rest gives way to the buttons. */
+@media (max-width: 1180px) {
+  .st-col-wide {
+    display: none;
+  }
+  .st-actions {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+}
+/* Touch screens: nothing smaller than a fingertip. */
+@media (pointer: coarse) {
+  .st-btn,
+  .st-input,
+  .st-select {
+    min-height: 44px;
+  }
+  .st-actions .st-btn--sm,
+  .st-actions__move {
+    min-width: 44px;
+    min-height: 44px;
+    height: 44px;
+  }
+  .st-actions {
+    gap: 6px;
+  }
+}
+
+.st-idle {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 460px;
+  padding: 16px 18px;
+  border: 1px solid var(--fb-line-strong);
+  border-radius: var(--fb-radius);
+  background: var(--fb-surface);
+  box-shadow: 0 12px 40px rgb(15 23 42 / 0.22);
 }

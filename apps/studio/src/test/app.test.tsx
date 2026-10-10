@@ -167,6 +167,35 @@ describe('studio', () => {
     expect(sent.definition.workflow.statuses).toHaveLength(6);
   });
 
+  it('forms: a long list is shown a page at a time, and a form is found by typing part of its name', async () => {
+    const user = userEvent.setup();
+    const many = Array.from({ length: 45 }, (_, i) => ({ id: `f${i}`, code: `FORM_${String(i + 1).padStart(2, '0')}`, name: `Form ${String(i + 1).padStart(2, '0')}`, folderId: 'f1', version: 1, status: 'PUBLISHED', publishedVersion: 1, publicLink: true, updatedAt: '2026-09-30T10:00:00Z', permissions: ['form.view'] }));
+    many.push({ ...many[0]!, id: 'vr', code: 'VEHICLE_REGISTRATION', name: 'Vehicle registration' });
+    fakeApi({ ...signedIn(), 'GET /folders': () => ({ body: [{ id: 'f1', name: 'Quality', parentId: null, path: ['f1'] }] }), 'GET /forms': () => ({ body: many }) });
+    renderApp('/forms');
+    expect(await screen.findByRole('link', { name: 'Form 01' })).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(21);
+    expect(screen.queryByRole('link', { name: 'Form 21' })).toBeNull();
+    const pager = screen.getByRole('navigation', { name: 'Pages of forms' });
+    expect(pager).toHaveTextContent('Showing 1 to 20 of 46');
+    expect(within(pager).getByRole('button', { name: 'Previous' })).toBeDisabled();
+    await user.click(within(pager).getByRole('button', { name: 'Next' }));
+    expect(screen.getByRole('link', { name: 'Form 21' })).toBeInTheDocument();
+    expect(pager).toHaveTextContent('Page 2 of 3');
+    await user.click(within(pager).getByRole('button', { name: 'Next' }));
+    expect(pager).toHaveTextContent('Showing 41 to 46 of 46');
+    expect(within(pager).getByRole('button', { name: 'Next' })).toBeDisabled();
+
+    // Searching goes back to the first page, and looks at the code as well as the name.
+    await user.type(screen.getByRole('searchbox', { name: 'Find a form' }), 'vehicle reg');
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+    expect(screen.getByRole('link', { name: 'Vehicle registration' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Pages of forms' })).toBeNull();
+    await user.clear(screen.getByRole('searchbox', { name: 'Find a form' }));
+    await user.type(screen.getByRole('searchbox', { name: 'Find a form' }), 'nothing like this');
+    expect(screen.getByText('No form matches "nothing like this".')).toBeInTheDocument();
+  });
+
   it('forms: create from a template (code from the name) and actions follow per-form permissions', async () => {
     const user = userEvent.setup();
     const folder = { id: 'f1', name: 'Quality', parentId: null, path: ['f1'] };

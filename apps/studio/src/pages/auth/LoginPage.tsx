@@ -1,3 +1,4 @@
+import { IDLE_NOTE } from '../../components/IdleSignOut';
 import { useSignupOpen } from '../../lib/signup';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -18,6 +19,16 @@ export default function LoginPage() {
   const [step, setStep] = useState<'password' | 'code'>('password');
   const [useRecovery, setUseRecovery] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Set by the builder when it signs someone out for being away (components/IdleSignOut.tsx).
+  const [awayMinutes] = useState(() => {
+    try {
+      const kept = window.sessionStorage.getItem(IDLE_NOTE);
+      window.sessionStorage.removeItem(IDLE_NOTE);
+      return kept;
+    } catch {
+      return null;
+    }
+  });
   const [error, setError] = useState<string | undefined>(() => new URLSearchParams(location.search).get('sso_error') ?? undefined);
   const [ssoRequired, setSsoRequired] = useState(false);
   const [unverified, setUnverified] = useState(false);
@@ -106,6 +117,7 @@ export default function LoginPage() {
       <form className="st-stack" onSubmit={submit} noValidate>
         {error && <Alert tone="error">{error}</Alert>}
         {notice && <Alert tone="success">{notice}</Alert>}
+        {awayMinutes && !error && <Alert tone="info">You were signed out after {awayMinutes} minutes away. Sign in to carry on where you left off.</Alert>}
         {unverified && (
           <Alert tone="warn">
             Confirm your email first - we sent you a link.{' '}

@@ -8,7 +8,12 @@ export class OrgSecurity {
   @Prop({ type: Boolean, default: false }) require2fa: boolean;
   /** A form is published only once someone other than its author has approved it. */
   @Prop({ type: Boolean, default: false }) requireReview: boolean;
+  /** Minutes someone may be away before they are signed out; 0 is never. Left unset, it is 30. */
+  @Prop({ type: Number, default: 30 }) idleMinutes: number;
 }
+/** The choices offered for `idleMinutes`. */
+export const IDLE_CHOICES = [0, 15, 30, 60, 120, 480] as const;
+export const idleMinutesOf = (security: { idleMinutes?: number } | undefined) => (typeof security?.idleMinutes === 'number' ? security.idleMinutes : 30);
 
 /** How public forms look for this org. */
 @Schema({ _id: false })

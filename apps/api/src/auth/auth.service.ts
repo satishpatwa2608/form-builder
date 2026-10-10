@@ -11,6 +11,10 @@ import { MAILER, type Mailer } from '../common/mailer';
 import type { RequestMeta } from '../common/request-meta';
 import { newTotpSecret, otpauthUrl, verifyTotp } from '../common/totp';
 import { Membership, Organization, type MembershipDocument, type OrganizationDocument } from '../orgs/org.schemas';
+import { idleMinutesOf } from '../orgs/org.schemas';
+
+/** The screen signs people out on time; the server allows this much longer before it refuses, so the two never race. */
+const IDLE_GRACE_MINUTES = 2;
 import type { AuthContext } from './auth-context';
 import { AuthToken, Session, User, type AuthTokenDocument, type SessionDocument, type UserDocument } from './auth.schemas';
 
@@ -201,7 +205,7 @@ export class AuthService implements OnModuleInit {
   private async openSession(userId: string, orgId: string, mfa: boolean, meta: RequestMeta, ssoOrgId = ''): Promise<SignedIn> {
     const refreshToken = randomToken();
     const id = newId();
-    await this.sessions.create({ id, userId, orgId, mfa, ssoOrgId, refreshHash: hashToken(refreshToken), expiresAt: new Date(Date.now() + REFRESH_TTL_MS), ip: meta.ip, userAgent: meta.userAgent });
+    await this.sessions.create({ id, userId, orgId, mfa, ssoOrgId, refreshHash: hashToken(refreshToken), expiresAt: new Date(Date.now() + REFRESH_TTL_MS), lastActiveAt: new Date(), ip: meta.ip, userAgent: meta.userAgent });
     return { accessToken: await this.accessToken(userId, id), expiresIn: ACCESS_TTL_SECONDS, refreshToken };
   }
 
@@ -237,8 +241,16 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('Your session has ended');
     }
     if (session.revokedAt || session.expiresAt < new Date()) throw new UnauthorizedException('Your session has ended');
+    // Away for longer than the organisation allows: the session is over, even if the browser was left open.
+    const idle = idleMinutesOf((await this.orgs.findOne({ id: session.orgId }).select('security').lean())?.security);
+    if (idle > 0 && session.lastActiveAt && Date.now() - session.lastActiveAt.getTime() > (idle + IDLE_GRACE_MINUTES) * 60_000) {
+      session.set({ revokedAt: new Date() });
+      await session.save();
+      await this.audit.record({ orgId: session.orgId, actorId: session.userId, ...meta }, { action: 'auth.idle_signout', targetType: 'session', targetId: session.id, after: { minutes: idle } });
+      throw new UnauthorizedException({ message: `You were signed out after ${idle} minutes away`, code: 'IDLE' });
+    }
     const next = randomToken();
-    session.set({ refreshHash: hashToken(next), previousHashes: [hash, ...session.previousHashes].slice(0, 20), ip: meta.ip, userAgent: meta.userAgent });
+    session.set({ lastActiveAt: new Date(), refreshHash: hashToken(next), previousHashes: [hash, ...session.previousHashes].slice(0, 20), ip: meta.ip, userAgent: meta.userAgent });
     await session.save();
     return { accessToken: await this.accessToken(session.userId, session.id), expiresIn: ACCESS_TTL_SECONDS, refreshToken: next };
   }
@@ -266,7 +278,7 @@ export class AuthService implements OnModuleInit {
     const current = orgs.find((o) => o.id === auth.orgId);
     return {
       user: { id: user!.id, name: user!.name, email: user!.email, twoFactorEnabled: !!user!.totpEnabledAt },
-      org: { id: auth.orgId, name: current?.name ?? '', role: auth.role, permissions: permissionsOf(auth.role), require2fa: !!current?.security?.require2fa, requireReview: !!current?.security?.requireReview },
+      org: { id: auth.orgId, name: current?.name ?? '', role: auth.role, permissions: permissionsOf(auth.role), require2fa: !!current?.security?.require2fa, requireReview: !!current?.security?.requireReview, idleMinutes: idleMinutesOf(current?.security) },
       session: { mfa: auth.mfa },
       orgs: memberships.map((m) => ({ id: m.orgId, name: orgs.find((o) => o.id === m.orgId)?.name ?? '', role: m.role })),
       // Adding an organisation: anyone where sign-up is open, the operators where it is closed. Operators also choose its plan.

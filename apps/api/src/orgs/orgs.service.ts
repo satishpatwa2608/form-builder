@@ -15,6 +15,7 @@ import { MAILER, type Mailer } from '../common/mailer';
 import type { RequestMeta } from '../common/request-meta';
 import { PlansService } from '../plans/plans.service';
 import { Invitation, Membership, Organization, type InvitationDocument, type MembershipDocument, type OrganizationDocument } from './org.schemas';
+import { idleMinutesOf } from './org.schemas';
 
 const INVITE_TTL_MS = 7 * 24 * 3600_000;
 
@@ -40,12 +41,12 @@ export class OrgsService {
     return {
       id: org!.id,
       name: org!.name,
-      security: { require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview },
+      security: { require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, idleMinutes: idleMinutesOf(org!.security) },
       portal: { enabled: !!org!.portal?.enabled, title: org!.portal?.title ?? '', intro: org!.portal?.intro ?? '' },
     };
   }
 
-  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean; requireReview?: boolean }; portal?: { enabled?: boolean; title?: string; intro?: string } }) {
+  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean; requireReview?: boolean; idleMinutes?: number }; portal?: { enabled?: boolean; title?: string; intro?: string } }) {
     const org = await this.orgs.findOne({ id: auth.orgId });
     const before = { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled };
     if (body.security?.require2fa === true && !auth.mfa) {
@@ -55,6 +56,7 @@ export class OrgsService {
     if (body.name !== undefined) org!.set({ name: body.name });
     if (body.security?.require2fa !== undefined) org!.set({ 'security.require2fa': body.security.require2fa });
     if (body.security?.requireReview !== undefined) org!.set({ 'security.requireReview': body.security.requireReview });
+    if (body.security?.idleMinutes !== undefined) org!.set({ 'security.idleMinutes': body.security.idleMinutes });
     if (body.portal?.enabled !== undefined) org!.set({ 'portal.enabled': body.portal.enabled });
     if (body.portal?.title !== undefined) org!.set({ 'portal.title': body.portal.title });
     if (body.portal?.intro !== undefined) org!.set({ 'portal.intro': body.portal.intro });

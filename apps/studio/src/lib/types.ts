@@ -18,7 +18,7 @@ export type Permission =
 
 export interface Me {
   user: { id: string; name: string; email: string; twoFactorEnabled: boolean };
-  org: { id: string; name: string; role: OrgRole; permissions: Permission[]; require2fa: boolean; requireReview?: boolean };
+  org: { id: string; name: string; role: OrgRole; permissions: Permission[]; require2fa: boolean; requireReview?: boolean; /** Minutes away before being signed out; 0 is never. */ idleMinutes?: number };
   session: { mfa: boolean };
   orgs: { id: string; name: string; role: OrgRole }[];
   /** One of the people who run this installation: may add organisations and choose their plan. */

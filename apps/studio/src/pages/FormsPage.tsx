@@ -17,6 +17,9 @@ const STATUS: Record<FormStatus, { label: string; tone?: 'success' | 'warn' | 'a
   ARCHIVED: { label: 'Archived' },
 };
 
+/** Forms shown at a time on the list. */
+export const PAGE_SIZE = 20;
+
 /** "Quality / Audits" for a folder id. */
 function folderLabel(folders: Folder[], id: string) {
   const f = folders.find((x) => x.id === id);
@@ -304,10 +307,16 @@ export default function FormsPage() {
 
   const all = folders.data ?? [];
   // Folders shown in the filter include sub-folders of the chosen one.
-  const visible = useMemo(
-    () => (forms.data ?? []).filter((f) => !folderFilter || all.find((x) => x.id === f.folderId)?.path.includes(folderFilter)),
-    [forms.data, folderFilter, all],
-  );
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const matching = useMemo(() => {
+    const words = search.trim().toLowerCase();
+    return (forms.data ?? []).filter((f) => (!folderFilter || all.find((x) => x.id === f.folderId)?.path.includes(folderFilter)) && (!words || f.name.toLowerCase().includes(words) || f.code.toLowerCase().includes(words.replace(/\s+/g, '_'))));
+  }, [forms.data, folderFilter, all, search]);
+  // A page at a time: a long list is slow to read and to draw.
+  const pages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+  const shown = Math.min(page, pages);
+  const visible = useMemo(() => matching.slice((shown - 1) * PAGE_SIZE, shown * PAGE_SIZE), [matching, shown]);
   // Whether the caller can create in a given folder is the server's call (it says so clearly if not).
   const canCreate = all.length > 0;
 
@@ -318,7 +327,28 @@ export default function FormsPage() {
         subtitle="Every form in the folders you can see. Drafts are private to editors until published."
         actions={
           <div className="st-row">
-            <select className="st-select" style={{ width: 220 }} aria-label="Folder" value={folderFilter} onChange={(e) => setFolderFilter(e.target.value)}>
+            <input
+              className="st-input"
+              style={{ width: 220 }}
+              type="search"
+              aria-label="Find a form"
+              placeholder="Find a form"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+            <select
+              className="st-select"
+              style={{ width: 200 }}
+              aria-label="Folder"
+              value={folderFilter}
+              onChange={(e) => {
+                setFolderFilter(e.target.value);
+                setPage(1);
+              }}
+            >
               <option value="">All folders</option>
               {all.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -374,9 +404,9 @@ export default function FormsPage() {
                 <thead>
                   <tr>
                     <th>Form</th>
-                    <th>Folder</th>
+                    <th className="st-col-wide">Folder</th>
                     <th>Status</th>
-                    <th>Updated</th>
+                    <th className="st-col-wide">Updated</th>
                     <th aria-label="Actions" />
                   </tr>
                 </thead>
@@ -397,7 +427,7 @@ export default function FormsPage() {
                             </div>
                           )}
                         </td>
-                        <td className="st-muted">{folderLabel(all, f.folderId)}</td>
+                        <td className="st-muted st-col-wide">{folderLabel(all, f.folderId)}</td>
                         <td>
                           <div className="st-row" style={{ gap: 6 }}>
                             <Badge tone={STATUS[f.status].tone}>
@@ -412,11 +442,11 @@ export default function FormsPage() {
                             {f.status === 'DRAFT' && f.review === 'APPROVED' && <Badge tone="success">Approved</Badge>}
                           </div>
                         </td>
-                        <td className="st-muted" style={{ whiteSpace: 'nowrap' }}>
+                        <td className="st-muted st-col-wide" style={{ whiteSpace: 'nowrap' }}>
                           {new Date(f.updatedAt).toLocaleDateString()}
                         </td>
                         <td>
-                          <div className="st-row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                          <div className="st-actions">
                             {(f.status === 'PUBLISHED' || f.publishedVersion != null) && (
                               <>
                                 <Button
@@ -456,14 +486,15 @@ export default function FormsPage() {
                               </Button>
                             )}
                             {f.status !== 'DRAFT' && edit && (
-                              <Button variant="secondary" size="sm" onClick={() => act.mutate({ id: f.id, path: 'new-version' }, feedback(`A new draft of ${f.name} is open.`))}>
-                                <GitBranchPlus size={14} /> New version
+                              <Button variant="ghost" size="sm" aria-label={`New version of ${f.name}`} title="Start a new version: a draft you can change while this one stays live" onClick={() => act.mutate({ id: f.id, path: 'new-version' }, feedback(`A new draft of ${f.name} is open.`))}>
+                                <GitBranchPlus size={14} />
                               </Button>
                             )}
                             {f.status === 'PUBLISHED' && publish && (
                               <Button
-                                variant="secondary"
+                                variant="ghost"
                                 size="sm"
+                                title="Take it offline"
                                 aria-label={`Archive ${f.name}`}
                                 onClick={() => window.confirm(`Take ${f.name} offline? People can no longer fill it in.`) && act.mutate({ id: f.id, path: 'archive' }, feedback(`${f.name} was archived.`))}
                               >
@@ -472,13 +503,13 @@ export default function FormsPage() {
                             )}
                             {edit && all.length > 1 && (
                               <select
-                                className="st-select"
-                                style={{ height: 30, width: 120, fontSize: 13 }}
+                                className="st-select st-actions__move"
+                                title="Move to another folder"
                                 aria-label={`Move ${f.name} to folder`}
                                 value=""
                                 onChange={(e) => e.target.value && move.mutate({ id: f.id, folderId: e.target.value }, feedback(`${f.name} moved to ${folderLabel(all, e.target.value)}.`))}
                               >
-                                <option value="">Move to…</option>
+                                <option value="">Move…</option>
                                 {all
                                   .filter((x) => x.id !== f.folderId)
                                   .map((x) => (
@@ -507,9 +538,25 @@ export default function FormsPage() {
               </table>
             </div>
           ) : (
-            <p className="st-empty">{forms.isLoading ? 'Loading…' : folderFilter ? 'No forms in this folder.' : 'No forms yet.'}</p>
+            <p className="st-empty">{forms.isLoading ? 'Loading…' : search.trim() ? `No form matches "${search.trim()}".` : folderFilter ? 'No forms in this folder.' : 'No forms yet.'}</p>
           )}
         </Card>
+        {matching.length > PAGE_SIZE && (
+          <nav className="st-pager" aria-label="Pages of forms">
+            <span className="st-muted">
+              Showing {(shown - 1) * PAGE_SIZE + 1} to {Math.min(shown * PAGE_SIZE, matching.length)} of {matching.length}
+            </span>
+            <Button variant="secondary" size="sm" disabled={shown <= 1} onClick={() => setPage(shown - 1)}>
+              Previous
+            </Button>
+            <span aria-current="page">
+              Page {shown} of {pages}
+            </span>
+            <Button variant="secondary" size="sm" disabled={shown >= pages} onClick={() => setPage(shown + 1)}>
+              Next
+            </Button>
+          </nav>
+        )}
         <p className="st-muted" style={{ margin: 0, fontSize: 12 }}>
           <FolderInput size={12} style={{ verticalAlign: -2 }} /> Click a form to open it in the builder.
         </p>
