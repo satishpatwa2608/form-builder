@@ -74,7 +74,14 @@ export const showIf = (when: unknown) => ({ visibility: { when } });
 export const pattern = (regex: string, message: string, more: Extra = {}) => ({ validation: { pattern: regex, messages: { pattern: message }, ...more } });
 
 /** The tree as the flat list a definition holds: every field gets an id and says which container (and column) it is in. */
-export function flatten(prefix: string, nodes: Node[], parentId?: string, column?: number): Record<string, unknown>[] {
+export function flatten(prefix: string, given: Node[], parentId?: string, column?: number): Record<string, unknown>[] {
+  let nodes = given;
+  // Values the system fills in sit unseen inside the first step: on their own at the top they would make an empty step of their own.
+  const first = !parentId ? given.find((n) => n.type === 'SECTION') : undefined;
+  if (first) {
+    const unseen = given.filter((n) => n.type === 'HIDDEN');
+    nodes = given.filter((n) => n.type !== 'HIDDEN').map((n) => (n === first ? { ...n, children: [...(n.children ?? []), ...unseen] } : n));
+  }
   const out: Record<string, unknown>[] = [];
   for (const node of nodes) {
     const { children, columns: cols, weights, ...rest } = node;

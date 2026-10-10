@@ -12,7 +12,7 @@ describe('industry templates', () => {
 });
 
 // ── The forms at work: what they calculate, show and refuse ──────────────────
-import { buildZodSchema, computeFormState } from '@fb/engine';
+import { buildSteps, buildZodSchema, computeFormState, descendantFields, isValueField } from '@fb/engine';
 import type { FormField, FormRule } from '@fb/engine';
 
 const NOW = new Date('2026-10-10T06:00:00Z');
@@ -38,6 +38,17 @@ describe('industry templates at work', () => {
       expect(t.definition.layout, t.key).toEqual({ mode: 'steps', review: true });
       const steps = (t.definition.fields as FormField[]).filter((f) => f.type === 'SECTION' && !f.parentId);
       expect(steps.length, t.key).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it('no step is empty: each has something for the person to see or fill in', () => {
+    for (const t of INDUSTRY_TEMPLATES) {
+      const fields = t.definition.fields as FormField[];
+      for (const step of buildSteps(fields)) {
+        const inside = step.items.flatMap((item) => [item, ...descendantFields(fields, item.id)]);
+        expect(inside.some((f) => f.type !== 'HIDDEN' && (isValueField(f) || f.type === 'HTML')), `${t.key}: ${step.title}`).toBe(true);
+        expect(step.section, `${t.key}: a step made of loose fields ("${step.title}")`).toBeDefined();
+      }
     }
   });
 

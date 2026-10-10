@@ -107,10 +107,10 @@ export default function PayPage({ id, org, practice }: { id: string; org: string
         </p>
         <p className="rt-pay__amount">{money(look.amount, look.currency)}</p>
         <div className="rt-pay__actions">
-          <button type="button" className="rt-save__btn rt-pay__primary" disabled={busy} onClick={() => void ask('/practice', { outcome: 'PAID' })}>
+          <button type="button" className="rt-pay__btn rt-pay__btn--primary" disabled={busy} onClick={() => void ask('/practice', { outcome: 'PAID' })}>
             Pay
           </button>
-          <button type="button" className="rt-save__btn" disabled={busy} onClick={() => void ask('/practice', { outcome: 'FAILED' })}>
+          <button type="button" className="rt-pay__btn" disabled={busy} onClick={() => void ask('/practice', { outcome: 'FAILED' })}>
             Let it fail
           </button>
         </div>
@@ -122,7 +122,7 @@ export default function PayPage({ id, org, practice }: { id: string; org: string
       <Card title="We have not received your payment yet">
         <p>If you have just paid, it can take a moment to reach us.</p>
         <div className="rt-pay__actions">
-          <button type="button" className="rt-save__btn rt-pay__primary" disabled={busy} onClick={() => void ask('/confirm')}>
+          <button type="button" className="rt-pay__btn rt-pay__btn--primary" disabled={busy} onClick={() => void ask('/confirm')}>
             Check again
           </button>
         </div>
