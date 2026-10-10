@@ -1164,27 +1164,27 @@
   display: flex;
 }
 
-.fb-code {
+.fb-confirm {
   display: grid;
   gap: 6px;
   margin-top: 8px;
   justify-items: start;
 }
-.fb-code__row {
+.fb-confirm__row {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
-.fb-code__hint {
+.fb-confirm__hint {
   font-size: 12px;
   color: var(--muted-foreground);
 }
-.fb-code__error {
+.fb-confirm__error {
   font-size: 13px;
   color: var(--destructive);
 }
-.fb-code--ok {
+.fb-confirm--ok {
   display: flex;
   gap: 6px;
   align-items: center;

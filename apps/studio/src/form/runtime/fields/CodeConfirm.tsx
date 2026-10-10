@@ -32,7 +32,7 @@ export function CodeConfirm({ field, value }: { field: FormField; value: string 
 
   if (confirmed)
     return (
-      <p className="fb-code fb-code--ok" role="status">
+      <p className="fb-confirm fb-confirm--ok" role="status">
         <CheckCircle2 size={16} aria-hidden /> {say('codeDoneEmail', 'codeDonePhone')}
       </p>
     );
@@ -60,13 +60,13 @@ export function CodeConfirm({ field, value }: { field: FormField; value: string 
     });
 
   return (
-    <div className="fb-code">
+    <div className="fb-confirm">
       {stage === 'idle' ? (
         <Button type="button" variant="outline" size="sm" disabled={busy || !value.trim()} onClick={() => void send()}>
           {say('codeSendEmail', 'codeSendPhone')}
         </Button>
       ) : (
-        <div className="fb-code__row">
+        <div className="fb-confirm__row">
           <Input
             aria-label={say('codeBoxEmail', 'codeBoxPhone')}
             inputMode="numeric"
@@ -91,9 +91,9 @@ export function CodeConfirm({ field, value }: { field: FormField; value: string 
           </Button>
         </div>
       )}
-      {stage === 'sent' && !message && <p className="fb-code__hint">{ui('codeSent')}</p>}
+      {stage === 'sent' && !message && <p className="fb-confirm__hint">{ui('codeSent')}</p>}
       {message && (
-        <p className="fb-code__error" role="alert">
+        <p className="fb-confirm__error" role="alert">
           {message}
         </p>
       )}
