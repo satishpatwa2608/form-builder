@@ -1,5 +1,6 @@
 import { fillOwnPdf } from './own-pdf';
 import { PdfTemplatesService } from './pdf-template';
+import { SealService } from './seal.service';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
@@ -45,6 +46,7 @@ export class DocumentsService implements OnModuleInit {
     @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
     @InjectModel(DocumentBatch.name) private readonly batches: Model<DocumentBatchDocument>,
     private readonly pdfTemplates: PdfTemplatesService,
+    private readonly seals: SealService,
   ) {}
 
   onModuleInit() {
@@ -99,6 +101,26 @@ export class DocumentsService implements OnModuleInit {
   }
 
   /** Where a response's document is kept. One response, one place. */
+  /** The finished document: sealed, when the form says its PDFs are to be. Sealing is always the last step. */
+  private async sealed(orgId: string, def: FormDefinition, pdf: Buffer): Promise<Buffer> {
+    return def.document?.seal ? this.seals.seal(orgId, pdf, `${def.name}: sealed when it was made`) : pdf;
+  }
+
+  /**
+   * The document as it is put in front of people who will sign it: never sealed, because the page of signatures
+   * is added to it afterwards, and it is that finished document which is sealed. `seal` says whether it should be.
+   */
+  async forSigning(orgId: string, submissionId: string): Promise<{ pdf: Buffer; seal: boolean }> {
+    const row = await this.submissions.findOne({ orgId, uuid: submissionId }).lean();
+    if (!row) throw new NotFoundException('Response not found');
+    const stored = await this.definitions.findVersion(orgId, row.formId);
+    if (!stored) throw new NotFoundException('The form this response belongs to no longer exists');
+    if (!stored.document?.seal) return { pdf: (await this.forRecord(orgId, submissionId)).pdf, seal: false };
+    const def = row.language && !isRtl(row.language) ? localize(stored, row.language) : stored;
+    const status = row.ref ? (findStatus(workflowOf(def), row.status)?.label ?? row.status) : undefined;
+    return { pdf: await this.render(orgId, def, row.payload as FormValues, { ref: row.ref || undefined, submittedAt: (row as unknown as { createdAt: Date }).createdAt, status }), seal: true };
+  }
+
   private static keyOf(orgId: string, code: string, submissionId: string) {
     return `documents/${orgId}/${code}/${submissionId}.pdf`;
   }
@@ -122,7 +144,8 @@ export class DocumentsService implements OnModuleInit {
     // In the language it was answered in. (Right-to-left scripts cannot be drawn yet: those stay in the form's own language.)
     const def = row.language && !isRtl(row.language) ? localize(stored, row.language) : stored;
     const status = row.ref ? (findStatus(workflowOf(def), row.status)?.label ?? row.status) : undefined;
-    const pdf = await this.render(orgId, def, row.payload as FormValues, { ref: row.ref || undefined, submittedAt: (row as unknown as { createdAt: Date }).createdAt, status });
+    const made = await this.render(orgId, def, row.payload as FormValues, { ref: row.ref || undefined, submittedAt: (row as unknown as { createdAt: Date }).createdAt, status });
+    const pdf = await this.sealed(orgId, def, made);
     const key = DocumentsService.keyOf(orgId, row.formCode, row.uuid);
     await this.store.put(key, pdf, 'application/pdf');
     await this.submissions.updateOne({ orgId, uuid: submissionId }, { $set: { document: { key, size: pdf.length, at: new Date() } } }, { timestamps: false });
@@ -151,7 +174,7 @@ export class DocumentsService implements OnModuleInit {
     const def = (await this.definitions.findVersion(auth.orgId, row.id))!;
     const input = (body && typeof body === 'object' ? body : {}) as { values?: unknown; reference?: unknown };
     const ref = typeof input.reference === 'string' ? input.reference.trim().slice(0, 60) : '';
-    return { pdf: await this.render(auth.orgId, def, DocumentsService.checked(def, input.values), { ref: ref || undefined, submittedAt: new Date() }), fileName: `${def.code}${ref ? `-${ref.replace(/[^A-Za-z0-9_-]/g, '_')}` : ''}.pdf` };
+    return { pdf: await this.sealed(auth.orgId, def, await this.render(auth.orgId, def, DocumentsService.checked(def, input.values), { ref: ref || undefined, submittedAt: new Date() })), fileName: `${def.code}${ref ? `-${ref.replace(/[^A-Za-z0-9_-]/g, '_')}` : ''}.pdf` };
   }
 
   // ── Batches ──────────────────────────────────────────────────────────────
@@ -194,7 +217,7 @@ export class DocumentsService implements OnModuleInit {
     const existed = !!(await this.store.get(key));
     const def = await this.definitions.findVersion(p.orgId, batch.formId);
     if (!def) throw new Error('the form no longer exists');
-    await this.store.put(key, await this.render(p.orgId, def, p.values, { ref: `${p.index + 1} of ${batch.total}`, submittedAt: batch.createdAt }), 'application/pdf');
+    await this.store.put(key, await this.sealed(p.orgId, def, await this.render(p.orgId, def, p.values, { ref: `${p.index + 1} of ${batch.total}`, submittedAt: batch.createdAt })), 'application/pdf');
     if (!existed) await this.batches.updateOne({ orgId: p.orgId, id: p.batchId }, { $inc: { done: 1 } });
   }
 

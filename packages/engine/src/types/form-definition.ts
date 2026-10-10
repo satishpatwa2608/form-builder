@@ -60,6 +60,11 @@ export interface FormDefinition {
     newPage?: string[];
     /** Made to the archival standard (PDF/A-2b): everything it needs to be read in decades is inside the file. */
     archival?: boolean;
+    /**
+     * Sealed with the organisation's certificate: certified, with no changes allowed. A PDF reader then shows who
+     * sealed it, will not edit it, and says plainly if it was altered. The signed copy of a response is sealed too.
+     */
+    seal?: boolean;
     /** The typeface of the PDF's Latin text: the usual sans-serif (left out), or a serif. Other scripts keep their own fonts. */
     font?: 'sans' | 'serif';
     /**

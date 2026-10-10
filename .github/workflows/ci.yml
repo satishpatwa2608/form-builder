@@ -42,6 +42,10 @@ jobs:
       MYSQL_TEST: 127.0.0.1:3306:Test-Only-Passw0rd
       # The API's one-second promise is measured on the product's own size of machine; this runner is smaller and shared.
       API_P95_BUDGET_MS: 2000
+      # Two outside checkers of the PDFs we make, which share no code with what makes them. Here they must run;
+      # on a developer's machine the tests that use them are skipped when they are not installed.
+      REQUIRE_PDFSIG: '1'
+      REQUIRE_VERAPDF: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -55,6 +59,8 @@ jobs:
           path: ~/.cache/mongodb-binaries
           key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
+      # pdfsig (poppler) checks the seal on a sealed PDF; veraPDF checks that an archival PDF really is PDF/A.
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils && pdfsig -v && docker pull -q verapdf/cli
       # The API and gateway load these two packages from their build output.
       - run: pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/sdk --filter @fb/gateway build
       - run: pnpm lint

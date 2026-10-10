@@ -80,6 +80,7 @@ import { DocumentBatch, DocumentBatchSchema } from './documents/document-batch.s
 import { DocumentsService } from './documents/documents.service';
 import { DocumentsController } from './documents/documents.controller';
 import { PdfTemplate, PdfTemplateSchema, PdfTemplatesController, PdfTemplatesService } from './documents/pdf-template';
+import { OrgSeal, OrgSealSchema, SealController, SealService } from './documents/seal.service';
 import { SignatureRequest, SignatureRequestSchema } from './signatures/signature.schema';
 import { SignaturesService } from './signatures/signatures.service';
 import { PortalService } from './portal/portal.service';
@@ -170,6 +171,7 @@ export class AppModule {
           { name: Style.name, schema: StyleSchema },
           { name: FormSubmission.name, schema: FormSubmissionSchema },
           { name: PdfTemplate.name, schema: PdfTemplateSchema },
+          { name: OrgSeal.name, schema: OrgSealSchema },
           { name: FormUpload.name, schema: FormUploadSchema },
           { name: FormRecordEvent.name, schema: FormRecordEventSchema },
           { name: FormCounter.name, schema: FormCounterSchema },
@@ -252,6 +254,7 @@ export class AppModule {
         SignaturesController,
         DocumentsController,
         PdfTemplatesController,
+        SealController,
         FormReviewController,
         ExtensionPublicController,
         FormPublicController,
@@ -333,6 +336,7 @@ export class AppModule {
         },
         DocumentsService,
         PdfTemplatesService,
+        SealService,
         FormReviewService,
         FormAutomationService,
         FormHandlerRegistry,

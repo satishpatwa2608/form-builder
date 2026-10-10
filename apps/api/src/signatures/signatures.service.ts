@@ -11,6 +11,7 @@ import { OrgMailService } from '../mail/org-mail.service';
 import { OBJECT_STORE, type ObjectStore } from '../common/object-store';
 import { APP_CONFIG, type AppConfig } from '../config';
 import { DocumentsService } from '../documents/documents.service';
+import { SealService } from '../documents/seal.service';
 import { renderDocument, type DocumentRow } from '../documents/submission-pdf';
 import { JobQueue } from '../jobs/job-queue.service';
 import { Organization, type OrganizationDocument } from '../orgs/org.schemas';
@@ -68,6 +69,7 @@ export class SignaturesService implements OnModuleInit {
     @InjectModel(FormSubmission.name) private readonly submissions: Model<FormSubmissionDocument>,
     @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly seals: SealService,
   ) {}
 
   onModuleInit() {
@@ -109,7 +111,7 @@ export class SignaturesService implements OnModuleInit {
     const emails = [...new Set(p.signers.map((e) => e.trim().toLowerCase()))].slice(0, 10);
     if (!emails.length) throw new BadRequestException('There is no one to sign');
     // What they will all be shown: fixed now, so nobody signs something other than what the first signer saw.
-    const { pdf } = await this.documents.forRecord(p.orgId, p.recordId);
+    const { pdf, seal } = await this.documents.forSigning(p.orgId, p.recordId);
     const id = newId();
     // Asking for something they know only works when there is something to ask: a response without that answer
     // must not go out for signature guarded by an empty word.
@@ -121,7 +123,7 @@ export class SignaturesService implements OnModuleInit {
     const maxReminders = Math.min(5, Math.floor((days * 86_400_000 - 1) / REMIND_EVERY_MS));
     const blank = (email: string): Signer => ({ email, tokenHash: '', status: 'WAITING', sentAt: null, remindedAt: null, name: '', signature: '', signedAt: null, ip: '', userAgent: '', declineReason: '' });
     const request = (
-      await this.requests.create({ id, orgId: p.orgId, recordId: p.recordId, runId: p.runId, stepKey: p.stepKey, title: oneLine(p.title, 200), message: (p.message ?? '').slice(0, 2000), order, ...guard, signers: emails.map(blank), expiresAt, maxReminders, documentHash: sha256(pdf) })
+      await this.requests.create({ id, orgId: p.orgId, recordId: p.recordId, runId: p.runId, stepKey: p.stepKey, title: oneLine(p.title, 200), message: (p.message ?? '').slice(0, 2000), order, ...guard, seal, signers: emails.map(blank), expiresAt, maxReminders, documentHash: sha256(pdf) })
     ).toObject() as SignatureRequest;
     await this.store.put(SignaturesService.originalKey(request), pdf, 'application/pdf');
     for (const index of order === 'PARALLEL' ? emails.map((_, i) => i) : [0]) await this.invite(request, index);
@@ -357,6 +359,7 @@ export class SignaturesService implements OnModuleInit {
     rows.push({ kind: 'heading', text: 'Document' });
     rows.push({ kind: 'answer', label: 'Fingerprint (SHA-256)', value: request.documentHash });
     rows.push({ kind: 'answer', label: 'Request', value: request.id });
+    if (request.seal) rows.push({ kind: 'answer', label: 'Sealed', value: 'This document, with this page, is sealed with the organisation\'s certificate. A PDF reader shows the seal and says if anything was changed afterwards.' });
     rows.push({ kind: 'answer', label: 'How it was signed', value: `Each signer opened a private link sent to their email address${request.confirm === 'EMAIL_CODE' ? ', entered a code emailed to them at that moment' : request.confirm === 'KNOWN' ? `, gave ${request.knownLabel || 'what they were asked for'}` : ''}, read the document above, drew a signature, typed their name and agreed to sign electronically.` });
     const record = await this.submissions.findOne({ orgId: request.orgId, uuid: request.recordId }).select('ref createdAt').lean();
     const page = await renderDocument({
@@ -370,7 +373,9 @@ export class SignaturesService implements OnModuleInit {
     const out = await PDFDocument.load(original);
     const audit = await PDFDocument.load(page);
     for (const copied of await out.copyPages(audit, audit.getPageIndices())) out.addPage(copied);
-    return Buffer.from(await out.save());
+    const whole = Buffer.from(await out.save());
+    // Sealed last, over the document and the page of signatures together, so neither can be altered afterwards.
+    return request.seal ? this.seals.seal(request.orgId, whole, `${request.title}: signed by ${request.signers.length} ${request.signers.length === 1 ? 'person' : 'people'}`) : whole;
   }
 
   private async remind(id: string) {

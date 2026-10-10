@@ -310,6 +310,12 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           checked={form.document?.archival === true}
           onChange={(archival) => onChange({ document: tidyDocument({ ...form.document, archival: archival || undefined }) })}
         />
+        <SwitchSetting
+          label="Seal the PDF"
+          hint="Certified with your organisation's certificate, with no changes allowed: a PDF reader shows who sealed it, will not edit it, and says plainly if it was altered. The signed copy of a response is sealed too. The certificate is under Organisation settings."
+          checked={form.document?.seal === true}
+          onChange={(seal) => onChange({ document: tidyDocument({ ...form.document, seal: seal || undefined }) })}
+        />
         <OwnPdfSetting form={form} onChange={(document) => onChange({ document: tidyDocument(document) })} />
         <SubmitChecks form={form} onChange={onChange} />
 

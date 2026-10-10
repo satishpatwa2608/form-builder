@@ -6,6 +6,7 @@ import { PlanUsageCard } from '../components/PlanUsage';
 import { BrandingCard, DomainsCard, PortalCard } from '../components/SiteSettings';
 import { SsoCard } from '../components/SsoSettings';
 import { MailCard } from '../components/MailSettings';
+import { SealCard } from '../components/SealSettings';
 import { PaymentsCard, SmsCard } from '../components/CheckoutSettings';
 
 export default function SettingsPage() {
@@ -58,6 +59,7 @@ export default function SettingsPage() {
         <DomainsCard />
         <PortalCard />
         <MailCard />
+        <SealCard />
         <SmsCard />
         <PaymentsCard />
         <Card title="Security" subtitle="Protect every account in the organisation.">

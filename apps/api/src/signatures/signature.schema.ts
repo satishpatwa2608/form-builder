@@ -56,6 +56,8 @@ export class SignatureRequest {
   /** KNOWN: what the page asks for, and the hash of the right answer (never the answer). */
   @Prop({ type: String, default: '' }) knownLabel: string;
   @Prop({ type: String, default: '' }) knownHash: string;
+  /** The finished, signed document is sealed with the organisation's certificate (the form's own setting, taken when the request was made). */
+  @Prop({ type: Boolean, default: false }) seal: boolean;
   /** SHA-256 of the PDF that was put in front of the signers. */
   @Prop({ type: String, default: '' }) documentHash: string;
   /** Where the signed PDF is kept, once everyone has signed. */

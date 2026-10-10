@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readPdf as pdfParse } from './read-pdf';
@@ -371,6 +372,30 @@ describe('Signing a response (e2e)', () => {
       // Now even the right answer is refused.
       await h.api().post(`/public/sign/${stolen.token}/confirm`).send({ code: 'Ravi Kumar' }).expect(403);
       expect((await h.api().get(`/public/sign/${stolen.token}`).expect(200)).body.locked).toBe(true);
+    });
+
+    it('a form whose PDFs are sealed: signers read an unsealed copy, and the finished document, with its page of signatures, is sealed', async () => {
+      const def = { ...one('SEALSIGN', {}), document: { keep: true, seal: true } };
+      await publish(def);
+      const sub = await submit('SEALSIGN', 'seal@customer.test');
+      const { token } = await waitFor(() => linkTo('seal@customer.test'), 'the signer\'s email');
+      // What is put in front of the signer is not sealed: the page of signatures has still to be added to it.
+      const shown = await h.api().get(`/public/sign/${token}/document`).buffer(true).parse(binary).expect(200);
+      expect((shown.body as Buffer).toString('latin1')).not.toContain('/DocMDP');
+      expect((await h.api().post(`/public/sign/${token}`).send(signBody('Ravi Kumar')).expect(200)).body.status).toBe('SIGNED');
+      await waitFor(async () => ((await statusOf(sub.submissionId)) === 'SIGNED' ? true : undefined), 'the flow to carry on');
+      const signed = (await h.api().get(`/public/sign/${token}/document`).buffer(true).parse(binary).expect(200)).body as Buffer;
+      expect(signed.toString('latin1')).toMatch(/\/Perms\s*<<\s*\/DocMDP \d+ 0 R/);
+      const parsed = await pdfParse(signed);
+      expect(parsed.text.replace(/\s+/g, ' ')).toContain('is sealed with the organisation');
+      expect(parsed.numpages).toBe((await pdfParse(shown.body)).numpages + 1);
+      if (spawnSync('pdfsig', ['-v'], { stdio: 'ignore' }).status === 0 || process.env.REQUIRE_PDFSIG) {
+        const file = join(dir, 'signed-sealed.pdf');
+        writeFileSync(file, signed);
+        const said = spawnSync('pdfsig', [file], { encoding: 'utf8' });
+        expect(`${said.stdout}${said.stderr}`).toContain('Signature Validation: Signature is Valid.');
+        expect(`${said.stdout}${said.stderr}`).toMatch(/Total document signed/);
+      }
     });
 
     it('a step that asks for something they know must say what, and what to call it', async () => {

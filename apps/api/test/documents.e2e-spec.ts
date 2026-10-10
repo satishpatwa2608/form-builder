@@ -1,7 +1,9 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readPdf as pdfParse } from './read-pdf';
+import { spawnSync } from 'node:child_process';
+import { newSealIdentity } from '../src/documents/pdf-seal';
 import { OBJECT_STORE, type ObjectStore } from '../src/common/object-store';
 import { JobQueue } from '../src/jobs/job-queue.service';
 import { startApp, type Harness } from './harness';
@@ -290,5 +292,81 @@ describe('Documents of record (e2e)', () => {
     const usual = await pdfOf(await download(id, later.submissionId).expect(200));
     expect(usual.text).toContain('Ravi Traders');
     expect(usual.text).not.toContain('Acme claim form 7B');
+  });
+
+  describe('sealed PDFs', () => {
+    const hasPdfsig = spawnSync('pdfsig', ['-v'], { stdio: 'ignore' }).status === 0;
+    /** What poppler's own signature checker says about a PDF, when it is installed (CI insists on it). */
+    const checked = (pdf: Buffer, name: string) => {
+      if (!hasPdfsig && !process.env.REQUIRE_PDFSIG) return undefined;
+      const file = join(dir, `${name}.pdf`);
+      writeFileSync(file, pdf);
+      const out = spawnSync('pdfsig', [file], { encoding: 'utf8' });
+      return `${out.stdout}${out.stderr}`;
+    };
+    const raw = async (res: { body: Buffer }) => res.body;
+
+    it('a form whose PDFs are sealed gives a certified PDF, sealed with a certificate made for the organisation', async () => {
+      const id = await publish(form('SEALED', { document: { keep: true, seal: true } }));
+      const sub = await submit('SEALED', { customer: 'Asha Textiles', severity: 'HIGH' });
+      const res = await download(id, sub.submissionId).expect(200);
+      const pdf = await raw(res);
+      // The same document to read.
+      expect((await pdfOf(res)).text).toContain('Asha Textiles');
+      const text = pdf.toString('latin1');
+      expect(text).toMatch(/\/Perms\s*<<\s*\/DocMDP \d+ 0 R/);
+      expect(text).toContain('/TransformMethod /DocMDP');
+      const said = checked(pdf, 'sealed-response');
+      if (said !== undefined) {
+        expect(said).toContain('Signature Validation: Signature is Valid.');
+        expect(said).toContain('Signer Certificate Common Name: Acme Trading');
+      }
+      // Asked for again, it is the very same file: sealed once, when it was made.
+      expect((await raw(await download(id, sub.submissionId).expect(200))).equals(pdf)).toBe(true);
+      // A form that does not ask for it is as before.
+      const plainId = await publish(form('UNSEALED', { document: { keep: true } }));
+      const plain = await submit('UNSEALED', { customer: 'Ravi Traders', severity: 'LOW' });
+      expect((await raw(await download(plainId, plain.submissionId).expect(200))).toString('latin1')).not.toContain('/DocMDP');
+    });
+
+    it('admins see whose certificate seals their PDFs, can add their own, and can go back; nobody is shown a key', async () => {
+      await h.api().get('/org/seal').set(h.bearer(designer)).expect(403);
+      const first = (await h.api().get('/org/seal').set(h.bearer(owner)).expect(200)).body;
+      expect(first).toMatchObject({ subject: 'Acme Trading', issuer: 'Acme Trading', selfIssued: true, own: false });
+      expect(JSON.stringify(first)).not.toContain('PRIVATE KEY');
+
+      // Their own certificate, as the PEM text a certificate authority sends.
+      const theirs = await newSealIdentity('Acme Trading Legal Dept');
+      const file = Buffer.from(`${theirs.certificates[0]}${theirs.privateKey}`).toString('base64');
+      await h.api().put('/org/seal').set(h.bearer(designer)).send({ file }).expect(403);
+      const set = (await h.api().put('/org/seal').set(h.bearer(owner)).send({ file }).expect(200)).body;
+      expect(set).toMatchObject({ subject: 'Acme Trading Legal Dept', own: true });
+      expect(JSON.stringify(set)).not.toContain('PRIVATE KEY');
+
+      // From now on that is what seals.
+      const id = await publish(form('SEALED_OWN', { document: { keep: true, seal: true } }));
+      const sub = await submit('SEALED_OWN', { customer: 'Meera Nair', severity: 'LOW' });
+      const said = checked(await raw(await download(id, sub.submissionId).expect(200)), 'sealed-own');
+      if (said !== undefined) {
+        expect(said).toContain('Signature Validation: Signature is Valid.');
+        expect(said).toContain('Signer Certificate Common Name: Acme Trading Legal Dept');
+      }
+
+      // A file that is not a certificate, or a certificate without its key, is refused in words.
+      expect((await h.api().put('/org/seal').set(h.bearer(owner)).send({ file: Buffer.from('hello').toString('base64') }).expect(400)).body.message).toContain('not a certificate file we can read');
+      expect((await h.api().put('/org/seal').set(h.bearer(owner)).send({ file: Buffer.from(theirs.certificates[0]!).toString('base64') }).expect(400)).body.message).toContain('must hold both the certificate and its private key');
+      // Still theirs after the refusals; then back to the one made for them.
+      expect((await h.api().get('/org/seal').set(h.bearer(owner)).expect(200)).body.subject).toBe('Acme Trading Legal Dept');
+      expect((await h.api().delete('/org/seal').set(h.bearer(owner)).expect(200)).body).toMatchObject({ subject: 'Acme Trading', own: false, fingerprint: first.fingerprint });
+    });
+
+    it('another organisation has a certificate of its own', async () => {
+      await h.signUp('Zara', 'zara@seal-other.test', 'Zenith Ltd');
+      const other = (await h.login('zara@seal-other.test')).token;
+      const theirs = (await h.api().get('/org/seal').set(h.bearer(other)).expect(200)).body;
+      const ours = (await h.api().get('/org/seal').set(h.bearer(owner)).expect(200)).body;
+      expect(theirs.subject).toBe('Zenith Ltd');
+      expect(theirs.fingerprint).not.toBe(ours.fingerprint);
+    });
   });
 });
