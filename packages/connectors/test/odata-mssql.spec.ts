@@ -53,7 +53,13 @@ describe.skipIf(!live)('SQL Server connector (real database)', () => {
 
     expect(await testOf(ctx())).toMatchObject({ ok: true });
     const found = (await discoverOf(ctx())).find((e) => e.key === 'fb_orders')!;
-    expect(found.fields).toEqual([{ name: 'id', type: 'number' }, { name: 'status', type: 'string' }, { name: 'total', type: 'number' }, { name: 'secret', type: 'string' }]);
+    // With each column: whether the table lets it be empty, and the longest text it takes.
+    expect(found.fields).toEqual([
+      { name: 'id', type: 'number', nullable: false },
+      { name: 'status', type: 'string', nullable: true, maxLength: 50 },
+      { name: 'total', type: 'number', nullable: true },
+      expect.objectContaining({ name: 'secret', type: 'string', nullable: true }),
+    ]);
 
     // Only what is exposed comes back; a value that looks like SQL is just a value.
     expect((await reg.run(ctx(), { entity, kind: 'list', params: { status: 'open' }, limits })).rows).toEqual([{ id: 1, status: 'open', total: 10.5 }]);
