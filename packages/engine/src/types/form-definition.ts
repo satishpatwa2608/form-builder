@@ -58,6 +58,8 @@ export interface FormDefinition {
     newPage?: string[];
     /** Made to the archival standard (PDF/A-2b): everything it needs to be read in decades is inside the file. */
     archival?: boolean;
+    /** The typeface of the PDF's Latin text: the usual sans-serif (left out), or a serif. Other scripts keep their own fonts. */
+    font?: 'sans' | 'serif';
     /**
      * The organisation's own fillable PDF, used in place of the product's layout: each response is written into
      * it. `map` says which question goes into which of its boxes ('' for none); a box left out of the map takes

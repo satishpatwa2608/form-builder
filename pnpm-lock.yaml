@@ -83,6 +83,9 @@ importers:
       '@fontsource/noto-sans-telugu':
         specifier: ^5
         version: 5.3.0
+      '@fontsource/noto-serif':
+        specifier: ^5
+        version: 5.3.0
       '@nestjs/common':
         specifier: ^10.4.0
         version: 10.4.22(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -1258,6 +1261,9 @@ packages:
 
   '@fontsource/noto-sans@5.3.0':
     resolution: {integrity: sha512-fBCog2PY7DiVVTEEqtI/Qdinx/knobHYfoGpjFXdfBX5RoJaBp1Prw2G75p0OIsdlMZg3cLo0c+YbIUYOxnQJw==}
+
+  '@fontsource/noto-serif@5.3.0':
+    resolution: {integrity: sha512-ZrMzjuQlBIcw+qma1slZQdU3YDJvrjLG+9CWU1bxSf3YTkucwqd3EYa/Kfo4Ts19w8IMTGAmtOE3d6wWlgnBtA==}
 
   '@hookform/resolvers@5.9.1':
     resolution: {integrity: sha512-7b7vsbraJxKgjVSA1Nur9tLwj539WGJUBLA7QNvXnFoT2pM5Z7G+6rlukk4B2/QrTZy6huRtH6wKeESPKuIr6w==}
@@ -6948,6 +6954,8 @@ snapshots:
   '@fontsource/noto-sans-telugu@5.3.0': {}
 
   '@fontsource/noto-sans@5.3.0': {}
+
+  '@fontsource/noto-serif@5.3.0': {}
 
   '@hookform/resolvers@5.9.1(@sinclair/typebox@0.27.12)(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(react-hook-form@7.89.0(@types/react@18.3.31)(react@18.3.1))(zod@4.6.5)':
     dependencies:

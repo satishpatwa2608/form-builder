@@ -292,6 +292,16 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           placeholder="e.g. This document is a record of what was submitted and is not an approval."
           onChange={(note) => onChange({ document: tidyDocument({ ...form.document, note: note || undefined }) })}
         />
+        <SelectSetting
+          label="Typeface of the PDF"
+          value={form.document?.font ?? 'sans'}
+          options={[
+            { label: 'Plain (sans-serif)', value: 'sans' },
+            { label: 'Bookish (serif)', value: 'serif' },
+          ]}
+          hint="For English and other Latin-letter text. Hindi and the other Indian scripts keep their own fonts."
+          onChange={(font) => onChange({ document: tidyDocument({ ...form.document, font: font === 'serif' ? 'serif' : undefined }) })}
+        />
         <SwitchSetting
           label="Archival PDF (PDF/A)"
           hint="For records that must be readable for decades: the file carries its own fonts and colour description, to the PDF/A-2b standard. It does not apply to your own PDF."

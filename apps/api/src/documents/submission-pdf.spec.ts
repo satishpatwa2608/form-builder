@@ -103,6 +103,16 @@ describe('What a submission says, for its document', () => {
     expect((await pdfParse(archival)).text).toContain('Asha Textiles');
   });
 
+  it('can be set in a serif: Latin text changes typeface, Hindi keeps its own font, and the words are the same', async () => {
+    const rows = documentRows({ fields }, { ...values, customer: 'Asha आशा' }, {});
+    const sans = await renderDocument(input({ rows }));
+    const serif = await renderDocument(input({ rows, options: { font: 'serif' } }));
+    expect(serif.toString('latin1')).toContain('NotoSerif');
+    expect(sans.toString('latin1')).not.toContain('NotoSerif');
+    expect(serif.toString('latin1')).toContain('NotoSansDevanagari');
+    expect((await pdfParse(serif)).text).toContain('Asha');
+  });
+
   it('prints the closing note under the answers', async () => {
     const pdf = await renderDocument(input({ rows: documentRows({ fields }, values, { note: 'Keep this for your records.' }) }));
     expect((await pdfParse(pdf)).text).toContain('Keep this for your records.');

@@ -98,7 +98,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | AEM capability | Where | Form Builder |
 |---|---|---|
 | A PDF of each response with logo, title, footer | Document of record | Built |
-| Leave chosen fields out; a disclaimer; a font; page breaks | Document of record | **Part.** Built (10 Oct): "Leave out of the PDF" (questions or whole sections), a closing note, and sections that start on a new page. No choice of font (one family, chosen because it covers Indian scripts) |
+| Leave chosen fields out; a disclaimer; a font; page breaks | Document of record | **Part.** Built (10 Oct): "Leave out of the PDF" (questions or whole sections), a closing note, and sections that start on a new page. The typeface can be plain or a serif for Latin text; Indian scripts keep their own fonts either way |
 | Fill the customer's own PDF with the answers | Forms service | Built (10 Oct): "Use your own PDF" in form settings. A fillable PDF is added once to the organisation's library; each response is written into it. A box named like a question is matched by itself, any other is pointed at a question from a list |
 | Many documents in one run | Communications | Built (our layout only) |
 | PDF/A, locked PDFs, certified PDFs | Communications | **Part.** Built (10 Oct): "Archival PDF (PDF/A)" in form settings writes the response's PDF to PDF/A-2b (fonts inside, colour described, marked as such). It has not been run through an independent PDF/A checker. Locked and certified PDFs are not there: locking would stop the signing step writing into the file, and certifying needs the organisation's own certificate |

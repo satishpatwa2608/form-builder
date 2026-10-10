@@ -33,6 +33,8 @@ export interface DocumentOptions {
   newPage?: string[];
   /** Written to the archival standard PDF/A-2b. */
   archival?: boolean;
+  /** The typeface of Latin text: the usual sans-serif, or a serif. */
+  font?: 'sans' | 'serif';
 }
 
 export interface DocumentInput {
@@ -110,6 +112,11 @@ const FONT_FILES = {
   ...(Object.fromEntries(INDIC.map((s) => [s, `@fontsource/noto-sans-${s}/files/noto-sans-${s}-${s}-{w}-normal.woff`])) as Record<(typeof INDIC)[number], string>),
 } as const;
 type Script = keyof typeof FONT_FILES;
+/** The serif the document can be set in instead. It has Latin letters only; every other script keeps its own font. */
+const SERIF_FILES: Partial<Record<Script, string>> = {
+  latin: '@fontsource/noto-serif/files/noto-serif-latin-{w}-normal.woff',
+  latinExt: '@fontsource/noto-serif/files/noto-serif-latin-ext-{w}-normal.woff',
+};
 /** Each script's block of Unicode, in the order the blocks come. */
 const BLOCKS: [number, number, Script][] = [
   [0x0900, 0x097f, 'devanagari'],
@@ -127,8 +134,8 @@ const loaded = new Map<string, Buffer>();
 function fontData(name: string): Buffer {
   let data = loaded.get(name);
   if (!data) {
-    const [script, weight] = name.split('-') as [Script, string];
-    data = readFileSync(require.resolve(FONT_FILES[script].replace('{w}', weight)));
+    const [script, weight, face] = name.split('-') as [Script, string, string | undefined];
+    data = readFileSync(require.resolve(((face === 'serif' && SERIF_FILES[script]) || FONT_FILES[script]).replace('{w}', weight)));
     loaded.set(name, data);
   }
   return data;
@@ -202,9 +209,10 @@ export function renderDocument(input: DocumentInput): Promise<Buffer> {
   const width = doc.page.width - MARGIN * 2;
   const bottom = () => doc.page.height - doc.page.margins.bottom;
   // A font is given to the document the first time it is used, so one in English carries no others.
+  const serif = input.options?.font === 'serif';
   const registered = new Set<string>();
   const font = (script: Script, bold: boolean) => {
-    const name = `${script}-${bold ? '700' : '400'}`;
+    const name = `${script}-${bold ? '700' : '400'}${serif && SERIF_FILES[script] ? '-serif' : ''}`;
     if (!registered.has(name)) {
       doc.registerFont(name, fontData(name));
       registered.add(name);
