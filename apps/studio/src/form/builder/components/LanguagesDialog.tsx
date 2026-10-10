@@ -4,7 +4,7 @@ import { Button } from '@ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@ui/dialog';
 import { Input } from '@ui/input';
 import type { FormDefinition } from '../../types';
-import { isRtl, LANGUAGE_NAMES, languageName, languagesOf, translatableStrings, translationProgress, translationsFromCsv, translationsToCsv, UI_KEYS, UI_TEXT } from '../../engine';
+import { isRtl, LANGUAGE_NAMES, languageName, languagesOf, translatableStrings, translationProgress, translationsFromCsv, translationsFromXliff, translationsToCsv, translationsToXliff, UI_KEYS, UI_TEXT } from '../../engine';
 import { VISIBLE_BORDER } from '../../runtime/styles';
 import { ChoiceSelect, SelectSetting } from './settings';
 
@@ -46,21 +46,28 @@ export function LanguagesDialog({ form, readOnly, open, onOpenChange, onChange }
     onChange({ translations: { ...form.translations, [active]: next } });
   };
 
-  const download = () => {
-    const url = URL.createObjectURL(new Blob(['﻿', translationsToCsv(form)], { type: 'text/csv;charset=utf-8' }));
+  const save = (text: string, type: string, name: string) => {
+    const url = URL.createObjectURL(new Blob(['\uFEFF', text], { type }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${form.code}-translations.csv`;
+    a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   };
+  const download = () => save(translationsToCsv(form), 'text/csv;charset=utf-8', `${form.code}-translations.csv`);
+  /** XLIFF is one language to a file: the one being worked on. */
+  const downloadXliff = () => active && save(translationsToXliff(form, active), 'application/xliff+xml;charset=utf-8', `${form.code}-${active}.xlf`);
   const upload = async (picked: File | undefined) => {
     if (!picked) return;
     if (picked.size > 2 * 1024 * 1024) return void toast.error('The file is larger than 2 MB.');
-    const { translations, notes } = translationsFromCsv(form, (await picked.text()).replace(/^﻿/, ''));
-    if (notes[0]?.startsWith('The first column')) return void toast.error(notes[0]);
+    const text = (await picked.text()).replace(/^\uFEFF/, '');
+    // An XLIFF file is XML; anything else is read as the spreadsheet.
+    const xliff = text.trimStart().startsWith('<');
+    const { translations, notes } = xliff ? translationsFromXliff(form, text) : translationsFromCsv(form, text);
+    // Nothing was read: say why, and change nothing.
+    if (notes[0]?.startsWith('The first column') || (xliff && !/ read\.$/.test(notes[0] ?? ''))) return void toast.error(notes[0]);
     onChange({ translations });
     toast.success(notes.join(' '));
   };
@@ -125,8 +132,11 @@ export function LanguagesDialog({ form, readOnly, open, onOpenChange, onChange }
                   Import translations
                 </Button>
               )}
-              <input ref={file} type="file" accept="text/csv,.csv" hidden aria-label="Translations file (.csv)" onChange={(e) => void upload(e.target.files?.[0]).then(() => (e.target.value = ''))} />
-              <span className="fb-muted">A spreadsheet with one row for each piece of wording and a column for each language.</span>
+              <Button type="button" variant="outline" onClick={downloadXliff}>
+                Export {languageName(active!)} as XLIFF
+              </Button>
+              <input ref={file} type="file" accept="text/csv,.csv,.xlf,.xliff,application/xliff+xml" hidden aria-label="Translations file (.csv or .xlf)" onChange={(e) => void upload(e.target.files?.[0]).then(() => (e.target.value = ''))} />
+              <span className="fb-muted">A spreadsheet with one row for each piece of wording and a column for each language, or an XLIFF file for one language (what translation tools exchange). Either can be imported.</span>
             </div>
 
             <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildZodSchema, isRtl, languagesOf, localize, pickLanguage, translatableStrings, translationProgress, translationsFromCsv, translationsToCsv, UI_KEYS, UI_TEXT, uiText, validateFormDefinition } from '../src';
+import { buildZodSchema, isRtl, languagesOf, localize, pickLanguage, translatableStrings, translationProgress, translationsFromCsv, translationsFromXliff, translationsToCsv, translationsToXliff, UI_KEYS, UI_TEXT, uiText, validateFormDefinition } from '../src';
 import type { FormDefinition } from '../src';
 import base from './fixtures/customer-complaint-basic.json';
 
@@ -169,5 +169,53 @@ describe('Translating outside the product', () => {
     const csv = translationsToCsv(risky);
     expect(csv).toContain(`form.name,The form's title,"'=HYPERLINK(""http://evil.test"")",'+1 visitor,`);
     expect(translationsFromCsv(risky, csv).translations.hi['form.name']).toBe('+1 visitor');
+  });
+});
+
+describe('Translating with XLIFF, the file translation tools exchange', () => {
+  it('one file for one language: every piece of wording as a unit, with where it is and what is translated so far', () => {
+    const started = { ...form(), translations: { hi: { 'form.name': 'आगंतुक पास' } } };
+    const xml = translationsToXliff(started, 'hi');
+    expect(xml).toContain('<xliff version="1.2"');
+    expect(xml).toContain('source-language="en" target-language="hi"');
+    expect(xml).toContain('<trans-unit id="form.name"');
+    expect(xml).toContain('<source>Visitor pass</source>');
+    expect(xml).toContain('<target state="translated">आगंतुक पास</target>');
+    expect(xml).toContain('<target state="new"></target>');
+    expect((xml.match(/<trans-unit /g) ?? []).length).toBe(translatableStrings(started).length);
+  });
+
+  it('comes back in: what was translated is taken, what was emptied is removed, the other languages are untouched', () => {
+    const started = { ...form(), translations: { hi: { 'form.name': 'पुराना' }, ar: { 'form.name': 'تصريح زائر' } } };
+    const xml = translationsToXliff(started, 'hi')
+      .replace('<target state="translated">पुराना</target>', '<target state="translated">आगंतुक पास</target>')
+      .replace(/(<trans-unit id="field\.visitor\.label"[\s\S]*?<target state="new">)(<\/target>)/, '$1आगंतुक का <g id="1">नाम</g> &amp; पता$2');
+    const { translations, notes } = translationsFromXliff(started, xml);
+    expect(translations.hi['form.name']).toBe('आगंतुक पास');
+    // Markup a tool wrapped round words is dropped, and escaped characters are themselves again.
+    expect(translations.hi['field.visitor.label']).toBe('आगंतुक का नाम & पता');
+    expect(translations.ar).toEqual({ 'form.name': 'تصريح زائر' });
+    expect(notes[0]).toBe('2 translations into hi read.');
+    // A unit sent back empty takes that translation away.
+    const emptied = translationsFromXliff(started, translationsToXliff(started, 'hi').replace('<target state="translated">पुराना</target>', '<target></target>'));
+    expect(emptied.translations.hi['form.name']).toBeUndefined();
+  });
+
+  it('a file for a language the form does not offer, something that is not XLIFF, and wording the form no longer has are said, not taken', () => {
+    const xml = translationsToXliff(form(), 'hi');
+    expect(translationsFromXliff(form(), xml.replace('target-language="hi"', 'target-language="fr"')).notes).toEqual(['The file is for "fr", which is not a language of this form.']);
+    expect(translationsFromXliff(form(), '<html></html>').notes[0]).toContain('not an XLIFF file');
+    const stale = xml.replace('</body>', '<trans-unit id="field.gone.label"><source>Gone</source><target>गया</target></trans-unit></body>');
+    const read = translationsFromXliff(form(), stale);
+    expect(read.notes.join(' ')).toContain('1 unit had a key this form does not have');
+    expect(read.translations.hi['field.gone.label']).toBeUndefined();
+  });
+
+  it('wording with angle brackets and quotes goes out escaped and comes back as it was', () => {
+    const tricky = { ...form(), name: 'Pass <A> & "B"' };
+    const xml = translationsToXliff(tricky, 'hi');
+    expect(xml).toContain('<source>Pass &lt;A&gt; &amp; &quot;B&quot;</source>');
+    const back = translationsFromXliff(tricky, xml.replace(/(<trans-unit id="form\.name"[\s\S]*?<target[^>]*>)[\s\S]*?(<\/target>)/, '$1पास &lt;A&gt; &amp; &quot;B&quot;$2'));
+    expect(back.translations.hi['form.name']).toBe('पास <A> & "B"');
   });
 });

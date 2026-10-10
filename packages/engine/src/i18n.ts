@@ -541,3 +541,63 @@ export function translationsFromCsv(def: FormDefinition, csv: string): { transla
   notes.unshift(`${taken} translation${taken === 1 ? '' : 's'} read.`);
   return { translations, notes };
 }
+
+const xmlText = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const fromXml = (text: string) =>
+  text
+    // Inline markup a translation tool may add is not ours to keep: only its words are.
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n: string) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&amp;/g, '&');
+
+/**
+ * The form's wording for one language as an XLIFF 1.2 file, the format translation agencies and their tools
+ * exchange: each piece of wording is a unit with its source text, the translation so far, and a note saying
+ * where on the form it is.
+ */
+export function translationsToXliff(def: FormDefinition, language: string): string {
+  const [own] = languagesOf(def);
+  const units = translatableStrings(def).map((s) => {
+    const target = def.translations?.[language]?.[s.key];
+    return `      <trans-unit id="${xmlText(s.key)}" xml:space="preserve">\n        <source>${xmlText(s.text)}</source>\n        <target${target ? ' state="translated"' : ' state="new"'}>${xmlText(target ?? '')}</target>\n        <note>${xmlText(s.context)}</note>\n      </trans-unit>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">\n  <file original="${xmlText(def.code)}" datatype="plaintext" source-language="${xmlText(own!)}" target-language="${xmlText(language)}">\n    <body>\n${units.join('\n')}\n    </body>\n  </file>\n</xliff>\n`;
+}
+
+/**
+ * Translations read back from an XLIFF file. The language is the file's own target language, which must be one
+ * the form offers; only wording the form still has is taken, and the rest is reported.
+ */
+export function translationsFromXliff(def: FormDefinition, xml: string): { translations: Record<string, Record<string, string>>; notes: string[] } {
+  const keep = def.translations ?? {};
+  if (xml.length > 5_000_000) return { translations: keep, notes: ['The file is too large.'] };
+  const language = /<file\b[^>]*\btarget-language\s*=\s*"([^"]+)"/.exec(xml)?.[1];
+  const others = languagesOf(def).slice(1);
+  if (!language) return { translations: keep, notes: ['This is not an XLIFF file with a target language. Export one first and have that file translated.'] };
+  if (!others.includes(language)) return { translations: keep, notes: [`The file is for "${language}", which is not a language of this form.`] };
+  const known = new Set(translatableStrings(def).map((s) => s.key));
+  const next = { ...(keep[language] ?? {}) };
+  let taken = 0;
+  let unknown = 0;
+  for (const unit of xml.matchAll(/<trans-unit\b[^>]*\bid\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/trans-unit>/g)) {
+    const key = fromXml(unit[1]!);
+    if (!known.has(key)) {
+      unknown++;
+      continue;
+    }
+    const target = /<target\b[^>]*>([\s\S]*?)<\/target>/.exec(unit[2]!)?.[1];
+    const text = target === undefined ? '' : fromXml(target).slice(0, 5000);
+    if (text.trim()) {
+      next[key] = text;
+      taken++;
+    } else delete next[key];
+  }
+  const notes = [`${taken} translation${taken === 1 ? '' : 's'} into ${language} read.`];
+  if (unknown) notes.push(`${unknown} unit${unknown === 1 ? '' : 's'} had a key this form does not have (the form has changed since the file was exported) and ${unknown === 1 ? 'was' : 'were'} ignored.`);
+  return { translations: { ...keep, [language]: next }, notes };
+}

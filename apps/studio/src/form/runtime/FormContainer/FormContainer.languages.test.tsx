@@ -142,6 +142,29 @@ describe('The Languages dialog', () => {
     expect(changes.at(-1)!.translations!.hi['field.visitor.label']).toBeUndefined();
   });
 
+  it('an XLIFF file for one language is read in; one for a language the form does not have changes nothing', async () => {
+    // The test browser has no File.text(); real ones do.
+    if (!Blob.prototype.text) {
+      Blob.prototype.text = function text(this: Blob) {
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.readAsText(this);
+        });
+      };
+    }
+    const { user, changes } = open(form());
+    expect(screen.getByRole('button', { name: 'Export हिन्दी as XLIFF' })).toBeInTheDocument();
+    const xliff = (language: string, text: string) =>
+      new File([`<?xml version="1.0"?><xliff version="1.2"><file source-language="en" target-language="${language}"><body><trans-unit id="form.name"><source>Visitor pass</source><target>${text}</target></trans-unit></body></file></xliff>`], 'pass.xlf', { type: 'application/xliff+xml' });
+    const before = changes.length;
+    await user.upload(screen.getByLabelText('Translations file (.csv or .xlf)'), xliff('fr', 'Laissez-passer'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(changes.length).toBe(before);
+    await user.upload(screen.getByLabelText('Translations file (.csv or .xlf)'), xliff('ar', 'تصريح زائر'));
+    await vi.waitFor(() => expect(JSON.stringify(changes.at(-1) ?? {})).toContain('تصريح زائر'));
+  });
+
   it('a right-to-left language is typed right to left; removing a language removes its translations', async () => {
     const { user, changes } = open(form({ translations: { hi: { 'form.name': 'आगंतुक पास' }, ar: { 'form.name': 'تصريح زائر' } } }));
     await user.click(screen.getByRole('button', { name: /^العربية/ }));

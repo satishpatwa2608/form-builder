@@ -89,7 +89,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | Answers save themselves as people go | Drafts and portal | Built (10 Oct): the form setting "Save answers as people go"; kept every 30 seconds and found again on the same device, with "Start again". Off unless the form's owner turns it on |
 | The portal lists a person's unfinished forms | Drafts and portal | Built (10 Oct): forms saved while signed in to the portal appear under "Started and not sent", with Continue and Discard |
 | Themes: states (hover, focus, error) and screen sizes | Theme editor | **Part.** A style library with fixed choices |
-| Translation by file exchange | Translation | **Part.** Spreadsheet in and out; no XLIFF. Machine translation is not for us (no AI) |
+| Translation by file exchange | Translation | Built (10 Oct): a spreadsheet for all languages, or an XLIFF 1.2 file for one language (what translation tools exchange), out and back in. Machine translation is not for us (no AI) |
 | reCAPTCHA, embedding, JSON for other apps, analytics | Edge Delivery | Built |
 | Adobe's marketing products as submit targets | Submit actions | Not for us |
 
