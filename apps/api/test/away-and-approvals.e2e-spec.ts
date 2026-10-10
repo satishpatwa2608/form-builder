@@ -188,6 +188,26 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
     });
   });
 
+  describe('sending it back', () => {
+    it('whoever was handed a record returns it in one press to the person who handed it over, once', async () => {
+      const id = await send('TONIA');
+      // Nobody handed it to Nia (the form's rule gave it to her): she has nobody to send it back to.
+      expect((await h.api().get(`/records/${id}`).set(h.bearer(niaToken)).expect(200)).body.canSendBack).toBe(false);
+      await h.api().post(`/records/${id}/send-back`).set(h.bearer(niaToken)).send({}).expect(400);
+
+      await h.api().post(`/records/${id}/assign`).set(h.bearer(niaToken)).send({ userId: sam, note: 'Yours, I think' }).expect(200);
+      expect((await h.api().get(`/records/${id}`).set(h.bearer(samToken)).expect(200)).body.canSendBack).toBe(true);
+      // Only the one who holds it can send it back.
+      await h.api().post(`/records/${id}/send-back`).set(h.bearer(owner)).send({}).expect(403);
+      await h.api().post(`/records/${id}/send-back`).set(h.bearer(samToken)).send({ note: 'Not mine: it is a warranty case' }).expect(200);
+      const after = await record(id);
+      expect(after.record.assigneeId).toBe(nia);
+      expect(after.events.filter((e) => e.type === 'ASSIGNED').at(-1)).toMatchObject({ message: 'Not mine: it is a warranty case', data: { from: sam, to: nia } });
+      // It does not bounce: Nia is not offered a "send it back" of her own.
+      expect((await h.api().get(`/records/${id}`).set(h.bearer(niaToken)).expect(200)).body.canSendBack).toBe(false);
+    });
+  });
+
   describe('asking a colleague', () => {
     it('the colleague sees the record and answers; it stays with its owner; then the colleague loses sight of it', async () => {
       const id = await send('TONIA');

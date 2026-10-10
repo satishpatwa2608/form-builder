@@ -557,6 +557,7 @@ export class FormRecordService {
       record.submittedBy,
       ...events.map((e) => e.by),
       ...(record.asks ?? []).flatMap((a) => [a.by, a.to]),
+      record.handedOverBy,
       // People the history names without their having done anything: who it went to, who it was meant for, who is still to answer.
       ...events.flatMap((e) => {
         const d = (e.data ?? {}) as Record<string, unknown>;
@@ -571,6 +572,8 @@ export class FormRecordService {
       approvals,
       // Nobody's yet, and this person may work it: the screen offers "Take it".
       canTake: !record.assigneeId && !!definition.workflow?.enabled,
+      // Handed to this person by a colleague: they can return it in one press.
+      canSendBack: !!record.handedOverBy && record.assigneeId === user.uuid,
       // The question put to this person, if one is still open: the screen shows it with a box for the answer.
       askedOfMe: (record.asks ?? []).find((a) => a.to === user.uuid && !a.answeredAt) ?? null,
       people: Object.fromEntries(people),
@@ -824,7 +827,8 @@ export class FormRecordService {
     }
     if (record.assigneeId === userId) return;
 
-    await this.records.updateOne({ uuid: id, orgId }, { $set: { assigneeId: userId } });
+    // Handed on by a person from someone who held it: remembered, so the new owner can send it back in one press.
+    await this.records.updateOne({ uuid: id, orgId }, { $set: { assigneeId: userId, handedOverBy: by && record.assigneeId && userId ? record.assigneeId : '' } });
     await this.log(orgId, id, 'ASSIGNED', by, note, { from: record.assigneeId, to: userId, ...(insteadOf ? { insteadOf } : {}) });
     if (userId && userId !== by) {
       const said = note ? `: "${note}"` : '';
@@ -1013,6 +1017,19 @@ export class FormRecordService {
       throw new ConflictException(holder ? `${holder} has already taken this` : 'Someone has already taken this');
     }
     await this.log(user.orgId, id, 'ASSIGNED', user.uuid, '', { from: '', to: user.uuid, took: true });
+    return this.getAfterChange(user, id);
+  }
+
+  /** "Send it back": the present owner returns the record to whoever handed it to them, with a note if they like. */
+  async sendBack(user: AuthUser, id: string, body: { note?: unknown }) {
+    const { record } = await this.mustSee(user, id);
+    if (record.assigneeId !== user.uuid) throw new ForbiddenException('Only the person who holds this record can send it back');
+    if (!record.handedOverBy) throw new BadRequestException('Nobody handed this to you, so there is nobody to send it back to');
+    const note = typeof body?.note === 'string' ? body.note.trim().slice(0, WORKFLOW.commentLength) : '';
+    const to = record.handedOverBy;
+    await this.assign(user.orgId, id, to, user.uuid, note);
+    // Sent back is the end of that hand-over: the first holder does not get a "send it back" of their own.
+    await this.records.updateOne({ uuid: id, orgId: user.orgId }, { $set: { handedOverBy: '' } });
     return this.getAfterChange(user, id);
   }
 

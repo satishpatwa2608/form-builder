@@ -113,6 +113,10 @@ export class FormSubmission {
   @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
   asks: RecordAsk[];
 
+  /** Who held it before the present owner was handed it by a person: the one "Send it back" returns it to. */
+  @Prop({ type: String, default: '' })
+  handedOverBy: string;
+
   @Prop({ type: Date, default: null })
   statusChangedAt: Date | null;
 

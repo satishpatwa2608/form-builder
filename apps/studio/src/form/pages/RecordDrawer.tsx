@@ -769,6 +769,11 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
                       Take it
                     </Button>
                   )}
+                  {data.canSendBack && (
+                    <Button type="button" size="sm" variant="outline" className="fb-handover__take" disabled={act.isPending} onClick={() => void run({ kind: "send-back" }, "Sent back")}>
+                      Send it back to {data.people[record.handedOverBy ?? ""]?.name ?? "whoever handed it over"}
+                    </Button>
+                  )}
                   <ColleagueNote
                     people={people.filter((p) => p.uuid !== record.assigneeId)}
                     busy={act.isPending}

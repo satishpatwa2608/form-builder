@@ -55,6 +55,8 @@ export interface CustomWorkflow {
 
 export interface RecordRow {
   uuid: string;
+  /** Who held it before it was handed to the present owner. */
+  handedOverBy?: string;
   files?: RecordFile[];
   /** Questions put to colleagues about this record ("Ask a colleague"). */
   asks?: RecordAsk[];
@@ -153,6 +155,8 @@ export interface RecordDetail {
   next: WorkflowStatus[];
   /** Nobody holds it yet: the screen offers "Take it". */
   canTake?: boolean;
+  /** A colleague handed it to this person: one press returns it to them. */
+  canSendBack?: boolean;
   /** A colleague asked for this person's view and is waiting for it. */
   askedOfMe?: RecordAsk | null;
 }
@@ -259,6 +263,7 @@ type RecordAction =
   | { kind: 'status'; to: string; note?: string }
   | { kind: 'assign'; userId: string; note?: string }
   | { kind: 'take' }
+  | { kind: 'send-back' }
   | { kind: 'ask'; userId: string; question: string }
   | { kind: 'answer'; answer: string }
   | { kind: 'comment'; message: string }
@@ -288,7 +293,7 @@ export function useRecordAction(id: string | undefined) {
           ? { to: action.to, note: action.note }
           : action.kind === 'assign'
             ? { userId: action.userId, note: action.note }
-            : action.kind === 'take'
+            : action.kind === 'take' || action.kind === 'send-back'
               ? {}
               : action.kind === 'ask'
                 ? { userId: action.userId, question: action.question }

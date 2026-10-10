@@ -219,6 +219,14 @@ export class FormRecordController {
     return this.records.addFile(req.user, id, uploadId);
   }
 
+  /** "Send it back" to whoever handed it over. */
+  @Post('records/:id/send-back')
+  @HttpCode(200)
+  @RequirePermission('record.work')
+  sendBack(@Param('id') id: string, @Body() body: { note?: unknown }, @Req() req: any) {
+    return this.records.sendBack(req.user, id, body ?? {});
+  }
+
   /** "Ask a colleague" for their view, without giving the record away. */
   @Post('records/:id/ask')
   @HttpCode(200)

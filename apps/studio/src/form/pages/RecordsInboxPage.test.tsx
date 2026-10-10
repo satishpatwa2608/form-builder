@@ -89,7 +89,7 @@ vi.mock('../adapters/workflow', async (importOriginal) => {
             canReopen: false,
             contactEmail: '',
             ...api.extra,
-            people: { u1: people[0] },
+            people: { u1: people[0], u2: people[1] },
             next: api.actions.length ? [] : form.workflow!.statuses.slice(1, 2),
             actions: api.actions,
             approvals: [
@@ -334,6 +334,26 @@ describe('Records inbox', () => {
     await user.type(within(asked).getByRole('textbox', { name: 'Your answer' }), 'Yes, since Monday.');
     await user.click(within(asked).getByRole('button', { name: 'Send answer' }));
     expect(api.mutate).toHaveBeenCalledWith({ kind: 'answer', answer: 'Yes, since Monday.' });
+    api.extra = {};
+  });
+
+  it('"Send it back" is offered to someone a colleague handed the record to, and names the colleague', async () => {
+    Object.assign(registry, { forms: [form] });
+    api.mutate.mockReset();
+    api.mutate.mockResolvedValue({ gone: true });
+    const user = userEvent.setup();
+    const first = render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: /Send it back/ })).not.toBeInTheDocument();
+    first.unmount();
+
+    api.record = { handedOverBy: 'u2' };
+    api.extra = { canSendBack: true };
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Send it back to Loom Lead' }));
+    expect(api.mutate).toHaveBeenCalledWith({ kind: 'send-back' });
+    api.record = {};
     api.extra = {};
   });
 
