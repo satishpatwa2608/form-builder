@@ -7,6 +7,9 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { HttpException } from '@nestjs/common';
+import { toMinor } from '../../payments/providers';
+import { VerifyService } from '../../verify/verify.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Model } from 'mongoose';
@@ -50,6 +53,18 @@ export interface SubmitBody {
   timeZone?: unknown;
   /** The language the form was filled in (one the form offers; its own otherwise). */
   language?: unknown;
+  /** For each field confirmed with a one-time code, the proof the check returned (verify/verify.service.ts). */
+  proofs?: unknown;
+}
+
+/** The payment a response came with (payments/payments.service.ts). */
+export interface PaidWith {
+  id: string;
+  provider: string;
+  reference: string;
+  amountMinor: number;
+  currency: string;
+  paidAt: Date;
 }
 
 export interface FormSubmittedEvent {
@@ -85,6 +100,7 @@ export class FormSubmissionService {
     private readonly context: FormContextService,
     private readonly records: FormRecordService,
     private readonly extensions: ExtensionsService,
+    private readonly verify: VerifyService,
   ) {}
 
   /** The published form a public caller may open (sign-in-only forms need a user of the same org). */
@@ -142,7 +158,7 @@ export class FormSubmissionService {
     body: SubmitBody,
     user: OptionalUser | undefined,
     ip?: string,
-    opts: { source?: WorkItemSource; trusted?: boolean } = {},
+    opts: { source?: WorkItemSource; trusted?: boolean; checkOnly?: boolean; humanChecked?: boolean; payment?: PaidWith } = {},
   ) {
     // Other modules act for the org itself; everyone else goes through the form's access rule.
     const def = opts.source === 'MODULE' ? await this.definitions.findPublished(orgId, code) : await this.publishedFor(orgId, code, user, opts.source ? 'show' : 'fill');
@@ -188,10 +204,12 @@ export class FormSubmissionService {
 
     // 4. CAPTCHA before any heavier work (bots stop here). Trusted callers have no widget to solve.
     const captchaField = def.fields.find((f) => f.type === 'CAPTCHA');
-    if (!opts.trusted) await this.captcha.verify(def, captchaField ? values[captchaField.name] : undefined, ip);
+    // A response that follows a payment was already checked for this before the person went to pay.
+    const human = opts.trusted || opts.humanChecked;
+    if (!human) await this.captcha.verify(def, captchaField ? values[captchaField.name] : undefined, ip);
 
     // 5. The same validation the browser ran: required, lengths, patterns, options, conditional rules.
-    const checked = opts.trusted ? { ...def, fields: def.fields.filter((f) => f.type !== 'CAPTCHA') } : def;
+    const checked = human ? { ...def, fields: def.fields.filter((f) => f.type !== 'CAPTCHA') } : def;
     const result = buildZodSchema(localize(checked, language), ctx).safeParse(values);
     if (!result.success) {
       // A mistake in a repeating section's row is reported at `section.row.field`.
@@ -216,6 +234,12 @@ export class FormSubmissionService {
     }
     if (optionIssues.length) throw reject(optionIssues);
 
+    // 6a. An address or number the form asks to be confirmed must come with the proof of its code.
+    if (!human) {
+      const unproven = this.verify.missingProofs(orgId, def, values, (name) => !!states.get(name)?.visible, body.proofs);
+      if (unproven.length) throw reject(unproven);
+    }
+
     // 6b. The organisation's own checks (its extension), once everything the form itself can judge has passed.
     if (def.submitChecks?.length) {
       const objection = await this.extensions.runChecks(orgId, def, values);
@@ -228,6 +252,15 @@ export class FormSubmissionService {
       if (f.type !== 'FILE' || !states.get(f.name)?.visible) continue;
       const refs = (values[f.name] as { uploadId: string }[] | undefined) ?? [];
       if (refs.length) pendingFiles.push(...(await this.uploads.checkAttachable(orgId, def, f.name, refs.map((r) => r.uploadId))));
+    }
+
+    // 7a. A form that takes a payment accepts a response only with one, for the amount its own rules work out.
+    //     (Colleagues raising an item from inside, and other modules, are not asked to pay.)
+    if (opts.checkOnly) return { def, values } as never;
+    if (def.payment?.enabled && source === 'PUBLIC_FORM') {
+      const due = toMinor(Number(values[def.payment.amountField] ?? 0) || 0, def.payment.currency);
+      if (due > 0 && !opts.payment) throw new HttpException({ message: 'This form is submitted with a payment', paymentRequired: true }, 402);
+      if (opts.payment && (opts.payment.amountMinor !== due || opts.payment.currency !== def.payment.currency)) throw new HttpException('The amount paid is not the amount due', 409);
     }
 
     // 8. Store as a record: reference number, first status, assignee, SLA. Captcha tokens are never kept.
@@ -253,6 +286,7 @@ export class FormSubmissionService {
         language,
         source,
         idempotencyKey,
+        ...(opts.payment ? { payment: opts.payment } : {}),
       });
     } catch (e) {
       // Two concurrent submits with the same key: the other one won.

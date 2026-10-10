@@ -110,6 +110,9 @@ export class Organization {
   @Prop({ type: OrgSso, default: () => ({}) }) sso: OrgSso;
   @Prop({ type: OrgPortal, default: () => ({}) }) portal: OrgPortal;
   @Prop({ type: OrgMail, default: () => ({}) }) mail: OrgMail;
+  /** The organisation's own SMS service (verify/sms.service.ts) and its payment service (payments/payments.service.ts). Secrets in them are sealed. */
+  @Prop({ type: MongooseSchema.Types.Mixed, default: () => ({}) }) sms: Record<string, unknown>;
+  @Prop({ type: MongooseSchema.Types.Mixed, default: () => ({}) }) payments: Record<string, unknown>;
   /** What the organisation's log records: a level per area, until when debug runs, and how long lines are kept. */
   @Prop({ type: MongooseSchema.Types.Mixed, default: () => ({}) }) logging: { levels?: Record<string, string>; debugUntil?: Date | null; keepDays?: number };
 }

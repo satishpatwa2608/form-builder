@@ -818,6 +818,24 @@ function checkRules(def: FormDefinition, ctx: z.RefinementCtx) {
   }
 }
 
+/** Email and phone fields can be confirmed with a one-time code (`props.verify`); nothing else can. */
+export const VERIFIABLE_TYPES: ReadonlySet<FormField['type']> = new Set(['EMAIL', 'PHONE']);
+/** Whether the person must confirm this field's value with a code sent to it. */
+export const needsCode = (field: Pick<FormField, 'type' | 'props'>): boolean => VERIFIABLE_TYPES.has(field.type) && field.props?.verify === true;
+
+function checkPaymentAndCodes(def: FormDefinition, ctx: z.RefinementCtx) {
+  const repeated = formShape(def.fields).repeatOf;
+  def.fields.forEach((f, i) => {
+    if (f.props?.verify !== true) return;
+    if (!VERIFIABLE_TYPES.has(f.type)) ctx.addIssue({ code: 'custom', path: ['fields', i, 'props'], message: 'Only an email or a phone field can be confirmed with a code' });
+    else if (repeated.has(f.name)) ctx.addIssue({ code: 'custom', path: ['fields', i, 'props'], message: `"${f.name}" is inside a repeating section, where a code cannot be asked for` });
+  });
+  if (!def.payment?.enabled) return;
+  const amount = def.fields.find((f) => f.name === def.payment!.amountField);
+  if (!amount) ctx.addIssue({ code: 'custom', path: ['payment', 'amountField'], message: 'Choose the field that holds the amount to pay' });
+  else if (!isNumberField(amount) || repeated.has(amount.name)) ctx.addIssue({ code: 'custom', path: ['payment', 'amountField'], message: `"${amount.label || amount.name}" is not a number field of the form itself` });
+}
+
 /** Which actions make sense for which trigger. */
 const EVENT_ACTIONS: Record<string, ReadonlySet<FormEventAction['type']>> = {
   LOAD: new Set(['SET_VALUE', 'FETCH']),
@@ -957,6 +975,9 @@ const formDefinitionShapeObject = z.object({
     })
     .optional(),
   layout: z.object({ mode: z.enum(['single', 'steps']), review: z.boolean().optional() }).optional(),
+  payment: z
+    .object({ enabled: z.boolean(), amountField: z.string().max(100), currency: z.string().regex(/^[A-Z]{3}$/, 'Use a currency code such as INR, USD or CAD'), description: z.string().max(120).optional() })
+    .optional(),
   styles: z.array(formStyleSchema).optional(),
   workflow: workflowSchema.optional(),
   recordAccess: z
@@ -993,6 +1014,7 @@ export const formDefinitionSchema: z.ZodType<FormDefinition> = formDefinitionSha
     ctx.addIssue({ code: 'custom', path: ['timeZone'], message: `"${def.timeZone}" is not a time zone. Use a name such as Asia/Kolkata` });
   }
   checkWorkflow(def, ctx);
+  checkPaymentAndCodes(def, ctx);
 
   const names = new Set(def.fields.map((f) => f.name));
   for (const key of Object.keys(def.submission.mapping ?? {})) {

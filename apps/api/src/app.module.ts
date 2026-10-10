@@ -82,6 +82,12 @@ import { SignatureRequest, SignatureRequestSchema } from './signatures/signature
 import { SignaturesService } from './signatures/signatures.service';
 import { PortalService } from './portal/portal.service';
 import { OrgMailService } from './mail/org-mail.service';
+import { CheckoutPublicController, CheckoutSettingsController } from './payments/checkout.controller';
+import { Payment, PaymentSchema } from './payments/payment.schema';
+import { PaymentsService } from './payments/payments.service';
+import { FieldCode, FieldCodeSchema } from './verify/field-code.schema';
+import { SmsService } from './verify/sms.service';
+import { VerifyService } from './verify/verify.service';
 import { OrgLogService } from './logs/org-log.service';
 import { OperatorService } from './operator/operator.service';
 import { EcrImageStore, ExtensionDeployService, IMAGE_STORE } from './extensions/extension-deploy.service';
@@ -175,6 +181,8 @@ export class AppModule {
           { name: PortalPass.name, schema: PortalPassSchema },
           { name: OrgLog.name, schema: OrgLogSchema },
           { name: ExtensionDeploy.name, schema: ExtensionDeploySchema },
+          { name: Payment.name, schema: PaymentSchema },
+          { name: FieldCode.name, schema: FieldCodeSchema },
           { name: ExtensionDeployKey.name, schema: ExtensionDeployKeySchema },
           { name: ExtensionRepo.name, schema: ExtensionRepoSchema },
           { name: ExtensionBuild.name, schema: ExtensionBuildSchema },
@@ -224,6 +232,8 @@ export class AppModule {
         SignaturePublicController,
         PortalController,
         OrgMailController,
+        CheckoutSettingsController,
+        CheckoutPublicController,
         OrgLogController,
         OperatorController,
         SignaturesController,
@@ -289,6 +299,9 @@ export class AppModule {
         SignaturesService,
         PortalService,
         OrgMailService,
+        SmsService,
+        VerifyService,
+        PaymentsService,
         OrgLogService,
         OperatorService,
         ExtensionDeployService,

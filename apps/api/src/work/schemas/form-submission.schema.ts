@@ -148,6 +148,10 @@ export class FormSubmission {
 
   @Prop({ type: Boolean, default: false })
   isDeleted: boolean;
+
+  /** The payment it came with, when the form takes one: which service, its reference, how much and when. */
+  @Prop({ type: MongooseSchema.Types.Mixed, default: null })
+  payment: { id: string; provider: string; reference: string; amountMinor: number; currency: string; paidAt: Date } | null;
 }
 
 export type FormSubmissionDocument = HydratedDocument<FormSubmission>;

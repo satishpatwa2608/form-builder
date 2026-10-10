@@ -41,6 +41,12 @@ export interface FormDefinition {
    */
   document?: { keep?: boolean; title?: string; footer?: string; showEmpty?: boolean };
   /**
+   * Money taken before a response is accepted. The amount is the value of a number field of this form
+   * (usually one a rule works out), in whole units of the currency; a response whose amount is zero is
+   * accepted without paying. Which payment service takes the money is the organisation's setting, not the form's.
+   */
+  payment?: { enabled: boolean; amountField: string; currency: string; description?: string };
+  /**
    * Checks the organisation's extension runs before a submission is accepted
    * (x-<ref>-<check>), after the form's own rules have passed.
    */
