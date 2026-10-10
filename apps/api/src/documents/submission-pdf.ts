@@ -12,6 +12,8 @@ export type DocumentRow =
   | { kind: 'heading'; text: string }
   | { kind: 'answer'; label: string; value: string }
   | { kind: 'image'; label: string; png: Buffer }
+  /** A closing paragraph in the form owner's words. */
+  | { kind: 'note'; text: string }
   | { kind: 'table'; label: string; columns: string[]; rows: string[][] };
 
 export interface DocumentOptions {
@@ -21,6 +23,10 @@ export interface DocumentOptions {
   footer?: string;
   /** Questions nobody answered are listed too, as "Not answered". */
   showEmpty?: boolean;
+  /** Questions and sections (by name) that are not printed. */
+  leaveOut?: string[];
+  /** A closing paragraph under the answers. */
+  note?: string;
 }
 
 export interface DocumentInput {
@@ -45,9 +51,11 @@ export function documentRows(def: Pick<FormDefinition, 'fields'>, values: FormVa
   const children = new Map<string, FormField[]>();
   for (const f of def.fields) children.set(f.parentId ?? '', [...(children.get(f.parentId ?? '') ?? []), f]);
   const out: DocumentRow[] = [];
+  const leftOut = new Set(options.leaveOut ?? []);
   const walk = (parentId: string) => {
     for (const f of children.get(parentId) ?? []) {
-      if (SKIPPED.has(f.type)) continue;
+      // Left out by the form's owner: a section takes everything in it along.
+      if (SKIPPED.has(f.type) || leftOut.has(f.name)) continue;
       if (isRepeat(f)) {
         const columns = (children.get(f.id) ?? []).filter(isValueField);
         const list = Array.isArray(values[f.name]) ? (values[f.name] as Record<string, unknown>[]) : [];
@@ -78,6 +86,7 @@ export function documentRows(def: Pick<FormDefinition, 'fields'>, values: FormVa
     }
   };
   walk('');
+  if (options.note?.trim()) out.push({ kind: 'note', text: options.note.trim() });
   return out;
 }
 
@@ -257,6 +266,11 @@ export function renderDocument(input: DocumentInput): Promise<Buffer> {
       doc.y = Math.max(afterLabel, doc.y) + 5;
       doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + width, doc.y).lineWidth(0.5).strokeColor(LINE).stroke();
       doc.y += 6;
+    } else if (row.kind === 'note') {
+      room(Math.min(heightOf(clean(row.text), width, 9.5), bottom() - MARGIN) + 20);
+      doc.y += 8;
+      write(row.text, MARGIN, doc.y, width, 9.5, { color: MUTED });
+      doc.y += 6;
     } else if (row.kind === 'image') {
       room(90);
       const top = doc.y;
@@ -290,7 +304,7 @@ export function renderDocument(input: DocumentInput): Promise<Buffer> {
       doc.y += 4;
     }
   }
-  if (!input.rows.length) write('Nothing was answered.', MARGIN, doc.y, width, 10, { color: MUTED });
+  if (!input.rows.some((r) => r.kind !== 'note')) write('Nothing was answered.', MARGIN, doc.y, width, 10, { color: MUTED });
 
   // ── Foot of every page ──
   const pages = doc.bufferedPageRange();

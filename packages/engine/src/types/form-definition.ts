@@ -45,7 +45,16 @@ export interface FormDefinition {
    * The PDF made of each response. `keep` stores one with every submission as it
    * arrives; without it a PDF is still made when someone asks for it.
    */
-  document?: { keep?: boolean; title?: string; footer?: string; showEmpty?: boolean };
+  document?: {
+    keep?: boolean;
+    title?: string;
+    footer?: string;
+    showEmpty?: boolean;
+    /** Names of questions (or whole sections) the PDF leaves out: asked on the form, kept on the record, not printed. */
+    leaveOut?: string[];
+    /** A closing paragraph under the answers: a disclaimer, or what happens next. */
+    note?: string;
+  };
   /**
    * Money taken before a response is accepted. The amount is the value of a number field of this form
    * (usually one a rule works out), in whole units of the currency; a response whose amount is zero is

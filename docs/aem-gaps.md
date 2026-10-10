@@ -97,7 +97,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | AEM capability | Where | Form Builder |
 |---|---|---|
 | A PDF of each response with logo, title, footer | Document of record | Built |
-| Leave chosen fields out; a disclaimer; a font; page breaks | Document of record | **Missing** |
+| Leave chosen fields out; a disclaimer; a font; page breaks | Document of record | **Part.** Built (10 Oct): "Leave out of the PDF" (questions or whole sections) and a closing note. No choice of font, no page breaks |
 | Fill the customer's own PDF with the answers | Forms service | **Missing.** A fillable PDF can start a form; answers cannot be put back into it |
 | Many documents in one run | Communications | Built (our layout only) |
 | PDF/A, locked PDFs, certified PDFs | Communications | **Missing** |

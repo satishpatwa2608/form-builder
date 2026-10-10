@@ -62,6 +62,25 @@ describe('What a submission says, for its document', () => {
     expect(JSON.stringify(all)).not.toMatch(/Source|captcha/i);
   });
 
+  it('leaves out the questions and sections the form\'s owner chose, and ends with their closing note', () => {
+    const rows = documentRows({ fields }, values, { leaveOut: ['severity', 'delivery', 'items'], note: '  This is a record of what was sent, not an approval.  ' });
+    const said = JSON.stringify(rows);
+    expect(said).toContain('Asha Textiles');
+    // The question, the whole section (title and what it holds) and the table are gone.
+    expect(said).not.toContain('Serious');
+    expect(said).not.toContain('Delivery');
+    expect(said).not.toContain('Pune');
+    expect(said).not.toContain('Pen');
+    expect(rows.at(-1)).toEqual({ kind: 'note', text: 'This is a record of what was sent, not an approval.' });
+    // Nothing chosen: nothing changes, and no note is added.
+    expect(documentRows({ fields }, values, {}).some((r) => r.kind === 'note')).toBe(false);
+  });
+
+  it('prints the closing note under the answers', async () => {
+    const pdf = await renderDocument(input({ rows: documentRows({ fields }, values, { note: 'Keep this for your records.' }) }));
+    expect((await pdfParse(pdf)).text).toContain('Keep this for your records.');
+  });
+
   it('a signature that is not a picture the form drew is not put in the document', () => {
     expect(documentRows({ fields }, { sign: 'data:image/svg+xml;base64,PHN2Zz4=' })).toEqual([]);
   });

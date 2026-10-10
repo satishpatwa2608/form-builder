@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Button } from '@ui/button';
-import { formShape, isNumberField, isTimeZone, languageName, languagesOf } from '../../engine';
+import { formShape, isNumberField, isTimeZone, isValueField, languageName, languagesOf } from '../../engine';
 import { LanguagesDialog } from './LanguagesDialog';
 import type { FontFamily, FormActionConfig, FormDefinition, FormTheme, SubmissionConfig } from '../../types';
 import { Checkbox } from '@ui/checkbox';
 import { useSubmitChecks } from '../../adapters/extensions';
 import { useStyles } from '../../adapters/styles/style-master';
 import { VISIBLE_BORDER } from '../../runtime/styles';
-import { ColorSetting, SelectSetting, SwitchSetting, TextSetting } from './settings';
+import { ColorSetting, SelectSetting, Setting, SwitchSetting, TextSetting } from './settings';
+import { MultiSelect } from '@ui/multiselect';
 
 /** A stored ISO time as the value of a date-and-time box (the person's own time zone), and back. */
 function toLocalInput(iso: string | undefined): string {
@@ -76,6 +77,9 @@ interface FormSettingsPanelProps {
   codeLocked: boolean;
   onChange: (changes: Partial<FormDefinition>) => void;
 }
+
+/** Kinds of field the PDF never prints anyway, so there is nothing to leave out. */
+const NEVER_PRINTED = new Set(['HIDDEN', 'CAPTCHA', 'HTML', 'BUTTON', 'IMAGE']);
 
 /** The PDF settings with nothing left set to nothing; undefined when there is none at all. */
 const tidyDocument = (d: NonNullable<FormDefinition['document']>): FormDefinition['document'] => {
@@ -255,6 +259,24 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           label="List questions nobody answered"
           checked={form.document?.showEmpty === true}
           onChange={(showEmpty) => onChange({ document: tidyDocument({ ...form.document, showEmpty: showEmpty || undefined }) })}
+        />
+        <Setting label="Leave out of the PDF" hint="Still asked on the form and kept on the record; just not printed. A section takes everything in it along.">
+          {() => (
+            <MultiSelect
+              options={form.fields.filter((f) => !NEVER_PRINTED.has(f.type) && (f.type === 'SECTION' || f.type === 'REPEAT' || isValueField(f))).map((f) => ({ label: `${f.label || f.name}${f.type === 'SECTION' ? ' (section)' : ''}`, value: f.name }))}
+              value={form.document?.leaveOut ?? []}
+              onChange={(leaveOut) => onChange({ document: tidyDocument({ ...form.document, leaveOut: leaveOut.length ? leaveOut : undefined }) })}
+              placeholder="Everything is printed"
+              maxVisibleTags={6}
+            />
+          )}
+        </Setting>
+        <TextSetting
+          label="Closing note"
+          multiline
+          value={form.document?.note}
+          placeholder="e.g. This document is a record of what was submitted and is not an approval."
+          onChange={(note) => onChange({ document: tidyDocument({ ...form.document, note: note || undefined }) })}
         />
         <SubmitChecks form={form} onChange={onChange} />
 
