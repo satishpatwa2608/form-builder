@@ -62,7 +62,7 @@ vi.mock('../adapters/registry/useFormRegistry', async (importOriginal) => ({
   useFormDefinitions: () => ({ data: registry.forms, isLoading: false }),
 }));
 
-const api = vi.hoisted(() => ({ bulk: vi.fn(), saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown> }));
+const api = vi.hoisted(() => ({ addFile: vi.fn(), fileLink: vi.fn(async () => 'https://files.test/letter.pdf'), bulk: vi.fn(), saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown> }));
 vi.mock('../adapters/workflow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../adapters/workflow')>();
   const people = [{ uuid: 'u1', name: 'Denim Head', email: 'd@x.test' }, { uuid: 'u2', name: 'Loom Lead', email: 'l@x.test' }];
@@ -71,6 +71,8 @@ vi.mock('../adapters/workflow', async (importOriginal) => {
     recordsAvailable: true,
     usePeople: () => ({ data: people }),
     useBulkRecords: () => ({ isPending: false, mutateAsync: api.bulk }),
+    useAddRecordFile: () => ({ isPending: false, mutate: api.addFile }),
+    recordFileLink: api.fileLink,
     useInbox: (filters: unknown) => {
       api.filters.push(filters);
       return {
@@ -272,6 +274,35 @@ describe('Records inbox', () => {
     await user.type(within(handOver).getByRole('textbox', { name: 'Note for them' }), 'Customer is calling back at 4');
     await user.click(within(handOver).getByRole('button', { name: 'Hand over' }));
     expect(api.mutate).toHaveBeenCalledWith({ kind: 'assign', userId: 'u2', note: 'Customer is calling back at 4' });
+  });
+
+  it('files: what came with the form and what staff added are listed, can be downloaded, and more can be added', async () => {
+    Object.assign(registry, { forms: [form] });
+    api.record = {
+      files: [
+        { fieldName: '$staff', uploadId: 'up2', name: 'letter.pdf', size: 2_400_000, contentType: 'application/pdf', addedBy: 'u1', addedAt: '2026-10-10T09:00:00.000Z' },
+        { fieldName: 'photo', uploadId: 'up1', name: 'damage.png', size: 51_200, contentType: 'image/png' },
+      ],
+    };
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+    const user = userEvent.setup();
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    const drawer = await screen.findByRole('dialog');
+    await user.click(within(drawer).getByRole('tab', { name: 'Files (2)' }));
+    const files = within(drawer).getByRole('region', { name: 'Files' });
+    expect(within(files).getByText(/2\.3 MB · Added by Denim Head on 10 Oct 2026/)).toBeInTheDocument();
+    expect(within(files).getByText(/50 KB · Sent with the form/)).toBeInTheDocument();
+
+    await user.click(within(files).getByRole('button', { name: 'Download letter.pdf' }));
+    await vi.waitFor(() => expect(opened).toHaveBeenCalledWith('https://files.test/letter.pdf', '_blank', 'noopener'));
+    expect(api.fileLink).toHaveBeenCalledWith('r1', 'up2');
+
+    const file = new File(['%PDF-1.4'], 'reply.pdf', { type: 'application/pdf' });
+    await user.upload(within(files).getByLabelText('Add a file'), file);
+    expect(api.addFile).toHaveBeenCalledWith(file, expect.anything());
+    api.record = {};
+    opened.mockRestore();
   });
 
   it('ask a colleague: a question is needed; someone asked sees it with a box for their answer', async () => {

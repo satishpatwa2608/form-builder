@@ -34,6 +34,10 @@ import {
   type Person,
   type RecordApproval,
   type RecordAsk,
+  type RecordFile,
+  recordFileLink,
+  STAFF_FILE,
+  useAddRecordFile,
   type RecordEvent,
 } from "../adapters/workflow";
 import { PersonSelect } from "../builder/workflow/PersonSelect";
@@ -131,6 +135,8 @@ function describe(
       return e.message;
     case "REOPENED":
       return `Reopened (${String(e.data.count ?? 1)}) into ${status(e.data.to)}${e.message ? ` - "${e.message}"` : ""}`;
+    case "FILE":
+      return `Added a file: ${e.message}`;
     case "ASK":
       return e.data.phase === "answered" ? `Answered ${who(e.data.askedBy)}: "${e.message}"` : `Asked ${who(e.data.to)} for their view: "${e.message}"`;
     case "APPROVAL":
@@ -399,6 +405,63 @@ function ColleagueNote({ people, busy, open: openLabel, group, pick, note: noteL
   );
 }
 
+const sizeOf = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+/**
+ * Everything attached to the record: what the respondent sent with the form, and what staff have added while
+ * working it. Any of them can be downloaded; staff add more with one button.
+ */
+function RecordFiles({ recordId, files, def, people }: { recordId: string; files: RecordFile[]; def: FormDefinition; people: Record<string, Person> }) {
+  const add = useAddRecordFile(recordId);
+  const from = (f: RecordFile) =>
+    f.fieldName === STAFF_FILE
+      ? `Added by ${people[f.addedBy ?? ""]?.name ?? "staff"}${f.addedAt ? ` on ${format(new Date(f.addedAt), "dd MMM yyyy")}` : ""}`
+      : `Sent with the form: ${def.fields.find((x) => x.name === f.fieldName)?.label || f.fieldName}`;
+  const download = async (f: RecordFile) => {
+    try {
+      window.open(await recordFileLink(recordId, f.uploadId), "_blank", "noopener");
+    } catch (e) {
+      toast.error(messageOf(e));
+    }
+  };
+  return (
+    <section aria-label="Files" className="fb-settings" style={{ gap: 10 }}>
+      {files.length === 0 ? (
+        <p className="fb-muted">No files yet.</p>
+      ) : (
+        <ul className="fb-files">
+          {files.map((f) => (
+            <li key={f.uploadId}>
+              <span className="fb-files__name">
+                <strong>{f.name}</strong>
+                <span className="fb-muted">
+                  {sizeOf(f.size)} · {from(f)}
+                </span>
+              </span>
+              <Button type="button" size="sm" variant="outline" aria-label={`Download ${f.name}`} onClick={() => void download(f)}>
+                Download
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <label className="fb-files__add">
+        <input
+          type="file"
+          aria-label="Add a file"
+          disabled={add.isPending}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) add.mutate(file, { onSuccess: () => toast.success("File added"), onError: (err) => toast.error(messageOf(err)) });
+          }}
+        />
+        <span className="fb-muted">{add.isPending ? "Checking the file…" : "PDFs, pictures and office documents. Each file is checked before it is added."}</span>
+      </label>
+    </section>
+  );
+}
+
 /** Someone asked for this person's view: the question, and a box for the answer. */
 function AskedOfMe({ ask, who, busy, onAnswer }: { ask: RecordAsk; who: string; busy: boolean; onAnswer: (answer: string) => Promise<unknown> }) {
   const [answer, setAnswer] = useState("");
@@ -483,6 +546,7 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
               <TabsList>
                 <TabsTrigger value="answers">Answers</TabsTrigger>
                 {hasWorkFields && <TabsTrigger value="work">Work details</TabsTrigger>}
+                <TabsTrigger value="files">Files{(record.files ?? []).length ? ` (${record.files!.length})` : ""}</TabsTrigger>
                 <TabsTrigger value="history">History</TabsTrigger>
               </TabsList>
               {/* Every tab stays in the page (only one is shown), so nothing typed in one is lost by looking at another. */}
@@ -568,6 +632,9 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
 
                 </TabsContent>
               )}
+              <TabsContent value="files" forceMount className="fb-record__tab fb-settings">
+                <RecordFiles recordId={record.uuid} files={record.files ?? []} def={def} people={data.people} />
+              </TabsContent>
               <TabsContent value="history" forceMount className="fb-record__tab fb-settings">
             <section aria-label="Timeline">
               <div className="fb-panel__title">Timeline</div>

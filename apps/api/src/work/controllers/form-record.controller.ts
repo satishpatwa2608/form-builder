@@ -205,6 +205,20 @@ export class FormRecordController {
     return { done: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok) };
   }
 
+  /** Staff add a file to a record: ask where to put it, upload it there, then attach it. */
+  @Post('records/:id/files')
+  @RequirePermission('record.work')
+  startFile(@Param('id') id: string, @Body() body: Record<string, unknown>, @Req() req: any) {
+    return this.records.startFile(req.user, id, body);
+  }
+
+  @Post('records/:id/files/:uploadId/attach')
+  @HttpCode(200)
+  @RequirePermission('record.work')
+  addFile(@Param('id') id: string, @Param('uploadId') uploadId: string, @Req() req: any) {
+    return this.records.addFile(req.user, id, uploadId);
+  }
+
   /** "Ask a colleague" for their view, without giving the record away. */
   @Post('records/:id/ask')
   @HttpCode(200)

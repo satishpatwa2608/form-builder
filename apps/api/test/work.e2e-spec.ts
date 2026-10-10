@@ -188,6 +188,32 @@ describe('Work items: public submissions, records, approvals, uploads (e2e)', ()
     await h.api().get(`/records/${res.submissionId}/files/${real.uploadId}`).set(h.bearer(outsider)).expect(404);
   });
 
+  it('staff add a file to a record: checked like any upload, listed with the record, in its history, and not for outsiders', async () => {
+    const id = (await submit({ name: 'Noor', email: 'noor@customer.test', severity: 'LOW', description: 'Letter to follow' }).expect(201)).body.submissionId as string;
+    // Someone who cannot see the record cannot add to it; a kind of file nobody may upload is refused at once.
+    await h.api().post(`/records/${id}/files`).set(h.bearer(outsider)).send({ fileName: 'letter.png', contentType: 'image/png', size: PNG.length }).expect(404);
+    await h.api().post(`/records/${id}/files`).set(h.bearer(worker)).send({ fileName: 'x.exe', contentType: 'application/x-msdownload', size: 10 }).expect(400);
+
+    // What claims to be a picture and is not is thrown away when it is looked at.
+    const fake = (await h.api().post(`/records/${id}/files`).set(h.bearer(worker)).send({ fileName: 'fake.png', contentType: 'image/png', size: 12 }).expect(201)).body;
+    await h.api().put(h.localUrl(fake.url).replace(h.base, '')).set('Content-Type', 'image/png').send(Buffer.from('hello world!')).expect(200);
+    await h.api().post(`/records/${id}/files/${fake.uploadId}/attach`).set(h.bearer(worker)).expect(422);
+
+    const real = (await h.api().post(`/records/${id}/files`).set(h.bearer(worker)).send({ fileName: 'letter from customer.png', contentType: 'image/png', size: PNG.length }).expect(201)).body;
+    await h.api().put(h.localUrl(real.url).replace(h.base, '')).set('Content-Type', 'image/png').send(PNG).expect(200);
+    const after = (await h.api().post(`/records/${id}/files/${real.uploadId}/attach`).set(h.bearer(worker)).expect(200)).body;
+    expect(after.record.files).toEqual([expect.objectContaining({ fieldName: '$staff', uploadId: real.uploadId, name: 'letter_from_customer.png', contentType: 'image/png', addedBy: expect.any(String) })]);
+    expect(after.events.at(-1)).toMatchObject({ type: 'FILE', message: 'letter_from_customer.png' });
+    // The same upload cannot be attached twice, nor to another record.
+    await h.api().post(`/records/${id}/files/${real.uploadId}/attach`).set(h.bearer(worker)).expect(422);
+
+    const link = (await h.api().get(`/records/${id}/files/${real.uploadId}`).set(h.bearer(worker)).expect(200)).body.url as string;
+    expect(Buffer.compare((await h.api().get(h.localUrl(link).replace(h.base, '')).expect(200)).body as Buffer, PNG)).toBe(0);
+    await h.api().get(`/records/${id}/files/${real.uploadId}`).set(h.bearer(outsider)).expect(404);
+    // The public cannot use the staff's way in to put a file on a form.
+    await h.api().post(`/public/forms/COMPLAINT/uploads?org=${orgId}`).send({ fieldName: '$staff', fileName: 'a.png', contentType: 'image/png', size: 10 }).expect(400);
+  });
+
   it('webhooks: admins subscribe; deliveries are signed', async () => {
     await h.api().put('/webhooks/new').set(h.bearer(worker)).send({ name: 'CRM', url: 'https://hooks.example.com/in', events: [] }).expect(403);
     await h.api().put('/webhooks/new').set(h.bearer(owner)).send({ name: 'Bad', url: 'https://evil.test/x', events: [] }).expect(400);

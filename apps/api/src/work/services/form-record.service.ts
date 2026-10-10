@@ -1,3 +1,4 @@
+import { FormUploadService, STAFF_FIELD } from './form-upload.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -191,6 +192,9 @@ function fieldCondition(form: FormDefinition, raw: { field?: unknown; op?: unkno
 }
 
 /** Form admins (and "All") see every record; everyone else sees what their forms' teams allow. */
+/** How many files staff may add to one record. */
+const STAFF_FILES_MAX = 20;
+
 export const isRecordAdmin = (user: { modules?: string[] }) => !!user.modules?.some((m) => m === 'All' || m === FORM_MODULES.admin);
 
 const CODE = /^[A-Z0-9_]{1,100}$/;
@@ -218,6 +222,7 @@ export class FormRecordService {
     private readonly mail: MailService,
     private readonly directory: PeopleService,
     private readonly notifications: NotificationsService,
+    private readonly uploads: FormUploadService,
   ) {}
 
   /** The form's SLA context: its workflow and, for WORKING SLAs, the org calendar. */
@@ -999,6 +1004,23 @@ export class FormRecordService {
     if (message.length > WORKFLOW.commentLength) throw new BadRequestException(`Comments are limited to ${WORKFLOW.commentLength} characters`);
     await this.mustSee(user, id, true);
     await this.log(user.orgId, id, 'COMMENT', user.uuid, message);
+    return this.getAfterChange(user, id);
+  }
+
+  /** Staff add a file to a record: first somewhere to put it. Checked like a respondent's file. */
+  async startFile(user: AuthUser, id: string, body: Record<string, unknown>) {
+    const { record } = await this.mustSee(user, id);
+    if ((record.files ?? []).filter((f) => f.fieldName === STAFF_FIELD).length >= STAFF_FILES_MAX) throw new BadRequestException(`A record can carry at most ${STAFF_FILES_MAX} files added by staff`);
+    return this.uploads.presignForStaff(user.orgId, record.formCode, body ?? {});
+  }
+
+  /** ...then, once it is uploaded: its real type and the malware check, and it joins the record's files. */
+  async addFile(user: AuthUser, id: string, uploadId: string) {
+    const { record } = await this.mustSee(user, id);
+    const upload = await this.uploads.staffUpload(user.orgId, record.formCode, uploadId);
+    const [file] = await this.uploads.attach(id, [upload]);
+    await this.records.updateOne({ uuid: id, orgId: user.orgId }, { $push: { files: { ...file!, addedBy: user.uuid, addedAt: new Date() } } });
+    await this.log(user.orgId, id, 'FILE', user.uuid, file!.name, { uploadId: file!.uploadId, size: file!.size });
     return this.getAfterChange(user, id);
   }
 

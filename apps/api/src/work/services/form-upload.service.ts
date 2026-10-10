@@ -23,6 +23,9 @@ const DEFAULT_MAX_MB = 5;
  * local disk in development. Unattached objects live under `.../pending/`;
  * add an S3 lifecycle rule expiring that prefix after 1 day.
  */
+/** Where a form field's name would be, for files staff add to a record. No field can have this name. */
+export const STAFF_FIELD = '$staff';
+
 @Injectable()
 export class FormUploadService {
   private readonly logger = new Logger(FormUploadService.name);
@@ -51,10 +54,30 @@ export class FormUploadService {
     return base.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^\.+/, '').slice(0, 120) || 'file';
   }
 
+  /**
+   * A file staff add to a record while working it (a letter received, a photo from a site visit). It goes
+   * through the same steps as a respondent's file: declared type and size, then the real type and the malware
+   * check, before it is attached. `STAFF_FIELD` stands where a form field's name would.
+   */
+  presignForStaff(orgId: string, formCode: string, body: Record<string, unknown>) {
+    return this.presignAs(orgId, formCode, STAFF_FIELD, { accept: DEFAULT_ACCEPT, maxBytes: Math.min(DEFAULT_MAX_MB, LIMITS.maxUploadMB) * 1024 * 1024 }, body);
+  }
+
+  /** The verified upload a member of staff is adding to a record of this form, or a refusal. */
+  async staffUpload(orgId: string, formCode: string, uploadId: string): Promise<FormUpload> {
+    await this.verify(orgId, uploadId);
+    const row = await this.uploads.findOne({ uuid: uploadId, orgId, formCode, fieldName: STAFF_FIELD, status: 'VERIFIED' }).lean();
+    if (!row) throw new BadRequestException('That file is missing or was not verified');
+    return row;
+  }
+
   /** Step 1: a pre-signed PUT for one file, after checking the declared type/size against the field. */
   async presign(orgId: string, def: FormDefinition, body: Record<string, unknown>) {
     const field = FormUploadService.fileField(def, body.fieldName);
-    const { accept, maxBytes } = FormUploadService.rules(field);
+    return this.presignAs(orgId, def.code, field.name, FormUploadService.rules(field), body);
+  }
+
+  private async presignAs(orgId: string, formCode: string, fieldName: string, { accept, maxBytes }: { accept: string[]; maxBytes: number }, body: Record<string, unknown>) {
     const name = typeof body.fileName === 'string' ? body.fileName : '';
     const contentType = typeof body.contentType === 'string' ? body.contentType.toLowerCase() : '';
     const size = typeof body.size === 'number' ? body.size : -1;
@@ -65,13 +88,13 @@ export class FormUploadService {
     if (!mimeAllowed({ mime: contentType, ext }, accept)) throw new BadRequestException('This file type is not allowed');
 
     const uuid = uuidv4();
-    const key = `form-uploads/${orgId}/${def.code}/pending/${uuid}/${FormUploadService.safeName(name)}`;
+    const key = `form-uploads/${orgId}/${formCode}/pending/${uuid}/${FormUploadService.safeName(name)}`;
     const { url, headers } = await this.store.presignPut(key, contentType, size);
     await this.uploads.create({
       uuid,
       orgId,
-      formCode: def.code,
-      fieldName: field.name,
+      formCode,
+      fieldName,
       key,
       name: FormUploadService.safeName(name),
       size,

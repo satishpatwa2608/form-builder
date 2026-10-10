@@ -53,6 +53,7 @@ export interface CustomWorkflow {
 
 export interface RecordRow {
   uuid: string;
+  files?: RecordFile[];
   /** Questions put to colleagues about this record ("Ask a colleague"). */
   asks?: RecordAsk[];
   ref: string;
@@ -84,7 +85,7 @@ export interface RecordRow {
 
 export interface RecordEvent {
   uuid: string;
-  type: 'CREATED' | 'STATUS' | 'ASSIGNED' | 'COMMENT' | 'SLA' | 'AUTOMATION' | 'PRIORITY' | 'FIELD_UPDATE' | 'APPROVAL' | 'REOPENED' | 'ESCALATED' | 'ASK' | 'EMAIL' | 'ASK';
+  type: 'CREATED' | 'STATUS' | 'ASSIGNED' | 'COMMENT' | 'SLA' | 'AUTOMATION' | 'PRIORITY' | 'FIELD_UPDATE' | 'APPROVAL' | 'REOPENED' | 'ESCALATED' | 'ASK' | 'EMAIL' | 'ASK' | 'FILE';
   by: string;
   message: string;
   data: Record<string, unknown>;
@@ -305,6 +306,39 @@ export function useRecordAction(id: string | undefined) {
       if (isGone(detail)) qc.removeQueries({ queryKey: [...KEY, 'one', id] });
       else qc.setQueryData([...KEY, 'one', id], detail);
       void qc.invalidateQueries({ queryKey: [...KEY, 'inbox'] });
+    },
+  });
+}
+
+/** A file on a record: one the respondent sent with a FILE question, or one staff added (`fieldName` is `$staff`). */
+export interface RecordFile {
+  fieldName: string;
+  uploadId: string;
+  name: string;
+  size: number;
+  contentType: string;
+  addedBy?: string;
+  addedAt?: string;
+}
+export const STAFF_FILE = '$staff';
+
+/** A short-lived link to download one of a record's files. */
+export async function recordFileLink(recordId: string, uploadId: string): Promise<string> {
+  return unwrap<{ url: string }>(await adminApi.get(`/records/${recordId}/files/${uploadId}`)).url;
+}
+
+/** Staff add a file to a record: somewhere to put it, the upload itself, then the checks that attach it. */
+export function useAddRecordFile(id: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const ticket = unwrap<{ uploadId: string; url: string; headers: Record<string, string> }>(await adminApi.post(`/records/${id}/files`, { fileName: file.name, contentType: file.type || 'application/octet-stream', size: file.size }));
+      const put = await fetch(ticket.url, { method: 'PUT', headers: ticket.headers, body: file });
+      if (!put.ok) throw new Error('The file could not be uploaded. Please try again.');
+      return unwrap<RecordDetail | RecordGone>(await adminApi.post(`/records/${id}/files/${ticket.uploadId}/attach`, {}));
+    },
+    onSuccess: (detail) => {
+      if (!isGone(detail)) qc.setQueryData([...KEY, 'one', id], detail);
     },
   });
 }

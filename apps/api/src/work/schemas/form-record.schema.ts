@@ -15,6 +15,7 @@ export const RECORD_EVENT_TYPES = [
   'ESCALATED',
   'EMAIL',
   'ASK',
+  'FILE',
 ] as const;
 export type RecordEventType = (typeof RECORD_EVENT_TYPES)[number];
 
