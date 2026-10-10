@@ -52,7 +52,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | Answer a task from the email | To-do lists | Built (10 Oct): "Let approvers answer from the email" on an approval. Each approver's email has their own link; the page it opens asks them to press Approve or Reject. Off unless switched on |
 | A workflow drawn as a picture (the workflow model editor) | Workflow | **Part.** Built (10 Oct): the workflow opens on a Picture tab: statuses left to right, an arrow for each button, approvals and rejections marked, each automation as a row of steps; clicking a part opens where it is changed. An approval's two outcomes are drawn as branches side by side, each with its own steps and its own "Add a step". A workflow in the library is built on a page of its own (Workflows, then New workflow or Edit), opening on its picture. Not yet: steps that run side by side, and dragging boxes by hand (it lays itself out) |
 | Branches that run side by side (AND split) | OSGi and JEE | **Part.** Built (10 Oct): an approval step can "Ask at the same time" up to five more approvals, each of its own people about its own part; the flow goes on when all are approved, and one rejection settles it. Other kinds of step still run one after another |
-| Jump back to an earlier step; typed variables | Variables | **Part.** "Run only if" on each step and the results of earlier steps; no jumping back |
+| Jump back to an earlier step; typed variables | Variables | **Part.** "Run only if" on each step, an approval's two branches, and the results of earlier steps. No jumping back inside a flow: a flow that can go back can run for ever. Rework is done the usual way instead, by a button that moves the record back to an earlier status, where its automations run again |
 | A calendar of what is due | Inbox | Built (10 Oct): the Work inbox has a third layout, Calendar: the same view as a month, each record on the day it is due |
 | History of a task | To-do lists | Built: the History tab |
 | Saved searches; follow what I started | Tracking | Built: saved views; the requests portal |
@@ -105,22 +105,15 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | Several signers, in order or together, with an end date | Adobe Sign | Built |
 | Check the signer by a code to their phone or email | Adobe Sign | **Missing.** A signer is known to us only by their email, and the signing link sent there already proves they read that mailbox; a code to the same mailbox would add nothing. It becomes worth building when a form can name the signer's phone number |
 
-## Order of work
+## Where this stands (10 October 2026)
 
-Chosen by how often a team working a queue, or a person filling a form, would meet the gap. Each item ships with its tests and is used on the pilot before the next begins.
+Every row above now says one of three things.
 
-1. Away (out of office) with "give my new work to".
-2. Approvals: everyone must approve, and deadlines that remind and then act.
-3. Team queues with "Take it", and "My team's work" for managers.
-4. Hand over with a note; ask a colleague.
-5. Tick several records and act on all of them.
-6. Answers that save themselves, and unfinished forms on the portal.
-7. Rule actions: clear a value, add or remove a row.
-8. PDF choices: leave a field out, a disclaimer.
-9. Fill a form from a record on the server, including repeating rows and on a change of answer.
-10. Staff files on a record; approve from the email.
-11. Try a connector operation; related tables; OAuth for REST; SOAP and Oracle.
-12. Fill the customer's own PDF; PDF/A; a code for signers.
+**Built**, with tests, and used on the pilot: out of office; team queues and "Take it"; a manager's view; hand over with a note and "Send it back"; ask a colleague; share my list; approvals that need everyone, that are asked at the same time, that have a time to answer, and that can be answered from the email; ticking several records; staff files on a record; a calendar of what is due; the workflow as a picture, with an approval's branches drawn, on a page of its own; answers that save themselves and unfinished forms on the portal; look-ups when an answer changes, that fill repeating rows; rows that follow an answer; clearing an answer, putting the cursor somewhere, sending, starting again and saving from a rule; letters kept as capitals; example answers in the preview; the PDF's leave-outs, closing note, page breaks, typeface and archival form; your own PDF filled in; translations as XLIFF; the look of mistakes, corners and spacing; the Styles page; trying a read or a write on a connector; limits taken from a database table; OAuth for REST as an application or as a person; answers stored encrypted.
+
+**Partly built**, with what is missing said in its row: steps other than approvals still run one after another; lowest, highest and patterns are not taken from a source; the PDF/A output has not been through an independent checker; signing in as a person has been tested against a stand-in system, not a real provider.
+
+**Not built, on purpose**, each with its reason in its row: SOAP, Oracle and DB2 connectors (each needs its own driver and a real system to test against); a code for signers (we know only the signer's email, which the signing link already proves); locked and certified PDFs (locking stops the signing step, certifying needs the organisation's own certificate); an upload into a database column (files belong in file storage); a model that joins tables (two look-ups reach the same end); prefill on the server (the browser look-up reaches the same end); jumping back inside a flow (a status move does it safely); Adobe's marketing products, customer-written functions in rules, rebuilding the inbox in code, print-room output and machine translation.
 
 ## Not from Adobe's pages, asked for by us
 
