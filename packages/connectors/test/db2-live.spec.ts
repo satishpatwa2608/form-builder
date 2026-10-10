@@ -15,6 +15,13 @@ const ctx = { connector, secrets, allowPrivateNetwork: true };
 const signal = () => new AbortController().signal;
 const BYTES = Buffer.from(Array.from({ length: 512 }, (_, i) => i % 256));
 
+describe('a Db2 password the driver cannot be given', () => {
+  it('is refused in words, before anything is sent anywhere', async () => {
+    const withSemicolon = { connector: { ...connector, id: 'c-db2-semi', settings: { host: 'db2.example.com', database: 'x' } }, secrets: { user: 'u', password: 'pass;DATABASE=other' } };
+    await expect(reg.get('db2').test({ ...withSemicolon, allowPrivateNetwork: true, signal: signal() })).rejects.toThrow('cannot be given a password with a semicolon');
+  });
+});
+
 describe('Db2 without its driver', () => {
   it.skipIf(!!process.env.DB2_DRIVER_PATH)('says how Db2 is reached instead of failing in a way nobody can read', async () => {
     const before = process.env.DB2_DRIVER_PATH;
@@ -86,10 +93,12 @@ describe.skipIf(!at)('Db2 connector (real database)', () => {
     const ibm = (loaded.default ?? loaded) as { open(c: string): Promise<{ query(sql: string): Promise<Record<string, unknown>[]>; close(): Promise<void> }> };
     const c = await ibm.open(`DATABASE=testdb;HOSTNAME=${at![1]};PORT=${at![2]};PROTOCOL=TCPIP;UID=db2inst1;PWD=${at![3]};`);
     // Its length and a fingerprint of it, worked out by the database itself.
-    const [stored] = await c.query('SELECT LENGTH(body) AS "n", HEX(body) AS "h" FROM fb_files WHERE id = 1');
+    const [stored] = await c.query('SELECT LENGTH(body) AS "n", HEX(CAST(body AS VARCHAR(512) FOR BIT DATA)) AS "h" FROM fb_files WHERE id = 1');
     await c.close();
     expect(Number(stored!.n)).toBe(512);
     expect(String(stored!.h).toLowerCase()).toBe(BYTES.toString('hex'));
+    // Read back through the connector, the file is a note of its size, never its bytes.
+    expect((await run({ entity: files, kind: 'list', params: { ID: 1 } })).rows).toEqual([{ ID: 1, NAME: 'all-bytes.bin', BODY: '(file, 512 bytes)' }]);
   }, 60_000);
 
   it('a read-only connector refuses to write', async () => {

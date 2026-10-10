@@ -168,6 +168,10 @@ async function db2Driver(o: { host: string; port: number; database: string; user
     prepare(sql: string): Promise<{ executeNonQuery(values: unknown[]): Promise<number>; closeSync(): void }>;
     close(): Promise<void>;
   }
+  // IBM's driver takes its settings as one line, each ended by a semicolon, and has no way of writing a semicolon
+  // inside one (braces and quotes are taken as part of the password; tried against a real Db2). So a password with
+  // one cannot be passed safely, and is refused in words instead of being cut short or read as another setting.
+  if (o.password.includes(';')) throw new ConnectorError('UNSUPPORTED', "IBM's Db2 driver cannot be given a password with a semicolon in it. Give this user a password without one.");
   let ibm: { open(connection: string): Promise<Db2Connection> };
   try {
     // Named in a variable so that building the product does not need IBM's driver to be there. DB2_DRIVER_PATH says
@@ -179,7 +183,7 @@ async function db2Driver(o: { host: string; port: number; database: string; user
     throw new ConnectorError('UNSUPPORTED', "Db2 needs IBM's own driver, which is not on this server. Connect to Db2 through a gateway installed on a machine near the database (Connectors, Gateways).");
   }
   const text = (v: string) => v.replace(/[;{}]/g, '');
-  const connection = `DATABASE=${text(o.database)};HOSTNAME=${text(o.host)};PORT=${o.port};PROTOCOL=TCPIP;UID=${text(o.user)};PWD={${o.password.replace(/}/g, '}}')}};${o.tls ? 'SECURITY=SSL;' : ''}CONNECTTIMEOUT=5;`;
+  const connection = `DATABASE=${text(o.database)};HOSTNAME=${text(o.host)};PORT=${o.port};PROTOCOL=TCPIP;UID=${text(o.user)};PWD=${o.password};${o.tls ? 'SECURITY=SSL;' : ''}CONNECTTIMEOUT=5;`;
   // One connection, used for one statement at a time: IBM's driver does not share a connection between statements.
   let open: Promise<Db2Connection> | undefined;
   let turn: Promise<unknown> = Promise.resolve();
