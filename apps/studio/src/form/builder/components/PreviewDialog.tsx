@@ -6,7 +6,8 @@ import { FormContainer } from '../../runtime/FormContainer/FormContainer';
 import { createMockSubmissionAdapter } from '../../adapters/submission/submission-adapter';
 import { monoBlock } from '../../runtime/styles';
 import { useStyles } from '../../adapters/styles/style-master';
-import { isRtl, languageName, languagesOf } from '../../engine';
+import { exampleAnswers, isRtl, languageName, languagesOf } from '../../engine';
+import { Button } from '@ui/button';
 import { SelectSetting } from './settings';
 
 interface PreviewDialogProps {
@@ -28,6 +29,20 @@ export function PreviewDialog({ form, open, onOpenChange }: PreviewDialogProps) 
   const [language, setLanguage] = useState<string>();
   const shown = language && languages.includes(language) ? language : languages[0]!;
   const { data: styles } = useStyles();
+  // Example answers: the form filled in as a careful person would, so its rules, totals and later steps can be seen
+  // without typing. Each press starts the preview afresh with them (or empty again).
+  const [example, setExample] = useState<{ values: FormValues; round: number }>();
+  const [filling, setFilling] = useState(false);
+  const fill = async () => {
+    setFilling(true);
+    try {
+      const { values } = await exampleAnswers(form, { everything: true });
+      setExample((was) => ({ values, round: (was?.round ?? 0) + 1 }));
+      setPayload(null);
+    } finally {
+      setFilling(false);
+    }
+  };
 
   return (
     <Dialog
@@ -47,9 +62,22 @@ export function PreviewDialog({ form, open, onOpenChange }: PreviewDialogProps) 
             <SelectSetting label="Preview in" value={shown} options={languages.map((l) => ({ label: languageName(l), value: l }))} onChange={setLanguage} />
           </div>
         )}
+        <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+          <Button type="button" variant="outline" size="sm" disabled={filling} onClick={() => void fill()}>
+            {filling ? 'Filling…' : 'Fill with example answers'}
+          </Button>
+          {example && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setExample(undefined)}>
+              Empty it again
+            </Button>
+          )}
+          <span className="fb-muted">Made-up answers of the right kind for each question. Files are left for you to add.</span>
+        </div>
         {open && (
           <div dir={isRtl(shown) ? 'rtl' : 'ltr'} lang={shown}>
           <FormContainer
+            key={example?.round ?? 0}
+            initialValues={example?.values}
             definition={form}
             systemContext={{ language: shown }}
             captchaMode="mock"

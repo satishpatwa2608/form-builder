@@ -34,3 +34,4 @@ export * from './public-copy';
 export * from './flow-services';
 export * from './field-match';
 export * from './table-sync';
+export * from './example-answers';

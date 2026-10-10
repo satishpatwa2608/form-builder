@@ -65,13 +65,13 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | AEM capability | Where | Form Builder |
 |---|---|---|
 | Databases, REST, OData, Salesforce, Dynamics, Azure storage | Data model 1, Data sources | Built |
-| SOAP services, Oracle, DB2 | Data sources | **Missing** |
+| SOAP services, Oracle, DB2 | Data sources | **Missing.** Left until a customer needs one: each needs its own driver and a real system to test against, which the pilot does not have |
 | REST that signs in with OAuth | Data sources | **Part.** Built (10 Oct): a REST connector can sign in as an application (OAuth client credentials: token address, client ID, secret, scope), as OData does. Signing in as a person (authorization code) is not there |
 | Show only chosen tables and services | Data model 1, 2 | Built |
-| One model over several sources, with "a customer has many orders" | Data model 2 | **Missing.** A look-up reads one row of one table |
+| One model over several sources, with "a customer has many orders" | Data model 2 | **Part.** There is no model that joins tables, but a form reaches the same end with two look-ups: one fills the customer, the other reads the orders table by the customer's number and fills a repeating section with a row for each (10 Oct) |
 | Worked-out values kept on the model | Data model 2 | **Part.** Calculations are per form (a fragment can carry them) |
 | Try a read or write with typed-in values and see the answer | Data model 2 | **Part.** Built (10 Oct): "Try it" on a connector reads an exposed table with typed filters and shows the rows a form would get. Writes cannot be tried |
-| Sample data to preview a form | Data model 2, 3 | **Missing** |
+| Sample data to preview a form | Data model 2, 3 | Built (10 Oct): the builder's Preview has "Fill with example answers": made-up answers of the right kind for every question, so rules, totals and later steps can be seen without typing |
 | Required, lowest, highest and pattern taken from the source | Data model 2 | **Part.** Types are worked out; limits are not brought in |
 | Start a form from a model | Data model 3 | Built: from a table, JSON Schema, a spreadsheet, a fillable PDF |
 | Fill the whole form from a record as it opens | Data model 3, prefill | **Part.** Built (10 Oct): a look-up can also fill a repeating section, one row for each row that comes back, so a record with its lines fills the form as it opens, on a button, or when an answer changes. It still runs in the browser, not on the server |
