@@ -2,7 +2,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { z } from 'zod';
 import { ConnectorError } from '../registry';
 import type { ConnectorContext, ConnectorPlugin, Entity, EntityField } from '../types';
-import { applicationToken, assertIdentifier, elapsed, filtersFrom, now, rowFrom, safeFetch, savedRow, type Primitive } from './shared';
+import { applicationToken, assertIdentifier, elapsed, filtersFrom, now, rowFrom, safeFetch, savedRow, withFreshSignIn, type Primitive } from './shared';
 
 /**
  * An OData v4 service: Microsoft Dynamics 365 / Dataverse, SAP, and anything
@@ -127,7 +127,8 @@ export const odataPlugin: ConnectorPlugin = {
     return parseMetadata(r.text);
   },
 
-  async run(ctx, req) {
+  run(ctx, req) {
+    return withFreshSignIn(ctx, async () => {
     const start = now();
     const s = settingsOf(ctx);
     const set = `${root(s)}/${assertIdentifier(req.entity.key)}`;
@@ -139,7 +140,7 @@ export const odataPlugin: ConnectorPlugin = {
       if (key === undefined || key === null || (typeof key !== 'string' && typeof key !== 'number')) throw new ConnectorError('UNSUPPORTED', `${keyField} is required`);
       return `${set}(${encodeURIComponent(odataLiteral(key))})`;
     };
-    const failed = (status: number) => new ConnectorError('FAILED', `The service answered ${status}`);
+    const failed = (status: number) => new ConnectorError('FAILED', `The service answered ${status}`, status);
     switch (req.kind) {
       case 'list': {
         const where = filtersFrom(req.entity, req.params).map(([k, v]) => `${k} eq ${odataLiteral(v)}`);
@@ -171,6 +172,7 @@ export const odataPlugin: ConnectorPlugin = {
       default:
         throw new ConnectorError('UNSUPPORTED', `OData connectors can't ${req.kind}`);
     }
+    });
   },
 };
 

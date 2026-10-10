@@ -160,6 +160,38 @@ export function mongoHosts(uri: string): string[] {
 const tokens = new Map<string, { token: string; until: number }>();
 
 /**
+ * How long a token is kept: until a little before it says it runs out. "A little" is a minute for the usual
+ * hour-long token, and a quarter of its life for a short one, so a token that lasts seconds is not kept past them.
+ */
+const keepFor = (expiresIn: unknown) => {
+  const life = typeof expiresIn === 'number' && expiresIn > 0 ? expiresIn : 300;
+  return (life - Math.min(60, life / 4)) * 1000;
+};
+
+/** Forgets the tokens held for a connector. True when there were any. */
+export function forgetTokens(connectorId: string): boolean {
+  let any = false;
+  for (const key of [...tokens.keys()]) {
+    if (key.startsWith(`${connectorId}:`) || key.startsWith(`person:${connectorId}:`)) any = tokens.delete(key) || any;
+  }
+  return any;
+}
+
+/**
+ * Does `work`, which calls a system with a token we were given. If the system answers that it does not accept
+ * who we say we are (401), the token ran out or was withdrawn sooner than it said: it is forgotten, a new one is
+ * fetched, and the work is done once more. A 401 means nothing was done, so nothing is done twice.
+ */
+export async function withFreshSignIn<T>(ctx: ConnectorContext, work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (e) {
+    if (e instanceof ConnectorError && e.httpStatus === 401 && forgetTokens(ctx.connector.id)) return work();
+    throw e;
+  }
+}
+
+/**
  * An application signing in as itself (OAuth client credentials): the token it is given, kept until shortly
  * before it runs out. The token address goes through the same network rules as the service itself.
  */
@@ -176,7 +208,7 @@ export async function applicationToken(ctx: ConnectorContext, s: { tokenUrl?: st
   const body = (r.json ?? {}) as { access_token?: string; expires_in?: number };
   if (r.status !== 200 || !body.access_token) throw new ConnectorError('FAILED', 'Sign-in was refused: check the token address, client ID, secret and scope');
   if (tokens.size > 200) tokens.clear();
-  tokens.set(key, { token: body.access_token, until: Date.now() + Math.max(30, (body.expires_in ?? 300) - 60) * 1000 });
+  tokens.set(key, { token: body.access_token, until: Date.now() + keepFor(body.expires_in) });
   return body.access_token;
 }
 
@@ -215,6 +247,6 @@ export async function personToken(ctx: ConnectorContext, s: PersonSignIn): Promi
   const body = (r.json ?? {}) as { access_token?: string; expires_in?: number };
   if (r.status !== 200 || !body.access_token) throw new ConnectorError('FAILED', 'The sign-in is no longer accepted. Sign in again on the Connectors page.');
   if (tokens.size > 200) tokens.clear();
-  tokens.set(key, { token: body.access_token, until: Date.now() + Math.max(30, (body.expires_in ?? 300) - 60) * 1000 });
+  tokens.set(key, { token: body.access_token, until: Date.now() + keepFor(body.expires_in) });
   return body.access_token;
 }

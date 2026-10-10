@@ -7,6 +7,8 @@ export class ConnectorError extends Error {
   constructor(
     readonly code: 'UNKNOWN_TYPE' | 'UNSUPPORTED' | 'READ_ONLY' | 'TIMEOUT' | 'FAILED',
     message: string,
+    /** When the other system answered over the web: the status it gave (401 means it did not accept who we said we were). */
+    readonly httpStatus?: number,
   ) {
     super(message);
     this.name = 'ConnectorError';

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ConnectorError } from '../registry';
-import type { ConnectorContext, ConnectorPlugin, Entity } from '../types';
-import { applicationToken, elapsed, personToken, filtersFrom, now, rowFrom, safeFetch, savedRow } from './shared';
+import type { ConnectorContext, ConnectorPlugin, Entity, OperationRequest, OperationResult } from '../types';
+import { applicationToken, elapsed, personToken, filtersFrom, now, rowFrom, safeFetch, savedRow, withFreshSignIn } from './shared';
 
 /**
  * A REST API. Each entity is a resource the connector manager defines:
@@ -87,47 +87,51 @@ export const restPlugin: ConnectorPlugin = {
     return resources(ctx).resources.map((r) => ({ key: r.key, label: `${r.key} (${r.path})`, fields: r.fields.map((name) => ({ name, type: 'unknown' as const })) }));
   },
 
-  async run(ctx, req) {
-    const start = now();
-    const s = resources(ctx);
-    const res = s.resources.find((r) => r.key === req.entity.key);
-    if (!res) throw new ConnectorError('UNSUPPORTED', 'Unknown resource');
-    const keyField = req.entity.keyField ?? 'id';
-    const url = (key?: unknown) => new URL(`${s.baseUrl.replace(/\/+$/, '')}${res.path.replace('{id}', key === undefined ? '' : encodeURIComponent(String(key)))}`);
-    const headers = { Accept: 'application/json', ...(await authHeaders(ctx)) };
-    switch (req.kind) {
-      case 'list': {
-        const u = url();
-        for (const [k, v] of filtersFrom(req.entity, req.params)) u.searchParams.set(k, String(v));
-        const r = await safeFetch(ctx, u.toString(), { headers });
-        if (r.status >= 400) throw new ConnectorError('FAILED', `The API answered ${r.status}`);
-        const rows = read(r.json, res.dataPath);
-        return { rows: (Array.isArray(rows) ? rows : []).slice(0, req.limits.maxRows) as Record<string, unknown>[], durationMs: elapsed(start) };
-      }
-      case 'get':
-      case 'lookup': {
-        const key = req.params[keyField];
-        if (key === undefined) throw new ConnectorError('UNSUPPORTED', `${keyField} is required`);
-        const r = await safeFetch(ctx, url(key).toString(), { headers });
-        if (r.status === 404) return { rows: [], durationMs: elapsed(start) };
-        if (r.status >= 400) throw new ConnectorError('FAILED', `The API answered ${r.status}`);
-        const row = r.json && typeof r.json === 'object' && !Array.isArray(r.json) ? (r.json as Record<string, unknown>) : null;
-        return { rows: row ? [req.kind === 'lookup' ? { exists: true } : row] : [], durationMs: elapsed(start) };
-      }
-      case 'insert':
-      case 'update': {
-        const { [keyField]: key, ...rest } = req.params;
-        const target = req.kind === 'update' ? url(key) : url();
-        const r = await safeFetch(ctx, target.toString(), {
-          method: req.kind === 'insert' ? 'POST' : 'PATCH',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify(rowFrom(req.entity, req.kind === 'insert' ? req.params : rest)),
-        });
-        if (r.status >= 400) throw new ConnectorError('FAILED', `The API answered ${r.status}`);
-        return { rows: savedRow(req.entity, r.json, keyField), affected: 1, durationMs: elapsed(start) };
-      }
-      default:
-        throw new ConnectorError('UNSUPPORTED', `REST connectors can't ${req.kind}`);
-    }
+  run(ctx, req) {
+    return withFreshSignIn(ctx, () => callApi(ctx, req));
   },
 };
+
+async function callApi(ctx: ConnectorContext, req: OperationRequest): Promise<OperationResult> {
+  const start = now();
+  const s = resources(ctx);
+  const res = s.resources.find((r) => r.key === req.entity.key);
+  if (!res) throw new ConnectorError('UNSUPPORTED', 'Unknown resource');
+  const keyField = req.entity.keyField ?? 'id';
+  const url = (key?: unknown) => new URL(`${s.baseUrl.replace(/\/+$/, '')}${res.path.replace('{id}', key === undefined ? '' : encodeURIComponent(String(key)))}`);
+  const headers = { Accept: 'application/json', ...(await authHeaders(ctx)) };
+  switch (req.kind) {
+    case 'list': {
+      const u = url();
+      for (const [k, v] of filtersFrom(req.entity, req.params)) u.searchParams.set(k, String(v));
+      const r = await safeFetch(ctx, u.toString(), { headers });
+      if (r.status >= 400) throw new ConnectorError('FAILED', `The API answered ${r.status}`, r.status);
+      const rows = read(r.json, res.dataPath);
+      return { rows: (Array.isArray(rows) ? rows : []).slice(0, req.limits.maxRows) as Record<string, unknown>[], durationMs: elapsed(start) };
+    }
+    case 'get':
+    case 'lookup': {
+      const key = req.params[keyField];
+      if (key === undefined) throw new ConnectorError('UNSUPPORTED', `${keyField} is required`);
+      const r = await safeFetch(ctx, url(key).toString(), { headers });
+      if (r.status === 404) return { rows: [], durationMs: elapsed(start) };
+      if (r.status >= 400) throw new ConnectorError('FAILED', `The API answered ${r.status}`, r.status);
+      const row = r.json && typeof r.json === 'object' && !Array.isArray(r.json) ? (r.json as Record<string, unknown>) : null;
+      return { rows: row ? [req.kind === 'lookup' ? { exists: true } : row] : [], durationMs: elapsed(start) };
+    }
+    case 'insert':
+    case 'update': {
+      const { [keyField]: key, ...rest } = req.params;
+      const target = req.kind === 'update' ? url(key) : url();
+      const r = await safeFetch(ctx, target.toString(), {
+        method: req.kind === 'insert' ? 'POST' : 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(rowFrom(req.entity, req.kind === 'insert' ? req.params : rest)),
+      });
+      if (r.status >= 400) throw new ConnectorError('FAILED', `The API answered ${r.status}`, r.status);
+      return { rows: savedRow(req.entity, r.json, keyField), affected: 1, durationMs: elapsed(start) };
+    }
+    default:
+      throw new ConnectorError('UNSUPPORTED', `REST connectors can't ${req.kind}`);
+  }
+}
