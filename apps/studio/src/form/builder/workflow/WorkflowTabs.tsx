@@ -59,9 +59,10 @@ export function WorkflowTabs({ form, people, customWorkflows, publishedKeys, rea
         </TabsContent>
       )}
       <TabsContent value="map">
-        {/* Looking and clicking through work on a published form too: nothing here changes anything. */}
+        {/* On a draft the picture is where the workflow is built; on a published form it only shows, and clicking leads to the tab. */}
         <WorkflowMap
           form={form}
+          edit={readOnly ? undefined : { people: teamPeople, customWorkflows, publishedKeys, onChange }}
           onOpen={(to, automation) => {
             if (automation !== undefined) setOpenAutomation(automation);
             setTab(to);

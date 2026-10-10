@@ -84,21 +84,83 @@ export function renameStatus(wf: WorkflowConfig, index: number, label: string, p
   return renameKey({ ...wf, statuses: wf.statuses.map((s, i) => (i === index ? { ...s, label, key } : s)) }, current.key, key);
 }
 
-/** Keep allowed moves pointing at a renamed key. */
+/** Keep everything that names a status pointing at it after its key changes: allowed moves, buttons, reopening, "request information". */
 function renameKey(wf: WorkflowConfig, from: string, to: string): WorkflowConfig {
-  if (from === to || !wf.transitions) return wf;
-  const transitions = Object.fromEntries(
-    Object.entries(wf.transitions).map(([k, v]) => [k === from ? to : k, v.map((x) => (x === from ? to : x))]),
-  );
-  return { ...wf, transitions };
+  if (from === to) return wf;
+  const now = (key: string) => (key === from ? to : key);
+  return {
+    ...wf,
+    ...(wf.transitions ? { transitions: Object.fromEntries(Object.entries(wf.transitions).map(([k, v]) => [now(k), v.map(now)])) } : {}),
+    ...(wf.actions
+      ? {
+          actions: wf.actions.map((a) => ({
+            ...a,
+            to: now(a.to),
+            ...(a.from ? { from: a.from.map(now) } : {}),
+            ...(a.approval?.onReject ? { approval: { ...a.approval, onReject: now(a.approval.onReject) } } : {}),
+          })),
+        }
+      : {}),
+    ...(wf.reopen ? { reopen: { ...wf.reopen, to: now(wf.reopen.to) } } : {}),
+    ...(wf.requestInfoStatus ? { requestInfoStatus: now(wf.requestInfoStatus) } : {}),
+  };
 }
 
+/** Takes a status out, and with it whatever led only there: allowed moves, buttons that moved to it, a reopening into it. */
 export function removeStatus(wf: WorkflowConfig, index: number): WorkflowConfig {
   const key = wf.statuses[index].key;
   const transitions = wf.transitions
     ? Object.fromEntries(Object.entries(wf.transitions).filter(([k]) => k !== key).map(([k, v]) => [k, v.filter((x) => x !== key)]))
     : undefined;
-  return { ...wf, statuses: wf.statuses.filter((_, i) => i !== index), transitions };
+  const actions = wf.actions
+    ?.filter((a) => a.to !== key && !(a.from?.length === 1 && a.from[0] === key))
+    .map((a) => {
+      const from = a.from?.filter((k) => k !== key);
+      const approval = a.approval?.onReject === key ? { ...a.approval, onReject: undefined } : a.approval;
+      return { ...a, ...(a.from ? { from: from?.length ? from : undefined } : {}), ...(a.approval ? { approval } : {}) };
+    });
+  return {
+    ...wf,
+    statuses: wf.statuses.filter((_, i) => i !== index),
+    transitions,
+    ...(wf.actions ? { actions: actions?.length ? actions : undefined } : {}),
+    ...(wf.reopen?.to === key ? { reopen: undefined } : {}),
+    ...(wf.requestInfoStatus === key ? { requestInfoStatus: undefined } : {}),
+  };
+}
+
+/**
+ * Draws a move from one status to another, the way the workflow already says its moves: ticked in the table of
+ * allowed moves when it has one, otherwise as a button (which is also what the first arrow on a free workflow makes).
+ * Returns the button's place in the list when one was made or found, so it can be opened to be named.
+ */
+export function connectStatuses(wf: WorkflowConfig, from: string, to: string): { wf: WorkflowConfig; action?: number } {
+  if (from === to) return { wf };
+  if (wf.transitions && !wf.actions?.length) return { wf: toggleMove(wf, from, to, true) };
+  const actions = wf.actions ?? [];
+  // A button that already goes there: it is shown in this status too, not doubled.
+  const same = actions.findIndex((a) => a.to === to && !!a.from?.length);
+  if (same >= 0) {
+    const a = actions[same];
+    if (a.from!.includes(from)) return { wf, action: same };
+    return { wf: { ...wf, actions: actions.map((x, i) => (i === same ? { ...x, from: [...x.from!, from] } : x)) }, action: same };
+  }
+  const label = `Move to ${wf.statuses.find((s) => s.key === to)?.label ?? to}`.slice(0, 60);
+  const keys = new Set(actions.map((a) => a.key));
+  let key = actionKeyFrom(label);
+  for (let n = 2; keys.has(key); n++) key = `${actionKeyFrom(label).slice(0, 36)}_${n}`;
+  return { wf: { ...wf, actions: [...actions, { key, label, from: [from], to }] }, action: actions.length };
+}
+
+/** Takes one status off a button; a button left with nowhere to be pressed goes altogether. */
+export function disconnectStatuses(wf: WorkflowConfig, action: number, from: string): WorkflowConfig {
+  const actions = wf.actions ?? [];
+  const a = actions[action];
+  if (!a) return wf;
+  const shownIn = a.from?.length ? a.from : wf.statuses.map((s) => s.key).filter((k) => k !== a.to);
+  const left = shownIn.filter((k) => k !== from);
+  const next = left.length ? actions.map((x, i) => (i === action ? { ...x, from: left } : x)) : actions.filter((_, i) => i !== action);
+  return { ...wf, actions: next.length ? next : undefined };
 }
 
 export function moveStatus(wf: WorkflowConfig, index: number, delta: -1 | 1): WorkflowConfig {

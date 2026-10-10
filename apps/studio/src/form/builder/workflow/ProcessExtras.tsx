@@ -74,12 +74,6 @@ export function PriorityEditor({ form, wf, onChange }: Props) {
  */
 export function ActionsEditor({ form, wf, onChange, people = [] }: Props) {
   const actions = wf.actions ?? [];
-  const workFields = (wf.workFields ?? []).filter(isValueField);
-  const statusChoices = wf.statuses.map((s) => ({ label: s.label, value: s.key }));
-  const setAction = (i: number, changes: Partial<WorkflowAction>) =>
-    onChange({ ...wf, actions: actions.map((a, j) => (j === i ? { ...a, ...changes } : a)) });
-  const setActions = (list: WorkflowAction[]) => onChange({ ...wf, actions: list.length ? list : undefined });
-
   return (
     <div className="fb-settings" style={{ gap: 10 }}>
       <div className="fb-panel__title">Actions</div>
@@ -87,103 +81,117 @@ export function ActionsEditor({ form, wf, onChange, people = [] }: Props) {
         Buttons people use to move an item, e.g. "Resolve" (needs the root cause and a comment). With actions, items move only through them;
         without, any allowed status can be picked.
       </p>
-      {actions.map((a, i) => (
-        <div key={i} className="fb-panel fb-settings" style={{ gap: 8, padding: 10 }} aria-label={`Action ${a.label}`}>
-          <div className="flex items-center gap-2">
-            <div style={{ flex: 1 }}>
-              <TextSetting
-                label="Button label"
-                value={a.label}
-                onChange={(label) => setAction(i, { label, key: a.key.startsWith('action_') || a.key === actionKeyFrom(a.label) ? actionKeyFrom(label) : a.key })}
-              />
-            </div>
-            <button type="button" className="fb-icon-btn fb-icon-btn--danger" aria-label={`Delete action ${a.label}`} style={{ alignSelf: 'flex-end' }} onClick={() => setActions(actions.filter((_, j) => j !== i))}>
-              <Trash2 size={14} />
-            </button>
-          </div>
-          <SelectSetting label="Moves the item to" value={a.to || undefined} options={statusChoices} onChange={(to) => setAction(i, { to })} />
-          <Setting label="Shown when the item is in" hint="None ticked = every status (except the one it moves to).">
-            {() => (
-              <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
-                {wf.statuses.map((s) => (
-                  <label key={s.key} className="flex items-center gap-2 text-sm" style={{ marginRight: 10 }}>
-                    <Checkbox
-                      className={VISIBLE_BORDER}
-                      checked={a.from?.includes(s.key) ?? false}
-                      onCheckedChange={(c) => {
-                        const from = c === true ? [...(a.from ?? []), s.key] : (a.from ?? []).filter((x) => x !== s.key);
-                        setAction(i, { from: from.length ? from : undefined });
-                      }}
-                    />
-                    {s.label}
-                  </label>
-                ))}
-              </div>
-            )}
-          </Setting>
-          {workFields.length > 0 && (
-            <Setting label="Work fields that must be filled first">
-              {() => (
-                <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
-                  {workFields.map((f) => (
-                    <label key={f.name} className="flex items-center gap-2 text-sm" style={{ marginRight: 10 }}>
-                      <Checkbox
-                        className={VISIBLE_BORDER}
-                        checked={a.requireFields?.includes(f.name) ?? false}
-                        onCheckedChange={(c) => {
-                          const req = c === true ? [...(a.requireFields ?? []), f.name] : (a.requireFields ?? []).filter((x) => x !== f.name);
-                          setAction(i, { requireFields: req.length ? req : undefined });
-                        }}
-                      />
-                      {f.label || f.name}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </Setting>
-          )}
-          <SwitchSetting label="Ask for a comment" checked={!!a.requireComment} onChange={(on) => setAction(i, { requireComment: on || undefined })} />
-          <SwitchSetting
-            label="Needs approval"
-            checked={!!a.approval}
-            hint="The move waits until an approver agrees (e.g. the assignee's manager approves Resolve)."
-            onChange={(on) => setAction(i, { approval: on ? { to: [{ kind: 'MANAGER' }] } : undefined })}
-          />
-          {a.approval && (
-            <>
-              <Setting label="Approvers">
-                {() => <RecipientsEditor form={form} people={people} usersOnly value={a.approval!.to} onChange={(to) => setAction(i, { approval: { ...a.approval!, to } })} />}
-              </Setting>
-              <ApprovalRules value={a.approval} onChange={(rules) => setAction(i, { approval: { ...a.approval!, ...rules } })} />
-              <SwitchSetting
-                label="Only when…"
-                checked={!!a.approval.if}
-                hint="e.g. only when the compensation amount is at least 50,000 - otherwise the action moves straight away."
-                onChange={(on) => setAction(i, { approval: { ...a.approval!, if: on ? defaultCondition(conditionCandidates(form)[0]) : undefined } })}
-              />
-              {a.approval.if && (
-                <ConditionEditor
-                  condition={a.approval.if}
-                  candidates={conditionCandidates(form)}
-                  onChange={(cond) => setAction(i, { approval: { ...a.approval!, if: cond } })}
-                />
-              )}
-              <SelectSetting
-                label="If rejected, move to"
-                value={a.approval.onReject ?? STAY}
-                options={[{ label: 'Stay where it is', value: STAY }, ...statusChoices]}
-                onChange={(v) => setAction(i, { approval: { ...a.approval!, onReject: v === STAY ? undefined : v } })}
-              />
-            </>
-          )}
-          <span className="fb-setting__hint">
-            Key <span className="fb-code">{a.key}</span>
-          </span>
-        </div>
+      {actions.map((_, i) => (
+        <ActionSettings key={i} form={form} wf={wf} index={i} people={people} onChange={onChange} />
       ))}
-      <Button type="button" variant="outline" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActions([...actions, newWorkflowAction(wf)])}>
+      <Button type="button" variant="outline" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => onChange({ ...wf, actions: [...actions, newWorkflowAction(wf)] })}>
         <Plus /> Add action
       </Button>
+    </div>
+  );
+}
+
+/** One button's settings: its words, where it leads, where it shows, and what it asks for first. Also shown beside the picture. */
+export function ActionSettings({ form, wf, index: i, onChange, people = [], bare = false }: Props & { index: number; bare?: boolean }) {
+  const actions = wf.actions ?? [];
+  const a = actions[i];
+  const workFields = (wf.workFields ?? []).filter(isValueField);
+  const statusChoices = wf.statuses.map((s) => ({ label: s.label, value: s.key }));
+  const setAction = (_i: number, changes: Partial<WorkflowAction>) => onChange({ ...wf, actions: actions.map((x, j) => (j === i ? { ...x, ...changes } : x)) });
+  const setActions = (list: WorkflowAction[]) => onChange({ ...wf, actions: list.length ? list : undefined });
+  if (!a) return null;
+  return (
+<div className={bare ? 'fb-settings' : 'fb-panel fb-settings'} style={{ gap: 8, padding: bare ? 0 : 10 }} aria-label={`Action ${a.label}`}>
+      <div className="flex items-center gap-2">
+        <div style={{ flex: 1 }}>
+          <TextSetting
+            label="Button label"
+            value={a.label}
+            onChange={(label) => setAction(i, { label, key: a.key.startsWith('action_') || a.key === actionKeyFrom(a.label) ? actionKeyFrom(label) : a.key })}
+          />
+        </div>
+        <button type="button" className="fb-icon-btn fb-icon-btn--danger" aria-label={`Delete action ${a.label}`} style={{ alignSelf: 'flex-end' }} onClick={() => setActions(actions.filter((_, j) => j !== i))}>
+          <Trash2 size={14} />
+        </button>
+      </div>
+      <SelectSetting label="Moves the item to" value={a.to || undefined} options={statusChoices} onChange={(to) => setAction(i, { to })} />
+      <Setting label="Shown when the item is in" hint="None ticked = every status (except the one it moves to).">
+        {() => (
+          <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+            {wf.statuses.map((s) => (
+              <label key={s.key} className="flex items-center gap-2 text-sm" style={{ marginRight: 10 }}>
+                <Checkbox
+                  className={VISIBLE_BORDER}
+                  checked={a.from?.includes(s.key) ?? false}
+                  onCheckedChange={(c) => {
+                    const from = c === true ? [...(a.from ?? []), s.key] : (a.from ?? []).filter((x) => x !== s.key);
+                    setAction(i, { from: from.length ? from : undefined });
+                  }}
+                />
+                {s.label}
+              </label>
+            ))}
+          </div>
+        )}
+      </Setting>
+      {workFields.length > 0 && (
+        <Setting label="Work fields that must be filled first">
+          {() => (
+            <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+              {workFields.map((f) => (
+                <label key={f.name} className="flex items-center gap-2 text-sm" style={{ marginRight: 10 }}>
+                  <Checkbox
+                    className={VISIBLE_BORDER}
+                    checked={a.requireFields?.includes(f.name) ?? false}
+                    onCheckedChange={(c) => {
+                      const req = c === true ? [...(a.requireFields ?? []), f.name] : (a.requireFields ?? []).filter((x) => x !== f.name);
+                      setAction(i, { requireFields: req.length ? req : undefined });
+                    }}
+                  />
+                  {f.label || f.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </Setting>
+      )}
+      <SwitchSetting label="Ask for a comment" checked={!!a.requireComment} onChange={(on) => setAction(i, { requireComment: on || undefined })} />
+      <SwitchSetting
+        label="Needs approval"
+        checked={!!a.approval}
+        hint="The move waits until an approver agrees (e.g. the assignee's manager approves Resolve)."
+        onChange={(on) => setAction(i, { approval: on ? { to: [{ kind: 'MANAGER' }] } : undefined })}
+      />
+      {a.approval && (
+        <>
+          <Setting label="Approvers">
+            {() => <RecipientsEditor form={form} people={people} usersOnly value={a.approval!.to} onChange={(to) => setAction(i, { approval: { ...a.approval!, to } })} />}
+          </Setting>
+          <ApprovalRules value={a.approval} onChange={(rules) => setAction(i, { approval: { ...a.approval!, ...rules } })} />
+          <SwitchSetting
+            label="Only when…"
+            checked={!!a.approval.if}
+            hint="e.g. only when the compensation amount is at least 50,000 - otherwise the action moves straight away."
+            onChange={(on) => setAction(i, { approval: { ...a.approval!, if: on ? defaultCondition(conditionCandidates(form)[0]) : undefined } })}
+          />
+          {a.approval.if && (
+            <ConditionEditor
+              condition={a.approval.if}
+              candidates={conditionCandidates(form)}
+              onChange={(cond) => setAction(i, { approval: { ...a.approval!, if: cond } })}
+            />
+          )}
+          <SelectSetting
+            label="If rejected, move to"
+            value={a.approval.onReject ?? STAY}
+            options={[{ label: 'Stay where it is', value: STAY }, ...statusChoices]}
+            onChange={(v) => setAction(i, { approval: { ...a.approval!, onReject: v === STAY ? undefined : v } })}
+          />
+        </>
+      )}
+      <span className="fb-setting__hint">
+        Key <span className="fb-code">{a.key}</span>
+      </span>
     </div>
   );
 }

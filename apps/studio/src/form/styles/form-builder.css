@@ -1445,6 +1445,113 @@
   color: var(--muted-foreground, #6b7280);
 }
 
+/* The picture as the place the workflow is built: the drawing on the left, the settings of what is selected on the right. */
+.fb-canvas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.fb-canvas--open {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+}
+@media (max-width: 900px) {
+  .fb-canvas--open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.fb-canvas__panel {
+  position: sticky;
+  top: 8px;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background, #fff);
+}
+.fb-map__status--picked rect,
+.fb-map__status:focus-visible rect {
+  stroke-width: 3;
+  stroke: var(--primary);
+}
+.fb-map__status:focus,
+.fb-map__add:focus,
+.fb-map__hit:focus,
+.fb-map__move--click:focus {
+  outline: none;
+}
+.fb-map__status--target rect {
+  stroke-dasharray: 4 3;
+}
+.fb-map__handle {
+  fill: var(--background, #fff);
+  stroke: var(--primary);
+  stroke-width: 2;
+  cursor: crosshair;
+  touch-action: none;
+}
+.fb-map__handle:hover {
+  fill: var(--primary);
+}
+.fb-map__add {
+  cursor: pointer;
+}
+.fb-map__add rect {
+  fill: transparent;
+  stroke: var(--border);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.fb-map__add:hover rect,
+.fb-map__add:focus-visible rect {
+  stroke: var(--primary);
+}
+.fb-map__add .fb-map__name {
+  fill: var(--muted-foreground, #6b7280);
+  font-weight: 500;
+}
+.fb-map__move .fb-map__hit {
+  stroke: transparent;
+  stroke-width: 16;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.fb-map__move .fb-map__hit:focus-visible {
+  stroke: color-mix(in srgb, var(--primary) 25%, transparent);
+}
+.fb-map__move--picked path:first-child {
+  stroke: var(--primary);
+  stroke-width: 2.5;
+}
+.fb-map__move--click {
+  cursor: pointer;
+}
+.fb-map__pull {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.fb-lane--edit {
+  cursor: default;
+}
+.fb-lane--edit:hover {
+  border-color: var(--border);
+}
+.fb-lane--edit .fb-lane__box {
+  cursor: pointer;
+}
+.fb-lane--edit .fb-lane__box:hover,
+.fb-lane__box--picked {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+.fb-lane--edit .fb-flow__add {
+  position: static;
+}
+
 /* An approval's two outcomes, side by side under it: each a short column of the steps that run only that way. */
 .fb-flow__fork {
   display: grid;

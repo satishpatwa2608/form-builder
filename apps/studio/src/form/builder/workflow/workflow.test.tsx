@@ -347,7 +347,8 @@ describe('Workflow dialog', () => {
       { id: 'a1', name: 'Tell the customer', enabled: true, when: 'STATUS_CHANGED' as const, toStatus: 'CLOSED', actions: [{ id: 'e', type: 'EMAIL' as const, to: [], subject: 's', body: 'b' }, { id: 'n', type: 'NOTIFY' as const, to: [], message: 'm', if: { field: 'email', operator: 'equals' as const, value: 'x' } }] },
       { id: 'a2', name: 'Old one', enabled: false, when: 'SUBMITTED' as const, actions: [] },
     ];
-    render(<Harness initial={{ ...basic, workflow: wf, automations }} spy={vi.fn()} />);
+    // A published form: the picture only shows, and clicking a part leads to the tab it is on.
+    render(<Harness readOnly initial={{ ...basic, workflow: wf, automations }} spy={vi.fn()} />);
 
     // It is the first thing shown, and it says in words what it draws.
     const words = within(screen.getByRole('list', { name: 'The process in words' })).getAllByRole('listitem').map((li) => li.textContent);
@@ -381,7 +382,7 @@ describe('Workflow dialog', () => {
     const many = { ...STARTER_WORKFLOW, statuses: [...STARTER_WORKFLOW.statuses, { key: 'HOLD', label: 'On hold', category: 'OPEN' as const }, { key: 'LEGAL', label: 'With legal', category: 'OPEN' as const }], actions: [{ key: 'cancel', label: 'Cancel', to: 'CLOSED' }] };
     expect(workflowMoves(many).moves[0]).toMatchObject({ any: true, to: 'CLOSED' });
     expect(describeMoves(many)).toEqual(['Cancel: any other status to Closed']);
-    const first = render(<Harness initial={{ ...basic, workflow: many }} spy={vi.fn()} />);
+    const first = render(<Harness readOnly initial={{ ...basic, workflow: many }} spy={vi.fn()} />);
     expect(screen.getByRole('img', { name: /The process/ }).textContent).toContain('Cancel (from any status)');
     first.unmount();
     expect(describeMoves(STARTER_WORKFLOW)).toEqual(['Staff can move a record to any status.']);

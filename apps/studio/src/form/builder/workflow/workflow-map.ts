@@ -12,6 +12,8 @@ export interface MapMove {
   needsApproval: boolean;
   /** Where a rejected approval sends it, when that is somewhere else. */
   onReject?: string;
+  /** Its place among the workflow's buttons, when it is one (and not a tick in the table of allowed moves). */
+  action?: number;
 }
 
 /**
@@ -24,10 +26,12 @@ export function workflowMoves(wf: WorkflowConfig): { moves: MapMove[]; free: boo
     return {
       free: false,
       moves: wf.actions
-        .filter((a) => keys.has(a.to))
-        .map((a) => {
+        .map((a, action) => ({ a, action }))
+        .filter(({ a }) => keys.has(a.to))
+        .map(({ a, action }) => {
           const named = (a.from ?? []).filter((k) => keys.has(k) && k !== a.to);
           return {
+            action,
             label: a.label,
             from: named.length ? named : wf.statuses.map((s) => s.key).filter((k) => k !== a.to),
             any: !named.length,

@@ -38,7 +38,7 @@ interface FlowEditorProps {
   onChange: (automations: Automation[] | undefined) => void;
 }
 
-const STEP_ICON: Record<AutomationAction['type'], ReactNode> = {
+export const STEP_ICON: Record<AutomationAction['type'], ReactNode> = {
   EMAIL: <Mail size={16} />,
   APPROVAL: <UserCheck size={16} />,
   SIGN: <PenLine size={16} />,
@@ -51,7 +51,7 @@ const STEP_ICON: Record<AutomationAction['type'], ReactNode> = {
   HANDLER: <Code2 size={16} />,
 };
 
-const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
+export const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
   SUBMITTED: 'A form is submitted',
   STATUS_CHANGED: 'The status changes',
   SLA_BREACHED: 'A time limit is missed (SLA)',
@@ -301,7 +301,7 @@ export function FlowEditor({ form, people, customWorkflows, startAt = 0, onChang
   );
 }
 
-function StartSettings({ form, flow, onChange, onDelete }: { form: FormDefinition; flow: Automation; onChange: (c: Partial<Automation>) => void; onDelete: () => void }) {
+export function StartSettings({ form, flow, onChange, onDelete }: { form: FormDefinition; flow: Automation; onChange: (c: Partial<Automation>) => void; onDelete: () => void }) {
   const tracked = !!form.workflow?.enabled;
   const statuses = form.workflow?.statuses ?? [];
   const candidates = conditionCandidates(form);
@@ -361,7 +361,7 @@ function StartSettings({ form, flow, onChange, onDelete }: { form: FormDefinitio
   );
 }
 
-interface StepSettingsProps {
+export interface StepSettingsProps {
   form: FormDefinition;
   steps: AutomationAction[];
   index: number;
@@ -370,7 +370,7 @@ interface StepSettingsProps {
   onChange: (step: AutomationAction) => void;
 }
 
-function StepSettings({ form, steps, index, people, customWorkflows, onChange }: StepSettingsProps) {
+export function StepSettings({ form, steps, index, people, customWorkflows, onChange }: StepSettingsProps) {
   const step = steps[index];
   const key = stepKey(step, index);
   const candidates = [...conditionCandidates(form), ...outputPseudoFields(steps, index, customWorkflows)];
