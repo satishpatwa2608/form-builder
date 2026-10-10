@@ -187,6 +187,42 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
               ]}
               onChange={(order) => onChange({ ...action, order })}
             />
+            <SelectSetting<'NONE' | 'EMAIL_CODE' | 'KNOWN'>
+              label="Before they can read and sign"
+              value={action.confirm ?? 'NONE'}
+              options={[
+                { label: 'Nothing more: their private link is enough', value: 'NONE' },
+                { label: 'A code we email them at that moment', value: 'EMAIL_CODE' },
+                { label: 'Something they know (an answer from this form)', value: 'KNOWN' },
+              ]}
+              hint={
+                action.confirm === 'EMAIL_CODE'
+                  ? 'A link that was forwarded, or read by someone else, is then not enough: the code goes to the signer\'s own mailbox when they open it.'
+                  : action.confirm === 'KNOWN'
+                    ? 'They must type it before the document opens. Five wrong tries and their link stops working. Do not put the same thing in the message to the signers.'
+                    : undefined
+              }
+              onChange={(confirm) => {
+                const { confirm: _c, known: _k, knownLabel: _l, ...rest } = action;
+                const first = answerFields(form)[0];
+                onChange(confirm === 'NONE' ? rest : confirm === 'KNOWN' ? { ...rest, confirm, known: first ? `{{${first.name}}}` : '', knownLabel: first ? `your ${(first.label || first.name).toLowerCase()}` : '' } : { ...rest, confirm });
+              }}
+            />
+            {action.confirm === 'KNOWN' && (
+              <>
+                <SelectSetting
+                  label="What they must know"
+                  value={/^\{\{([A-Za-z0-9_]+)\}\}$/.exec(action.known ?? '')?.[1]}
+                  options={answerFields(form).map((f) => ({ label: f.label || f.name, value: f.name }))}
+                  hint="The answer given in the response being signed. Capitals, spaces and dashes do not matter when they type it."
+                  onChange={(name) => {
+                    const f = answerFields(form).find((x) => x.name === name);
+                    onChange({ ...action, known: `{{${name}}}`, knownLabel: f ? `your ${(f.label || f.name).toLowerCase()}` : action.knownLabel });
+                  }}
+                />
+                <TextSetting label="What the page asks for" value={action.knownLabel} placeholder="your policy number" onChange={(knownLabel) => onChange({ ...action, knownLabel })} />
+              </>
+            )}
             <NumberSetting label="Give up after (days)" min={1} value={action.expiresInDays ?? 14} onChange={(expiresInDays) => onChange({ ...action, expiresInDays: expiresInDays ? Math.min(90, Math.round(expiresInDays)) : undefined })} />
           </>
         );

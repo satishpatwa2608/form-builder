@@ -1,6 +1,6 @@
 import { orgLog } from '../logs/org-log';
-import { createHash } from 'node:crypto';
-import { BadRequestException, ConflictException, GoneException, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { createHash, createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, HttpException, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
 import { isSignature } from '@fb/engine';
@@ -9,6 +9,7 @@ import { PDFDocument } from 'pdf-lib';
 import { hashToken, newId, randomToken } from '../common/crypto';
 import { OrgMailService } from '../mail/org-mail.service';
 import { OBJECT_STORE, type ObjectStore } from '../common/object-store';
+import { APP_CONFIG, type AppConfig } from '../config';
 import { DocumentsService } from '../documents/documents.service';
 import { renderDocument, type DocumentRow } from '../documents/submission-pdf';
 import { JobQueue } from '../jobs/job-queue.service';
@@ -35,6 +36,16 @@ const JOB_REMIND = 'signature.remind';
 const JOB_EXPIRE = 'signature.expire';
 const sha256 = (data: Buffer) => createHash('sha256').update(data).digest('hex');
 const oneLine = (s: string, max: number) => s.replace(/[\r\n]+/g, ' ').trim().slice(0, max);
+/** How long an emailed code works, how soon another may be asked for, and how many may be sent and tried. */
+const CODE_MINUTES = 10;
+const CODE_WAIT_MS = 60_000;
+const MAX_CODES = 5;
+const MAX_TRIES = 5;
+/** Once confirmed, how long the page may read and sign before asking again. */
+const PASS_MINUTES = 30;
+/** What a signer knows, compared the way a person would: no spaces or dashes, capitals ignored. */
+const plainKnown = (s: string) => s.toLowerCase().replace(/[\s-]+/g, '');
+const knownHashOf = (requestId: string, value: string) => sha256(Buffer.from(`${requestId}:${plainKnown(value)}`));
 
 /**
  * Signing the PDF of a response, without an outside provider: each signer
@@ -56,6 +67,7 @@ export class SignaturesService implements OnModuleInit {
     @InjectModel(SignatureRequest.name) private readonly requests: Model<SignatureRequestDocument>,
     @InjectModel(FormSubmission.name) private readonly submissions: Model<FormSubmissionDocument>,
     @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   onModuleInit() {
@@ -93,19 +105,23 @@ export class SignaturesService implements OnModuleInit {
   }
 
   /** Called by the workflow's "Send for signature" step. */
-  async start(p: { orgId: string; recordId: string; runId: string; stepKey: string; title: string; message?: string; order?: 'IN_ORDER' | 'PARALLEL'; expiresInDays?: number; signers: string[] }): Promise<string> {
+  async start(p: { orgId: string; recordId: string; runId: string; stepKey: string; title: string; message?: string; order?: 'IN_ORDER' | 'PARALLEL'; expiresInDays?: number; signers: string[]; confirm?: 'EMAIL_CODE' | 'KNOWN'; known?: string; knownLabel?: string }): Promise<string> {
     const emails = [...new Set(p.signers.map((e) => e.trim().toLowerCase()))].slice(0, 10);
     if (!emails.length) throw new BadRequestException('There is no one to sign');
     // What they will all be shown: fixed now, so nobody signs something other than what the first signer saw.
     const { pdf } = await this.documents.forRecord(p.orgId, p.recordId);
     const id = newId();
+    // Asking for something they know only works when there is something to ask: a response without that answer
+    // must not go out for signature guarded by an empty word.
+    if (p.confirm === 'KNOWN' && !plainKnown(p.known ?? '')) throw new BadRequestException('what the signers must know is empty for this response');
+    const guard = p.confirm === 'KNOWN' ? { confirm: 'KNOWN' as const, knownLabel: oneLine(p.knownLabel ?? '', 80), knownHash: knownHashOf(id, p.known ?? '') } : p.confirm === 'EMAIL_CODE' ? { confirm: 'EMAIL_CODE' as const } : {};
     const order = p.order === 'PARALLEL' ? 'PARALLEL' : 'IN_ORDER';
     const days = Math.min(90, Math.max(1, p.expiresInDays ?? 14));
     const expiresAt = new Date(Date.now() + days * 86_400_000);
     const maxReminders = Math.min(5, Math.floor((days * 86_400_000 - 1) / REMIND_EVERY_MS));
     const blank = (email: string): Signer => ({ email, tokenHash: '', status: 'WAITING', sentAt: null, remindedAt: null, name: '', signature: '', signedAt: null, ip: '', userAgent: '', declineReason: '' });
     const request = (
-      await this.requests.create({ id, orgId: p.orgId, recordId: p.recordId, runId: p.runId, stepKey: p.stepKey, title: oneLine(p.title, 200), message: (p.message ?? '').slice(0, 2000), order, signers: emails.map(blank), expiresAt, maxReminders, documentHash: sha256(pdf) })
+      await this.requests.create({ id, orgId: p.orgId, recordId: p.recordId, runId: p.runId, stepKey: p.stepKey, title: oneLine(p.title, 200), message: (p.message ?? '').slice(0, 2000), order, ...guard, signers: emails.map(blank), expiresAt, maxReminders, documentHash: sha256(pdf) })
     ).toObject() as SignatureRequest;
     await this.store.put(SignaturesService.originalKey(request), pdf, 'application/pdf');
     for (const index of order === 'PARALLEL' ? emails.map((_, i) => i) : [0]) await this.invite(request, index);
@@ -140,17 +156,86 @@ export class SignaturesService implements OnModuleInit {
       email: signer.email,
       status: request.status === 'WAITING' ? signer.status : request.status,
       expiresAt: request.expiresAt,
+      // What more than the link this page must ask for before the document can be read or signed.
+      ...(request.confirm ? { confirm: request.confirm, ...(request.confirm === 'KNOWN' ? { asks: request.knownLabel } : {}), locked: !!signer.lockedAt } : {}),
       // Who else signs, by how far they have got; never their addresses.
       others: request.signers.filter((s) => s !== signer).map((s) => (s.status === 'SIGNED' ? 'SIGNED' : s.status === 'DECLINED' ? 'DECLINED' : 'PENDING')),
     };
   }
 
   /** The document as it was put to the signers; once all have signed, the signed one. */
-  async documentFor(token: string): Promise<{ pdf: Buffer; fileName: string }> {
-    const { request } = await this.byToken(token);
+  async documentFor(token: string, pass?: unknown): Promise<{ pdf: Buffer; fileName: string }> {
+    const { request, signer } = await this.byToken(token);
+    // Once everyone has signed, the link shows the finished document as before; until then, whatever the request asks for is asked.
+    if (request.status !== 'SIGNED') this.confirmed(request, signer, pass);
     const pdf = await this.store.get(request.status === 'SIGNED' && request.signedKey ? request.signedKey : SignaturesService.originalKey(request));
     if (!pdf) throw new NotFoundException('The document is no longer available');
     return { pdf, fileName: `${request.title.replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 60) || 'document'}.pdf` };
+  }
+
+  // ── More than the link: a code by email, or something the signer knows ────
+
+  private passFor(signer: Signer, until: number) {
+    return `${until}.${createHmac('sha256', Buffer.from(this.config.SECRET_KEY, 'base64')).update(`sign-pass:${signer.tokenHash}:${until}`).digest('base64url')}`;
+  }
+
+  /** Refuses unless the request asks for nothing more than the link, or `pass` shows this signer gave it a moment ago. */
+  private confirmed(request: SignatureRequest, signer: Signer, pass: unknown) {
+    if (!request.confirm) return;
+    if (signer.lockedAt) throw new ForbiddenException('There were too many wrong tries, so this link no longer works. Ask for the document to be sent again.');
+    const [until, mark] = typeof pass === 'string' && pass.length < 200 ? pass.split('.') : [];
+    const expected = until && mark ? this.passFor(signer, Number(until)).split('.')[1]! : '';
+    const good = !!expected && expected.length === mark!.length && timingSafeEqual(Buffer.from(expected), Buffer.from(mark!)) && Number(until) > Date.now();
+    if (!good) throw new ForbiddenException(request.confirm === 'KNOWN' ? `Enter ${request.knownLabel || 'what you were asked for'} first.` : 'Enter the code we emailed you first.');
+  }
+
+  /** Emails the signer a code, for a request that asks for one. Not more often than once a minute, nor more than a few times. */
+  async sendCode(token: string) {
+    const { request, index, signer } = await this.byToken(token);
+    SignaturesService.open(request, signer);
+    if (request.confirm !== 'EMAIL_CODE') throw new BadRequestException('This document does not ask for a code.');
+    if (signer.lockedAt) throw new ForbiddenException('There were too many wrong tries, so this link no longer works. Ask for the document to be sent again.');
+    if (signer.codeSentAt && Date.now() - new Date(signer.codeSentAt).getTime() < CODE_WAIT_MS) throw new HttpException('A code was sent a moment ago. Check your email, or wait a minute to ask for another.', 429);
+    if ((signer.codesSent ?? 0) >= MAX_CODES) throw new ForbiddenException('Too many codes have been asked for with this link. Ask for the document to be sent again.');
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    await this.requests.updateOne({ id: request.id }, { $set: { [`signers.${index}.codeHash`]: sha256(Buffer.from(`${request.id}:${signer.tokenHash}:${code}`)), [`signers.${index}.codeSentAt`]: new Date(), [`signers.${index}.tries`]: 0 }, $inc: { [`signers.${index}.codesSent`]: 1 } });
+    const org = await this.orgName(request.orgId);
+    await this.mail.send(request.orgId, {
+      to: signer.email,
+      subject: oneLine(`${code} is your code to sign: ${request.title}`, 200),
+      text: [`Your code to read and sign "${request.title}"${org ? ` from ${org}` : ''} is:`, '', code, '', `It works for ${CODE_MINUTES} minutes. If you did not ask for it, someone else has your signing link: do not pass the code on.`].join('\n'),
+    });
+    return { sentTo: signer.email.replace(/^(.).*(@.*)$/, '$1…$2'), minutes: CODE_MINUTES };
+  }
+
+  /** Checks what the signer typed (the emailed code, or what they know). Right: a pass to read and sign for a while. Wrong too often: the link stops working. */
+  async confirm(token: string, body: unknown) {
+    const { request, index, signer } = await this.byToken(token);
+    SignaturesService.open(request, signer);
+    if (!request.confirm) return { pass: '' };
+    if (signer.lockedAt) throw new ForbiddenException('There were too many wrong tries, so this link no longer works. Ask for the document to be sent again.');
+    const typed = typeof (body as { code?: unknown })?.code === 'string' ? (body as { code: string }).code.trim().slice(0, 200) : '';
+    if (!typed) throw new BadRequestException(request.confirm === 'KNOWN' ? `Enter ${request.knownLabel || 'what you were asked for'}.` : 'Enter the code from the email.');
+    let right: boolean;
+    if (request.confirm === 'KNOWN') right = knownHashOf(request.id, typed) === request.knownHash;
+    else {
+      if (!signer.codeHash || !signer.codeSentAt || Date.now() - new Date(signer.codeSentAt).getTime() > CODE_MINUTES * 60_000) throw new BadRequestException('That code is out of date. Ask for a new one.');
+      right = sha256(Buffer.from(`${request.id}:${signer.tokenHash}:${typed.replace(/\s+/g, '')}`)) === signer.codeHash;
+    }
+    if (!right) {
+      const tries = (signer.tries ?? 0) + 1;
+      // An emailed code that was guessed at too often is thrown away (another can be asked for, a few times);
+      // something they know has no "another", so the link itself stops working.
+      const spent = tries >= MAX_TRIES;
+      await this.requests.updateOne(
+        { id: request.id },
+        { $set: { [`signers.${index}.tries`]: spent && request.confirm === 'EMAIL_CODE' ? 0 : tries, ...(spent ? (request.confirm === 'KNOWN' || (signer.codesSent ?? 0) >= MAX_CODES ? { [`signers.${index}.lockedAt`]: new Date() } : { [`signers.${index}.codeHash`]: '' }) : {}) } },
+      );
+      if (spent) orgLog.warn(request.orgId, 'signatures', `Too many wrong tries before signing: ${request.title}`, { record: request.recordId });
+      throw new ForbiddenException(spent ? (request.confirm === 'KNOWN' ? 'That is not right, and there were too many wrong tries: this link no longer works. Ask for the document to be sent again.' : 'That is not right, and that code has been tried too often. Ask for a new one.') : 'That is not right. Check it and try again.');
+    }
+    await this.requests.updateOne({ id: request.id }, { $set: { [`signers.${index}.confirmedAt`]: new Date(), [`signers.${index}.codeHash`]: '', [`signers.${index}.tries`]: 0 } });
+    return { pass: this.passFor(signer, Date.now() + PASS_MINUTES * 60_000) };
   }
 
   private static open(request: SignatureRequest, signer: Signer) {
@@ -163,7 +248,8 @@ export class SignaturesService implements OnModuleInit {
   async sign(token: string, body: unknown, meta: { ip: string; userAgent: string }) {
     const { request, index, signer } = await this.byToken(token);
     SignaturesService.open(request, signer);
-    const input = (body && typeof body === 'object' ? body : {}) as { name?: unknown; signature?: unknown; agreed?: unknown };
+    const input = (body && typeof body === 'object' ? body : {}) as { name?: unknown; signature?: unknown; agreed?: unknown; pass?: unknown };
+    this.confirmed(request, signer, input.pass);
     const name = typeof input.name === 'string' ? oneLine(input.name, 100) : '';
     if (!name) throw new BadRequestException('Type your full name');
     if (!isSignature(input.signature)) throw new BadRequestException('Draw your signature');
@@ -261,13 +347,17 @@ export class SignaturesService implements OnModuleInit {
       rows.push({ kind: 'image', label: 'Signature', png: Buffer.from(s.signature.slice(s.signature.indexOf(',') + 1), 'base64') });
       rows.push({ kind: 'answer', label: 'Name as typed', value: s.name });
       rows.push({ kind: 'answer', label: 'Link sent to', value: s.email });
+      if (request.confirm && s.confirmedAt) {
+        const at = `${new Date(s.confirmedAt).toISOString().slice(0, 19).replace('T', ' ')} UTC`;
+        rows.push({ kind: 'answer', label: 'Confirmed before signing', value: request.confirm === 'KNOWN' ? `By giving ${request.knownLabel || 'what they were asked for'}, at ${at}` : `By a code emailed to that address, at ${at}` });
+      }
       rows.push({ kind: 'answer', label: 'Signed at', value: `${s.signedAt!.toISOString().slice(0, 19).replace('T', ' ')} UTC` });
       rows.push({ kind: 'answer', label: 'From', value: [s.ip, s.userAgent].filter(Boolean).join(' · ') || 'Not recorded' });
     }
     rows.push({ kind: 'heading', text: 'Document' });
     rows.push({ kind: 'answer', label: 'Fingerprint (SHA-256)', value: request.documentHash });
     rows.push({ kind: 'answer', label: 'Request', value: request.id });
-    rows.push({ kind: 'answer', label: 'How it was signed', value: 'Each signer opened a private link sent to their email address, read the document above, drew a signature, typed their name and agreed to sign electronically.' });
+    rows.push({ kind: 'answer', label: 'How it was signed', value: `Each signer opened a private link sent to their email address${request.confirm === 'EMAIL_CODE' ? ', entered a code emailed to them at that moment' : request.confirm === 'KNOWN' ? `, gave ${request.knownLabel || 'what they were asked for'}` : ''}, read the document above, drew a signature, typed their name and agreed to sign electronically.` });
     const record = await this.submissions.findOne({ orgId: request.orgId, uuid: request.recordId }).select('ref createdAt').lean();
     const page = await renderDocument({
       org: { name: await this.orgName(request.orgId) },

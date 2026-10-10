@@ -526,7 +526,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
             { $set: { orgId: run.orgId, recordId: run.recordId, formId: run.definition.id, automationId: automation.id, trigger: run.trigger, depth, actor, status: 'WAITING', stepIndex: index, steps } },
             { upsert: true },
           );
-          const requestId = await this.signatures.start({ orgId: run.orgId, recordId: run.recordId, runId, stepKey: key, title, message: action.message ? renderTemplate(action.message, this.templateContext(ctx), false) : undefined, order: action.order, expiresInDays: action.expiresInDays, signers });
+          const requestId = await this.signatures.start({ orgId: run.orgId, recordId: run.recordId, runId, stepKey: key, title, message: action.message ? renderTemplate(action.message, this.templateContext(ctx), false) : undefined, order: action.order, expiresInDays: action.expiresInDays, signers, confirm: action.confirm, known: action.confirm === 'KNOWN' ? renderTemplate(action.known ?? '', this.templateContext(ctx), false) : undefined, knownLabel: action.knownLabel });
           await this.runs.updateOne({ uuid: runId }, { $set: { signatureRequestId: requestId } });
           await log(`sent for signature to ${signers.length} ${signers.length === 1 ? 'person' : 'people'}: ${title}`, { ...base, ok: true, waiting: true });
           return;

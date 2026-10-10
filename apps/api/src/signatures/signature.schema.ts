@@ -19,6 +19,14 @@ export interface Signer {
   ip: string;
   userAgent: string;
   declineReason: string;
+  /** When more than the link is asked for: the emailed code (hashed), how often one was sent and tried, and when they got it right. */
+  codeHash?: string;
+  codeSentAt?: Date | null;
+  codesSent?: number;
+  tries?: number;
+  confirmedAt?: Date | null;
+  /** Too many wrong tries: this link no longer signs. */
+  lockedAt?: Date | null;
 }
 
 /**
@@ -43,6 +51,11 @@ export class SignatureRequest {
   /** How many rounds of reminders have gone out, and how many may: one every three days, never without end. */
   @Prop({ type: Number, default: 0 }) reminders: number;
   @Prop({ type: Number, default: 0 }) maxReminders: number;
+  /** What a signer must give besides the link before reading or signing: '' (nothing), a code emailed to them, or something they know. */
+  @Prop({ type: String, default: '' }) confirm: '' | 'EMAIL_CODE' | 'KNOWN';
+  /** KNOWN: what the page asks for, and the hash of the right answer (never the answer). */
+  @Prop({ type: String, default: '' }) knownLabel: string;
+  @Prop({ type: String, default: '' }) knownHash: string;
   /** SHA-256 of the PDF that was put in front of the signers. */
   @Prop({ type: String, default: '' }) documentHash: string;
   /** Where the signed PDF is kept, once everyone has signed. */

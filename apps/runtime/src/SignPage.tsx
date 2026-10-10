@@ -18,6 +18,11 @@ interface SignView {
   status: 'WAITING' | 'SENT' | 'SIGNED' | 'DECLINED' | 'EXPIRED';
   expiresAt: string;
   others: ('SIGNED' | 'DECLINED' | 'PENDING')[];
+  /** Asked for before the document can be read or signed: a code emailed now, or something the signer knows (`asks` says what). */
+  confirm?: 'EMAIL_CODE' | 'KNOWN';
+  asks?: string;
+  /** Too many wrong tries: this link no longer works. */
+  locked?: boolean;
 }
 
 const WIDTH = 600;
@@ -46,9 +51,13 @@ export default function SignPage({ token }: { token: string }) {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  // What the server gave once the code (or what the signer knows) was right: sent with every request after.
+  const [pass, setPass] = useState<string>();
+  const [code, setCode] = useState('');
+  const [codeSent, setCodeSent] = useState<string>();
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
-  const documentUrl = `${API_URL}/public/sign/${token}/document`;
+  const documentUrl = `${API_URL}/public/sign/${token}/document${pass ? `?pass=${encodeURIComponent(pass)}` : ''}`;
 
   useEffect(() => {
     const meta = document.createElement('meta');
@@ -136,7 +145,37 @@ export default function SignPage({ token }: { token: string }) {
     }
     const signature = canvas.current?.toDataURL('image/png');
     if (!isSignature(signature)) return setError('Draw your signature in the box.');
-    void send(`/sign/${token}`, { name: fullName, signature, agreed: true });
+    void send(`/sign/${token}`, { name: fullName, signature, agreed: true, pass });
+  };
+
+  /** Asks for a code by email. */
+  const askForCode = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const sent = await publicApi<{ sentTo: string; minutes: number }>(`/sign/${token}/code`, { method: 'POST' });
+      setCodeSent(`We have emailed a code to ${sent.sentTo}. It works for ${sent.minutes} minutes.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  /** Sends what the signer typed; right, and the document and the signing form open. */
+  const confirm = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(undefined);
+    try {
+      setPass((await publicApi<{ pass: string }>(`/sign/${token}/confirm`, { method: 'POST', body: { code } })).pass);
+      setCode('');
+    } catch (err) {
+      setError((err as Error).message);
+      // Too many wrong tries may have closed the link: show that, not the box again.
+      publicApi<SignView>(`/sign/${token}`).then(setView, () => undefined);
+    } finally {
+      setBusy(false);
+    }
   };
 
   let body: ReactNode;
@@ -163,7 +202,60 @@ export default function SignPage({ token }: { token: string }) {
   } else if (view.status === 'DECLINED') body = <Card title="This document was declined">Nobody is being asked to sign it any more. {view.organisation} has been told.</Card>;
   else if (view.status === 'EXPIRED') body = <Card title="The time to sign has passed">Ask {view.organisation} to send the document again if it still needs your signature.</Card>;
   else if (view.status === 'WAITING') body = <Card title="It is not your turn yet">Someone else signs before you. You will get an email at {view.email} when it is your turn.</Card>;
-  else {
+  else if (view.confirm && view.locked) body = <Card title="This link no longer works">There were too many wrong tries. Ask {view.organisation} to send the document again.</Card>;
+  else if (view.confirm && !pass) {
+    const byEmail = view.confirm === 'EMAIL_CODE';
+    const asked = byEmail ? 'The code from the email' : `${(view.asks ?? 'What you were asked for').charAt(0).toUpperCase()}${(view.asks ?? 'What you were asked for').slice(1)}`;
+    body = (
+      <div className="fp-public__card">
+        <p className="rt-soft">{view.organisation} asks you to sign</p>
+        <h1 className="rt-title">{view.title}</h1>
+        {view.reference && <p className="rt-soft">Reference {view.reference}</p>}
+        <p className="rt-sign__message">
+          {byEmail
+            ? `Before you can read and sign it, we need to know it is you: we will email a code to ${view.email}.`
+            : `Before you can read and sign it, we need to know it is you: please enter ${view.asks ?? 'what you were asked for'}.`}
+        </p>
+        {error && (
+          <p className="rt-banner rt-banner--error" role="alert">
+            {error}
+          </p>
+        )}
+        {codeSent && !error && (
+          <p className="rt-banner rt-banner--kept" role="status">
+            {codeSent}
+          </p>
+        )}
+        <form className="rt-sign__form" onSubmit={(e) => void confirm(e)} noValidate>
+          {byEmail && !codeSent ? (
+            <div className="rt-sign__actions">
+              <button type="button" className="rt-sign__primary" disabled={busy} onClick={() => void askForCode()}>
+                {busy ? 'Sending…' : 'Email me a code'}
+              </button>
+            </div>
+          ) : (
+            <>
+              <label className="rt-sign__field">
+                <span>{asked}</span>
+                <input value={code} maxLength={200} autoComplete={byEmail ? 'one-time-code' : 'off'} inputMode={byEmail ? 'numeric' : undefined} aria-required onChange={(e) => setCode(e.target.value)} />
+              </label>
+              <div className="rt-sign__actions">
+                <button type="submit" className="rt-sign__primary" disabled={busy || !code.trim()}>
+                  {busy ? 'Checking…' : 'Continue'}
+                </button>
+                {byEmail && (
+                  <button type="button" className="rt-save__btn" disabled={busy} onClick={() => void askForCode()}>
+                    Email me another code
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </form>
+        <p className="rt-soft">Signing as {view.email}.</p>
+      </div>
+    );
+  } else {
     body = (
       <div className="fp-public__card">
         <p className="rt-soft">{view.organisation} asks you to sign</p>

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { Public } from '../auth/auth.guard';
@@ -30,8 +30,24 @@ export class SignaturePublicController {
 
   @Get(':token/document')
   @Throttle({ default: THROTTLE.read })
-  async document(@Param('token') token: string, @Res() res: Response) {
-    sendPdf(res, await this.signatures.documentFor(token));
+  async document(@Param('token') token: string, @Query('pass') pass: string | undefined, @Res() res: Response) {
+    sendPdf(res, await this.signatures.documentFor(token, pass));
+  }
+
+  /** For a document that asks for a code first: email one to the signer. */
+  @Post(':token/code')
+  @HttpCode(200)
+  @Throttle({ default: THROTTLE.submit })
+  code(@Param('token') token: string) {
+    return this.signatures.sendCode(token);
+  }
+
+  /** The code, or what the signer knows: right, and the page may read and sign for a while. */
+  @Post(':token/confirm')
+  @HttpCode(200)
+  @Throttle({ default: THROTTLE.submit })
+  confirm(@Param('token') token: string, @Body() body: unknown) {
+    return this.signatures.confirm(token, body);
   }
 
   @Post(':token')

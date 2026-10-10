@@ -262,4 +262,120 @@ describe('Signing a response (e2e)', () => {
     const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: bad }).expect(201)).body.definition.id;
     expect(JSON.stringify((await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(400)).body)).toContain('choose who signs');
   });
+
+  describe('more than the link: a code by email, or something the signer knows', () => {
+    const one = (code: string, extra: object) => {
+      const def = form(code, extra);
+      // One signer keeps these stories short.
+      (def.automations[0]!.actions[0] as { to: object[] }).to = [{ kind: 'FIELD', field: 'email' }];
+      return def;
+    };
+    const codeFor = (to: string) => {
+      const mail = [...h.outbox].reverse().find((m) => m.to === to && /is your code to sign/.test(m.subject));
+      return mail ? /^\d{6}$/m.exec(mail.text)![0] : undefined;
+    };
+
+    it('a code is emailed when they are about to sign; without it the document cannot be read or signed', async () => {
+      await publish(one('CODED', { confirm: 'EMAIL_CODE' }));
+      const sub = await submit('CODED', 'coded@customer.test');
+      const { token } = await waitFor(() => linkTo('coded@customer.test'), 'the signer\'s email');
+      expect((await h.api().get(`/public/sign/${token}`).expect(200)).body).toMatchObject({ status: 'SENT', confirm: 'EMAIL_CODE', locked: false });
+
+      // The link alone opens nothing.
+      expect((await h.api().get(`/public/sign/${token}/document`).expect(403)).body.message).toBe('Enter the code we emailed you first.');
+      await h.api().post(`/public/sign/${token}`).send(signBody('Meera Nair')).expect(403);
+      await h.api().post(`/public/sign/${token}/confirm`).send({ code: '000000' }).expect(400); // none has been sent yet
+
+      const sent = (await h.api().post(`/public/sign/${token}/code`).expect(200)).body;
+      expect(sent).toEqual({ sentTo: 'c…@customer.test', minutes: 10 });
+      const code = codeFor('coded@customer.test')!;
+      // Not again straight away.
+      await h.api().post(`/public/sign/${token}/code`).expect(429);
+
+      const wrong = code === '123456' ? '654321' : '123456';
+      expect((await h.api().post(`/public/sign/${token}/confirm`).send({ code: wrong }).expect(403)).body.message).toBe('That is not right. Check it and try again.');
+      const { pass } = (await h.api().post(`/public/sign/${token}/confirm`).send({ code }).expect(200)).body as { pass: string };
+      // The code is used up; the pass it gave is what lets the page on.
+      await h.api().post(`/public/sign/${token}/confirm`).send({ code }).expect(400);
+      await h.api().get(`/public/sign/${token}/document?pass=${encodeURIComponent(pass)}`).expect(200);
+      await h.api().get(`/public/sign/${token}/document?pass=${encodeURIComponent(`${pass}x`)}`).expect(403);
+      // A pass made for one signer's link is no use with another's.
+      await publish(one('CODED_TWO', { confirm: 'EMAIL_CODE' }));
+      await submit('CODED_TWO', 'other@customer.test');
+      const other = await waitFor(() => linkTo('other@customer.test'), 'the other signer\'s email');
+      await h.api().get(`/public/sign/${other.token}/document?pass=${encodeURIComponent(pass)}`).expect(403);
+
+      expect((await h.api().post(`/public/sign/${token}`).send({ ...signBody('Meera Nair'), pass }).expect(200)).body.status).toBe('SIGNED');
+      await waitFor(async () => ((await statusOf(sub.submissionId)) === 'SIGNED' ? true : undefined), 'the flow to carry on');
+      // The page of signatures says how they were confirmed.
+      const signed = await h.api().get(`/public/sign/${token}/document`).buffer(true).parse(binary).expect(200);
+      const text = (await pdfParse(signed.body)).text.replace(/\s+/g, ' ');
+      expect(text).toContain('Confirmed before signing');
+      expect(text).toContain('By a code emailed to that address');
+      expect(text).toContain('entered a code emailed to them at that moment');
+    });
+
+    it('a code guessed at too often is thrown away, and after too many codes the link stops working', async () => {
+      await publish(one('GUESS', { confirm: 'EMAIL_CODE' }));
+      await submit('GUESS', 'guess@customer.test');
+      const { token } = await waitFor(() => linkTo('guess@customer.test'), 'the signer\'s email');
+      const clock = jest.spyOn(Date, 'now');
+      const start = Date.now();
+      try {
+        for (let round = 1; round <= 5; round++) {
+          // A minute and a bit later each time, so another code may be asked for.
+          clock.mockReturnValue(start + round * 70_000);
+          await h.api().post(`/public/sign/${token}/code`).expect(200);
+          const code = codeFor('guess@customer.test')!;
+          const wrong = code === '111111' ? '222222' : '111111';
+          for (let i = 0; i < 4; i++) await h.api().post(`/public/sign/${token}/confirm`).send({ code: wrong }).expect(403);
+          const last = (await h.api().post(`/public/sign/${token}/confirm`).send({ code: wrong }).expect(403)).body.message as string;
+          expect(last).toContain(round < 5 ? 'that code has been tried too often. Ask for a new one.' : 'that code has been tried too often');
+          // Even the right code no longer works once it has been thrown away.
+          if (round < 5) await h.api().post(`/public/sign/${token}/confirm`).send({ code }).expect(400);
+        }
+        clock.mockReturnValue(start + 6 * 70_000);
+        expect((await h.api().get(`/public/sign/${token}`).expect(200)).body.locked).toBe(true);
+        expect((await h.api().post(`/public/sign/${token}/code`).expect(403)).body.message).toContain('this link no longer works');
+        await h.api().post(`/public/sign/${token}`).send(signBody('Someone')).expect(403);
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it('something they know: an answer from the form, compared as a person would; five wrong tries and the link stops working', async () => {
+      const def = one('KNOWN', { confirm: 'KNOWN', known: '{{customer}}', knownLabel: 'the name on your account' });
+      await publish(def);
+      const sub = await submit('KNOWN', 'ravi2@customer.test');
+      const { token } = await waitFor(() => linkTo('ravi2@customer.test'), 'the signer\'s email');
+      const page = (await h.api().get(`/public/sign/${token}`).expect(200)).body;
+      expect(page).toMatchObject({ confirm: 'KNOWN', asks: 'the name on your account', locked: false });
+      // What they must know is nowhere on the page.
+      expect(page).not.toHaveProperty('knownHash');
+      expect(page).not.toHaveProperty('known');
+      expect((await h.api().get(`/public/sign/${token}/document`).expect(403)).body.message).toBe('Enter the name on your account first.');
+      await h.api().post(`/public/sign/${token}/code`).expect(400); // this one does not send codes
+      await h.api().post(`/public/sign/${token}/confirm`).send({ code: 'Asha Rao' }).expect(403);
+      // Capitals, spaces and dashes do not matter.
+      const { pass } = (await h.api().post(`/public/sign/${token}/confirm`).send({ code: '  ravi-KUMAR ' }).expect(200)).body as { pass: string };
+      expect((await h.api().post(`/public/sign/${token}`).send({ ...signBody('Ravi Kumar'), pass }).expect(200)).body.status).toBe('SIGNED');
+      await waitFor(async () => ((await statusOf(sub.submissionId)) === 'SIGNED' ? true : undefined), 'the flow to carry on');
+      const signed = await h.api().get(`/public/sign/${token}/document`).buffer(true).parse(binary).expect(200);
+      expect((await pdfParse(signed.body)).text.replace(/\s+/g, ' ')).toContain('By giving the name on your account');
+
+      // Someone who has the link but not the answer.
+      await submit('KNOWN', 'thief@customer.test');
+      const stolen = await waitFor(() => linkTo('thief@customer.test'), 'the second email');
+      for (let i = 0; i < 4; i++) await h.api().post(`/public/sign/${stolen.token}/confirm`).send({ code: `guess ${i}` }).expect(403);
+      expect((await h.api().post(`/public/sign/${stolen.token}/confirm`).send({ code: 'guess 5' }).expect(403)).body.message).toContain('this link no longer works');
+      // Now even the right answer is refused.
+      await h.api().post(`/public/sign/${stolen.token}/confirm`).send({ code: 'Ravi Kumar' }).expect(403);
+      expect((await h.api().get(`/public/sign/${stolen.token}`).expect(200)).body.locked).toBe(true);
+    });
+
+    it('a step that asks for something they know must say what, and what to call it', async () => {
+      const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: one('KNOWN_BAD', { confirm: 'KNOWN', known: '{{customer}}' }) }).expect(201)).body.definition.id as string;
+      expect(JSON.stringify((await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(400)).body)).toContain('say what the signers must know before they can sign');
+    });
+  });
 });

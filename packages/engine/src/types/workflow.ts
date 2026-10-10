@@ -224,7 +224,23 @@ export type AutomationAction = StepMeta &
    * until all have signed, one declines, or it expires. Output:
    * { status: 'SIGNED' | 'DECLINED' | 'EXPIRED', signedAt }.
    */
-  | { type: 'SIGN'; to: RecipientRef[]; title: string; message?: string; order?: 'IN_ORDER' | 'PARALLEL'; expiresInDays?: number }
+  | {
+      type: 'SIGN';
+      to: RecipientRef[];
+      title: string;
+      message?: string;
+      order?: 'IN_ORDER' | 'PARALLEL';
+      expiresInDays?: number;
+      /**
+       * Something more than the link, asked before a signer may read or sign: a code emailed to them at that
+       * moment (EMAIL_CODE: the link alone, forwarded or found, is then not enough), or something they know
+       * (KNOWN: `known` is what they must type, usually an answer such as `{{policyNumber}}`, and `knownLabel`
+       * is what the page asks for).
+       */
+      confirm?: 'EMAIL_CODE' | 'KNOWN';
+      known?: string;
+      knownLabel?: string;
+    }
   /**
    * Gives the record to someone. `by` says how the person is found when the step runs (left out: the person
    * named in `userId`): by an answer (`field` and `map`, with `userId` for any other answer), the next of

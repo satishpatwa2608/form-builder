@@ -109,4 +109,48 @@ describe('the signing page', () => {
     expect(await screen.findByRole('heading', { name: "This link can't be used" })).toBeInTheDocument();
     expect(screen.getByText('This signing link is not valid.')).toBeInTheDocument();
   });
+
+  it('asks for a code by email first, and opens the document and the form only once it is right', async () => {
+    answers[`GET /public/sign/${TOKEN}`] = { body: { ...VIEW, confirm: 'EMAIL_CODE', locked: false } };
+    answers[`POST /public/sign/${TOKEN}/code`] = { body: { sentTo: 'a…@example.com', minutes: 10 } };
+    answers[`POST /public/sign/${TOKEN}/confirm`] = { status: 403, body: { message: 'That is not right. Check it and try again.' } };
+    render(<SignPage token={TOKEN} />);
+    // Nothing to read or sign yet.
+    await screen.findByText(/we will email a code to asha@example.com/);
+    expect(screen.queryByRole('link', { name: /Read the document/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sign' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await screen.findByText('We have emailed a code to a…@example.com. It works for 10 minutes.');
+    fireEvent.change(screen.getByLabelText('The code from the email'), { target: { value: '111111' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('That is not right. Check it and try again.');
+
+    answers[`POST /public/sign/${TOKEN}/confirm`] = { body: { pass: '999.mark' } };
+    fireEvent.change(screen.getByLabelText('The code from the email'), { target: { value: '424242' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    const link = await screen.findByRole('link', { name: /Read the document/ });
+    // The pass goes with the document and with the signature.
+    expect(link.getAttribute('href')).toContain(`/public/sign/${TOKEN}/document?pass=999.mark`);
+    answers[`POST /public/sign/${TOKEN}`] = { body: { ...VIEW, status: 'SIGNED' } };
+    fireEvent.change(screen.getByLabelText('Your full name'), { target: { value: 'Asha Rao' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign' }));
+    await screen.findByText('Thank you, you have signed');
+    expect(calls.find((c) => c.method === 'POST' && c.url.endsWith(`/sign/${TOKEN}`))!.body).toMatchObject({ name: 'Asha Rao', agreed: true, pass: '999.mark' });
+  });
+
+  it('asks for something the signer knows, in the words the organisation chose, and says when the link has stopped working', async () => {
+    answers[`GET /public/sign/${TOKEN}`] = { body: { ...VIEW, confirm: 'KNOWN', asks: 'your policy number', locked: false } };
+    answers[`POST /public/sign/${TOKEN}/confirm`] = { status: 403, body: { message: 'That is not right, and there were too many wrong tries: this link no longer works.' } };
+    render(<SignPage token={TOKEN} />);
+    await screen.findByText(/please enter your policy number/);
+    expect(screen.queryByRole('button', { name: 'Email me a code' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Your policy number'), { target: { value: 'wrong' } });
+    // The server now says the link is closed.
+    answers[`GET /public/sign/${TOKEN}`] = { body: { ...VIEW, confirm: 'KNOWN', asks: 'your policy number', locked: true } };
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('This link no longer works');
+    expect(screen.getByText(/Ask Acme to send the document again/)).toBeTruthy();
+  });
 });

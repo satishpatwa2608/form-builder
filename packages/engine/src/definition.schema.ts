@@ -295,6 +295,9 @@ const actionSchema = z.union([
     message: z.string().max(2000).optional(),
     order: z.enum(['IN_ORDER', 'PARALLEL']).optional(),
     expiresInDays: z.number().int().min(1).max(90).optional(),
+    confirm: z.enum(['EMAIL_CODE', 'KNOWN']).optional(),
+    known: z.string().max(200).optional(),
+    knownLabel: z.string().max(80).optional(),
   }),
   z.object({
     ...stepMeta,
@@ -523,6 +526,7 @@ function checkWorkflow(def: FormDefinition, ctx: z.RefinementCtx) {
       if (action.type === 'APPROVAL' && !action.title.trim()) missing('the approval needs a title');
       if (action.type === 'APPROVAL' && action.together?.some((part) => !part.to.length || !part.title.trim())) missing('each approval asked at the same time needs who approves and what they approve');
       if (action.type === 'SIGN' && !action.title.trim()) missing('say what is being signed');
+      if (action.type === 'SIGN' && action.confirm === 'KNOWN' && (!action.known?.trim() || !action.knownLabel?.trim())) missing('say what the signers must know before they can sign, and what to call it');
       if (action.type === 'EMAIL' && (!action.subject.trim() || !action.body.trim())) missing('the email needs a subject and a message');
       if (action.type === 'NOTIFY' && !action.message.trim()) missing('the notification needs a message');
       if (action.type === 'CREATE_TASK' && !action.title.trim()) missing('the task needs a title');
