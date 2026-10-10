@@ -2,6 +2,7 @@ import customerComplaint from './customer-complaint.json';
 import plantIssueReport from './plant-issue-report.json';
 import supplierRegistration from './supplier-registration.json';
 import { FORM_TEMPLATES as PROCESS_TEMPLATES } from '../form/builder/templates';
+import { INDUSTRY_TEMPLATES } from './industry';
 
 /** Starting points for "New form" until the visual builder (and its process templates) is ported. */
 export interface FormTemplate {
@@ -12,6 +13,8 @@ export interface FormTemplate {
   definition: Record<string, unknown>;
   /** What to set before publishing (process templates). */
   setup?: string[];
+  /** The industry a long, ready-made form belongs to. Without one it is a general starting point. */
+  industry?: string;
 }
 
 const strip = (def: Record<string, unknown>) => {
@@ -37,6 +40,8 @@ export const FORM_TEMPLATES: FormTemplate[] = [
     setup: t.setup,
     definition: { businessId: '', submission: { method: 'POST', endpointId: 'default-submit' }, ...t.definition, name: t.name } as Record<string, unknown>,
   })),
+  // Long multi-step forms by industry (./industry): each uses steps, calculations, repeating sections and its own workflow.
+  ...INDUSTRY_TEMPLATES.map((t) => ({ key: t.key, label: t.name, description: t.description, setup: t.setup, industry: t.industry, definition: { businessId: '', ...t.definition, name: t.name } as Record<string, unknown> })),
 ];
 
 /** "Leave request" -> "LEAVE_REQUEST" (the engine's code format). */
@@ -97,3 +102,6 @@ export async function prepareTemplate(
   };
   return { definition: { ...rest, fields: fields.map(without), ...(rest.theme ? { theme: without(rest.theme) } : {}) }, leftOut };
 }
+
+/** The industries that have ready-made forms, in the order they are offered. */
+export const INDUSTRIES = [...new Set(FORM_TEMPLATES.map((t) => t.industry).filter((i): i is string => !!i))];

@@ -74,6 +74,10 @@ describe('expressions — functions', () => {
     expect(calc('round(1.005, 2)')).toBe(1.01);
     expect(calc('round(-2.5)')).toBe(-3);
     expect(calc('floor(2.9) + ceil(2.1) + abs(-1)')).toBe(6);
+    expect(calc('pow(2, 10)')).toBe(1024);
+    expect(calc('pow(9, 0.5)')).toBe(3);
+    // A loan's monthly instalment: P × r × (1 + r)^n ÷ ((1 + r)^n − 1).
+    expect(calc('round(100000 * 0.01 * pow(1.01, 12) / (pow(1.01, 12) - 1))')).toBe(8885);
     expect(calc('number("12.5") * 2')).toBe(25);
   });
 

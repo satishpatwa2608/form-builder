@@ -136,6 +136,37 @@ describe('studio', () => {
     expect(screen.queryByRole('button', { name: 'Copy the link to Drafted' })).toBeNull();
   });
 
+  it('forms: the long forms of an industry are offered by industry, and one becomes a draft in steps with its rules and workflow', async () => {
+    const user = userEvent.setup();
+    const { calls } = fakeApi({
+      ...signedIn(),
+      'GET /folders': () => ({ body: [{ id: 'f1', name: 'Quality', parentId: null, path: ['f1'] }] }),
+      'GET /forms': () => ({ body: [] }),
+      'GET /styles': () => ({ body: [] }),
+      'POST /forms': () => ({ status: 201, body: {} }),
+    });
+    renderApp('/forms');
+    await user.click(await screen.findByRole('button', { name: /New form/ }));
+    // Out of the way until asked for: the everyday starting points stay as they were.
+    expect(screen.getByText('Blank form')).toBeInTheDocument();
+    expect(screen.queryByText('Car insurance proposal')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Show starting points for'), 'Insurance');
+    expect(screen.queryByText('Blank form')).not.toBeInTheDocument();
+    for (const name of ['Car insurance proposal', 'Two-wheeler insurance', 'Health insurance proposal', 'Health insurance claim']) expect(screen.getByText(name)).toBeInTheDocument();
+    expect(screen.queryByText('University application')).not.toBeInTheDocument();
+
+    await user.click(screen.getByText('Health insurance claim'));
+    expect(screen.getByLabelText('Name')).toHaveValue('Health insurance claim');
+    await user.click(screen.getByRole('button', { name: /Create draft/ }));
+    expect(await screen.findByText(/"Health insurance claim" was created as a draft\. Before publishing: Workflow → Process: choose the claims team/)).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === 'POST' && c.path === '/forms')!.body as { definition: { code: string; layout: unknown; fields: { type: string }[]; rules: unknown[]; workflow: { statuses: unknown[] }; industry?: string } };
+    expect(sent.definition).toMatchObject({ code: 'HEALTH_INSURANCE_CLAIM', layout: { mode: 'steps', review: true } });
+    expect(sent.definition.fields.length).toBeGreaterThan(50);
+    expect(sent.definition.fields.some((f) => f.type === 'REPEAT')).toBe(true);
+    expect(sent.definition.rules.length).toBeGreaterThan(3);
+    expect(sent.definition.workflow.statuses).toHaveLength(6);
+  });
+
   it('forms: create from a template (code from the name) and actions follow per-form permissions', async () => {
     const user = userEvent.setup();
     const folder = { id: 'f1', name: 'Quality', parentId: null, path: ['f1'] };

@@ -412,6 +412,7 @@ const FUNCTIONS: Record<string, ExprFunction> = {
   floor: { min: 1, max: 1, group: 'Maths', help: 'floor(value) rounds down to a whole number', run: ([v]) => Math.floor(toNumber(v)) },
   ceil: { min: 1, max: 1, group: 'Maths', help: 'ceil(value) rounds up to a whole number', run: ([v]) => Math.ceil(toNumber(v)) },
   abs: { min: 1, max: 1, group: 'Maths', help: 'abs(value) drops the minus sign', run: ([v]) => Math.abs(toNumber(v)) },
+  pow: { min: 2, max: 2, group: 'Maths', help: 'pow(value, n) is value multiplied by itself n times, as in compound interest: pow(1 + rate, months)', run: ([v, n]) => tidy(Math.pow(toNumber(v), toNumber(n))) },
   number: { min: 1, max: 1, group: 'Maths', help: 'number(value) reads text such as "12.5" as a number', run: ([v]) => (isEmptyValue(v) ? undefined : toNumber(v)) },
 
   concat: { min: 1, max: Infinity, group: 'Text', help: 'concat(a, b, …) joins the values into one text', run: (a) => capped(a.map(toText).join('')) },

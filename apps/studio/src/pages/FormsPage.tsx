@@ -8,7 +8,7 @@ import { Archive, Code2, Download, ExternalLink, FilePlus2, FolderInput, GitBran
 import { api, errorMessage } from '../lib/api';
 import { useAction, useFolders, useForms } from '../lib/queries';
 import type { Folder, FormStatus, FormSummary } from '../lib/types';
-import { codeFromName, FORM_TEMPLATES, prepareTemplate } from '../templates';
+import { codeFromName, FORM_TEMPLATES, INDUSTRIES, prepareTemplate } from '../templates';
 import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 
 const STATUS: Record<FormStatus, { label: string; tone?: 'success' | 'warn' | 'accent' }> = {
@@ -32,6 +32,12 @@ const IMPORT_SOURCES = [
 
 function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone: (msg: string) => void; onCancel: () => void }) {
   const [template, setTemplate] = useState('blank');
+  const [industry, setIndustryState] = useState('');
+  /** Changing the industry selects the first form offered for it, so what is chosen is always on screen. */
+  const setIndustry = (value: string) => {
+    setIndustryState(value);
+    setTemplate(FORM_TEMPLATES.find((t) => (t.industry ?? '') === value)?.key ?? 'blank');
+  };
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [codeTouched, setCodeTouched] = useState(false);
@@ -103,8 +109,20 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
     <Card title="New form" subtitle="It starts as a draft; publish it when it's ready." actions={<Button variant="ghost" size="sm" onClick={onCancel} aria-label="Close"><X size={16} /></Button>}>
       <form className="st-stack" onSubmit={create.submit} noValidate>
         {create.error && !Object.keys(create.fields).length && <Alert tone="error">{create.error}</Alert>}
+        <div className="st-field" style={{ maxWidth: 360 }}>
+          <label htmlFor="new-form-industry">Show starting points for</label>
+          <select id="new-form-industry" className="st-select" value={industry} onChange={(e) => setIndustry(e.target.value)}>
+            <option value="">Any kind of form</option>
+            {INDUSTRIES.map((i) => (
+              <option key={i} value={i}>
+                {i}
+              </option>
+            ))}
+          </select>
+          {industry && <span className="st-field__hint">Long, ready-made forms in steps, with their calculations and workflow. Everything in them can be changed.</span>}
+        </div>
         <div className="st-row" role="radiogroup" aria-label="Start from" style={{ alignItems: 'stretch' }}>
-          {FORM_TEMPLATES.map((t) => (
+          {FORM_TEMPLATES.filter((t) => (t.industry ?? '') === industry).map((t) => (
             <label key={t.key} className="st-card" style={{ flex: '1 1 200px', padding: 14, cursor: 'pointer', borderColor: template === t.key ? 'var(--fb-accent)' : undefined, boxShadow: template === t.key ? 'var(--fb-ring)' : undefined }}>
               <input
                 type="radio"
@@ -123,7 +141,7 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
               </div>
             </label>
           ))}
-          {IMPORT_SOURCES.map((x) => (
+          {!industry && IMPORT_SOURCES.map((x) => (
             <label key={x.key} className="st-card" style={{ flex: '1 1 200px', padding: 14, cursor: 'pointer', borderColor: template === x.key ? 'var(--fb-accent)' : undefined, boxShadow: template === x.key ? 'var(--fb-ring)' : undefined, position: 'relative' }}>
               <input
                 type="radio"
