@@ -292,6 +292,12 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           placeholder="e.g. This document is a record of what was submitted and is not an approval."
           onChange={(note) => onChange({ document: tidyDocument({ ...form.document, note: note || undefined }) })}
         />
+        <SwitchSetting
+          label="Archival PDF (PDF/A)"
+          hint="For records that must be readable for decades: the file carries its own fonts and colour description, to the PDF/A-2b standard. It does not apply to your own PDF."
+          checked={form.document?.archival === true}
+          onChange={(archival) => onChange({ document: tidyDocument({ ...form.document, archival: archival || undefined }) })}
+        />
         <OwnPdfSetting form={form} onChange={(document) => onChange({ document: tidyDocument(document) })} />
         <SubmitChecks form={form} onChange={onChange} />
 

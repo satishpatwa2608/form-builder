@@ -91,6 +91,18 @@ describe('What a submission says, for its document', () => {
     expect(first.some((r) => r.kind === 'break')).toBe(false);
   });
 
+  it('made to the archival standard when asked: marked PDF/A-2b, with its fonts inside, and still the same words', async () => {
+    const rows = documentRows({ fields }, values, {});
+    const usual = await renderDocument(input({ rows }));
+    const archival = await renderDocument(input({ rows, options: { archival: true } }));
+    const raw = archival.toString('latin1');
+    expect(raw).toContain('<pdfaid:part>2</pdfaid:part>');
+    expect(raw).toContain('<pdfaid:conformance>B</pdfaid:conformance>');
+    expect(raw).toContain('/OutputIntents');
+    expect(usual.toString('latin1')).not.toContain('pdfaid');
+    expect((await pdfParse(archival)).text).toContain('Asha Textiles');
+  });
+
   it('prints the closing note under the answers', async () => {
     const pdf = await renderDocument(input({ rows: documentRows({ fields }, values, { note: 'Keep this for your records.' }) }));
     expect((await pdfParse(pdf)).text).toContain('Keep this for your records.');

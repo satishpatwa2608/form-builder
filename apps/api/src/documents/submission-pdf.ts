@@ -31,6 +31,8 @@ export interface DocumentOptions {
   note?: string;
   /** Sections (by name) that start on a new page. */
   newPage?: string[];
+  /** Written to the archival standard PDF/A-2b. */
+  archival?: boolean;
 }
 
 export interface DocumentInput {
@@ -186,6 +188,8 @@ export function renderDocument(input: DocumentInput): Promise<Buffer> {
     size: 'A4',
     margins: { top: MARGIN, bottom: MARGIN + 20, left: MARGIN, right: MARGIN },
     bufferPages: true,
+    // Archival: the standard's own marks and a described colour space go into the file; the fonts are embedded either way.
+    ...(input.options?.archival ? { subset: 'PDF/A-2b' as const, pdfVersion: '1.7' as const, tagged: true } : {}),
     info: { Title: clean(input.options?.title || input.form.name), Author: clean(input.org.name), Creator: 'Form Builder', CreationDate: input.generatedAt, ModDate: input.generatedAt },
   });
   const chunks: Buffer[] = [];
