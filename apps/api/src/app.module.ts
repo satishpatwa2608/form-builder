@@ -78,6 +78,7 @@ import { FormReviewController } from './forms/form-review.controller';
 import { DocumentBatch, DocumentBatchSchema } from './documents/document-batch.schema';
 import { DocumentsService } from './documents/documents.service';
 import { DocumentsController } from './documents/documents.controller';
+import { PdfTemplate, PdfTemplateSchema, PdfTemplatesController, PdfTemplatesService } from './documents/pdf-template';
 import { SignatureRequest, SignatureRequestSchema } from './signatures/signature.schema';
 import { SignaturesService } from './signatures/signatures.service';
 import { PortalService } from './portal/portal.service';
@@ -167,6 +168,7 @@ export class AppModule {
           { name: Form.name, schema: FormSchema },
           { name: Style.name, schema: StyleSchema },
           { name: FormSubmission.name, schema: FormSubmissionSchema },
+          { name: PdfTemplate.name, schema: PdfTemplateSchema },
           { name: FormUpload.name, schema: FormUploadSchema },
           { name: FormRecordEvent.name, schema: FormRecordEventSchema },
           { name: FormCounter.name, schema: FormCounterSchema },
@@ -248,6 +250,7 @@ export class AppModule {
         OperatorController,
         SignaturesController,
         DocumentsController,
+        PdfTemplatesController,
         FormReviewController,
         ExtensionPublicController,
         FormPublicController,
@@ -326,6 +329,7 @@ export class AppModule {
           useValue: config.EXT_REGISTRY && config.EXT_PUSH_ROLE_ARN ? new EcrImageStore(config.AWS_REGION, config.EXT_REGISTRY.slice(0, 12), config.EXT_PUSH_ROLE_ARN) : null,
         },
         DocumentsService,
+        PdfTemplatesService,
         FormReviewService,
         FormAutomationService,
         FormHandlerRegistry,

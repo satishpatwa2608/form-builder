@@ -15,6 +15,8 @@ export function configureApp(app: NestExpressApplication, config: AppConfig) {
   app.use(cookieParser());
   // Local file storage (development) receives the file body itself.
   if (config.STORAGE_PROVIDER === 'local') app.use('/public/local-store', raw({ type: () => true, limit: '26mb' }));
+  // An organisation's own fillable PDF arrives as the file itself, not as JSON.
+  app.use('/pdf-templates', raw({ type: 'application/pdf', limit: '5mb' }));
   app.useBodyParser('json', { limit: '1mb' });
   const studio = new Set(config.CORS_ORIGINS.split(',').map((o) => o.trim()));
   const site = app.get(SiteService);

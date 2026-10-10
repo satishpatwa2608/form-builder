@@ -1,3 +1,5 @@
+import { fillOwnPdf } from './own-pdf';
+import { PdfTemplatesService } from './pdf-template';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
@@ -42,6 +44,7 @@ export class DocumentsService implements OnModuleInit {
     @InjectModel(FormSubmission.name) private readonly submissions: Model<FormSubmissionDocument>,
     @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
     @InjectModel(DocumentBatch.name) private readonly batches: Model<DocumentBatchDocument>,
+    private readonly pdfTemplates: PdfTemplatesService,
   ) {}
 
   onModuleInit() {
@@ -81,6 +84,10 @@ export class DocumentsService implements OnModuleInit {
   }
 
   private async render(orgId: string, def: FormDefinition, values: FormValues, record: { ref?: string; submittedAt: Date; status?: string }): Promise<Buffer> {
+    // The organisation's own PDF, with the answers written into it. If it has gone from the library since, the
+    // usual document is made instead, so a response is never left without one.
+    const own = def.document?.ownPdf?.id ? await this.pdfTemplates.bytes(orgId, def.document.ownPdf.id) : null;
+    if (own) return fillOwnPdf(own, def, values, def.document!.ownPdf!.map);
     return renderDocument({
       org: await this.branding(orgId),
       form: { name: def.name, code: def.code, version: def.version },

@@ -988,7 +988,7 @@ const formDefinitionShapeObject = z.object({
   listOnPortal: z.boolean().optional(),
   languages: z.object({ default: languageCode, others: z.array(languageCode).max(20) }).optional(),
   translations: z.record(languageCode, z.record(z.string().max(200), z.string().max(5000))).optional(),
-  document: z.object({ keep: z.boolean().optional(), title: z.string().max(150).optional(), footer: z.string().max(200).optional(), showEmpty: z.boolean().optional(), leaveOut: z.array(z.string().max(100)).max(200).optional(), note: z.string().max(2000).optional(), newPage: z.array(z.string().max(100)).max(100).optional() }).optional(),
+  document: z.object({ keep: z.boolean().optional(), title: z.string().max(150).optional(), footer: z.string().max(200).optional(), showEmpty: z.boolean().optional(), leaveOut: z.array(z.string().max(100)).max(200).optional(), note: z.string().max(2000).optional(), newPage: z.array(z.string().max(100)).max(100).optional(), ownPdf: z.object({ id: z.string().min(1).max(64), name: z.string().max(100), map: z.record(z.string().max(200), z.string().max(100)).optional() }).optional() }).optional(),
   submitChecks: z.array(z.string().regex(/^x-[a-z0-9]{8}-[a-z0-9-]{1,40}$/)).max(5).optional(),
   opensAt: z.string().max(40).optional(),
   closesAt: z.string().max(40).optional(),

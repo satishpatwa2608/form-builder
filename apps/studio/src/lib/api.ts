@@ -61,10 +61,11 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       method: init.method ?? 'GET',
       credentials: 'include',
       headers: {
-        ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        // A file goes as itself, under its own type; everything else is JSON.
+        ...(init.body instanceof Blob ? { 'Content-Type': init.body.type || 'application/octet-stream' } : init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
-      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+      body: init.body instanceof Blob ? init.body : init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });
   } catch {
     throw new ApiError(0, "Can't reach the server. Check your connection.");

@@ -9,6 +9,7 @@ import { useStyles } from '../../adapters/styles/style-master';
 import { VISIBLE_BORDER } from '../../runtime/styles';
 import { ColorSetting, SelectSetting, Setting, SwitchSetting, TextSetting } from './settings';
 import { MultiSelect } from '@ui/multiselect';
+import { OwnPdfSetting } from './OwnPdfSetting';
 
 /** A stored ISO time as the value of a date-and-time box (the person's own time zone), and back. */
 function toLocalInput(iso: string | undefined): string {
@@ -291,6 +292,7 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           placeholder="e.g. This document is a record of what was submitted and is not an approval."
           onChange={(note) => onChange({ document: tidyDocument({ ...form.document, note: note || undefined }) })}
         />
+        <OwnPdfSetting form={form} onChange={(document) => onChange({ document: tidyDocument(document) })} />
         <SubmitChecks form={form} onChange={onChange} />
 
         <div className="fb-panel__title">Layout</div>

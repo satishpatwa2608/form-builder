@@ -233,4 +233,49 @@ describe('Documents of record (e2e)', () => {
       expect(readdirSync(join(dir, 'documents', orgId, 'batches', batch.id))).toHaveLength(12);
     });
   });
+
+  it("an organisation's own fillable PDF: kept in its library, and each response is written into it", async () => {
+    const { PDFDocument } = await import('pdf-lib');
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 300]);
+    page.drawText('Acme claim form 7B', { x: 20, y: 270, size: 14 });
+    doc.getForm().createTextField('Customer').addToPage(page, { x: 20, y: 220, width: 200, height: 20 });
+    doc.getForm().createTextField('How bad').addToPage(page, { x: 20, y: 180, width: 200, height: 20 });
+    const own = Buffer.from(await doc.save());
+    const upload = (token: string, body: Buffer, type = 'application/pdf') => h.api().post('/pdf-templates?name=Claim%20form%207B.pdf').set(h.bearer(token)).set('Content-Type', type).send(body);
+
+    // Only someone who may change forms adds one; what is not a fillable PDF is refused, each for its own reason.
+    await upload(viewer, own).expect(403);
+    expect((await upload(owner, Buffer.from('hello, not a pdf')).expect(400)).body.message).toBe('That file is not a PDF');
+    const flat = await PDFDocument.create();
+    flat.addPage();
+    expect((await upload(owner, Buffer.from(await flat.save())).expect(400)).body.message).toContain('has no boxes to fill in');
+
+    const added = (await upload(designer, own).expect(201)).body;
+    expect(added).toMatchObject({ name: 'Claim form 7B', boxes: [{ name: 'Customer', kind: 'text' }, { name: 'How bad', kind: 'text' }] });
+    expect((await h.api().get('/pdf-templates').set(h.bearer(viewer)).expect(200)).body.map((t: { name: string }) => t.name)).toEqual(['Claim form 7B']);
+
+    // "Customer" matches the question of that name by itself; "How bad" is pointed at Severity by the designer.
+    const id = await publish(form('OWNPDF', { document: { ownPdf: { id: added.id, name: added.name, map: { 'How bad': 'severity' } } } }));
+    const sub = await submit('OWNPDF', { customer: 'Asha Textiles', severity: 'HIGH' });
+    const pdf = await pdfOf(await download(id, sub.submissionId).expect(200));
+    expect(pdf.text).toContain('Acme claim form 7B');
+    expect(pdf.text).toContain('Asha Textiles');
+    expect(pdf.text).toContain('Serious');
+    // It is their page, not ours: none of the product's own layout is on it.
+    expect(pdf.text).not.toContain('Newly arrived');
+
+    // Another organisation cannot use, see or remove it.
+    await h.signUp('Zed', 'zed@pdf-other.test', 'Other Co');
+    const other = (await h.login('zed@pdf-other.test')).token;
+    expect((await h.api().get('/pdf-templates').set(h.bearer(other)).expect(200)).body).toEqual([]);
+    await h.api().delete(`/pdf-templates/${added.id}`).set(h.bearer(other)).expect(404);
+
+    // Taken out of the library: a response still gets a document, in the product's own layout.
+    await h.api().delete(`/pdf-templates/${added.id}`).set(h.bearer(owner)).expect(204);
+    const later = await submit('OWNPDF', { customer: 'Ravi Traders', severity: 'LOW' });
+    const usual = await pdfOf(await download(id, later.submissionId).expect(200));
+    expect(usual.text).toContain('Ravi Traders');
+    expect(usual.text).not.toContain('Acme claim form 7B');
+  });
 });
