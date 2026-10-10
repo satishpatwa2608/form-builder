@@ -156,9 +156,9 @@ export function ExtensionDeploy({ running }: { running: boolean }) {
             {images.data && !images.data.length ? (
               <p className="fb-muted">Nothing has been pushed yet.</p>
             ) : (
-              <label className="fb-field" style={{ maxWidth: 420 }}>
-                <span className="fb-field__label">Version</span>
-                <select className="fb-input" value={tag} onChange={(e) => setChosen(e.target.value)} disabled={busy}>
+              <div className="st-field" style={{ maxWidth: 420 }}>
+                <label htmlFor="ext-version">Version</label>
+                <select id="ext-version" className="st-select" value={tag} onChange={(e) => setChosen(e.target.value)} disabled={busy}>
                   {(images.data ?? []).map((i) => (
                     <option key={i.tag} value={i.tag}>
                       {i.tag}
@@ -166,7 +166,7 @@ export function ExtensionDeploy({ running }: { running: boolean }) {
                     </option>
                   ))}
                 </select>
-              </label>
+              </div>
             )}
             <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
               <Button

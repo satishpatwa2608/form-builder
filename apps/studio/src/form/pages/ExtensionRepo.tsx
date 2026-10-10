@@ -82,19 +82,23 @@ function Linked({ view }: { view: RepoView & { repo: NonNullable<RepoView['repo'
       .then(() => done && toast.success(done))
       .catch((e) => toast.error(messageOf(e)));
   const canRead = !!branches.data;
+  const [asked, setAsked] = useState(false);
   // The branch that is deployed stays in the list even if the repository no longer has it.
   const options = [...new Set([repo.branch, ...(branches.data ?? [])])];
 
   return (
     <>
-      <p>
-        <Link2 size={14} style={{ display: 'inline', verticalAlign: '-2px' }} />{' '}
-        <a href={repo.url} target="_blank" rel="noopener noreferrer">
-          {repo.url}
+      <div className="fb-repo">
+        <Link2 size={16} aria-hidden />
+        <a className="st-link" href={repo.url} target="_blank" rel="noopener noreferrer">
+          {repo.url.replace('https://', '')}
         </a>
-      </p>
+        <span className="fb-repo__state" data-ok={canRead || undefined}>
+          {canRead ? 'Connected' : 'Waiting for access'}
+        </span>
+      </div>
 
-      <div className="space-y-2">
+      <div className="fb-step">
         <div className="fb-panel__title">1. Let Form Builder read the code</div>
         {canRead ? (
           <p className="fb-muted">
@@ -106,27 +110,41 @@ function Linked({ view }: { view: RepoView & { repo: NonNullable<RepoView['repo'
               Add this key to the repository in {host.name}: {host.key}. It can read this one repository and change nothing.
             </p>
             <Copyable label="Key to add to the repository" text={repo.publicKey} />
-            {branches.isError && <p className="fb-issues">{messageOf(branches.error)}</p>}
-            <Button type="button" variant="outline" disabled={branches.isFetching} onClick={() => void branches.refetch()}>
+            {/* The first look happens by itself; only a check the person asked for is worth a red message. */}
+            {asked && branches.isError && !branches.isFetching && (
+              <p className="fb-issues" role="alert">
+                {messageOf(branches.error)}
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              disabled={branches.isFetching}
+              onClick={() => {
+                setAsked(true);
+                void branches.refetch();
+              }}
+            >
               <ShieldCheck /> I have added it: check
             </Button>
           </>
         )}
       </div>
 
-      <div className="space-y-2">
+      <div className="fb-step">
         <div className="fb-panel__title">2. What to deploy</div>
-        <label className="fb-field" style={{ maxWidth: 420 }}>
-          <span className="fb-field__label">Branch</span>
-          <select className="fb-input" value={repo.branch} disabled={busy || !canRead} onChange={(e) => ask({ branch: e.target.value }, `Deploying from ${e.target.value}`)}>
+        <div className="st-field" style={{ maxWidth: 360 }}>
+          <label htmlFor="ext-branch">Branch</label>
+          <select id="ext-branch" className="st-select" value={repo.branch} disabled={busy || !canRead} onChange={(e) => ask({ branch: e.target.value }, `Deploying from ${e.target.value}`)}>
             {options.map((b) => (
               <option key={b} value={b}>
                 {b}
               </option>
             ))}
           </select>
-        </label>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!canRead && <span className="st-field__hint">The branches appear once Form Builder can read the repository.</span>}
+        </div>
+        <label className="st-check">
           <input type="checkbox" checked={repo.auto} disabled={change.isPending} onChange={(e) => ask({ auto: e.target.checked }, e.target.checked ? 'Every commit to the branch will be deployed' : 'Commits are no longer deployed by themselves')} />
           <span>Deploy on every commit to this branch</span>
         </label>
@@ -140,7 +158,7 @@ function Linked({ view }: { view: RepoView & { repo: NonNullable<RepoView['repo'
         )}
       </div>
 
-      <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+      <div className="fb-step flex gap-2" style={{ flexWrap: 'wrap' }}>
         <Button type="button" disabled={busy || !canRead} onClick={() => ask('build', `Building ${repo.branch}`)}>
           <Rocket /> Deploy now
         </Button>
@@ -188,10 +206,11 @@ export function ExtensionRepo() {
             void change.mutateAsync({ link: url }).catch((err) => toast.error(messageOf(err)));
           }}
         >
-          <label className="fb-field" style={{ maxWidth: 560 }}>
-            <span className="fb-field__label">Repository address</span>
-            <input className="fb-input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/your-company/your-extension" />
-          </label>
+          <div className="st-field" style={{ maxWidth: 560 }}>
+            <label htmlFor="ext-repo-url">Repository address</label>
+            <input id="ext-repo-url" className="st-input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/your-company/your-extension" />
+            <span className="st-field__hint">GitHub, GitLab or Bitbucket. A private repository is fine.</span>
+          </div>
           <Button type="submit" disabled={change.isPending || !url.trim()}>
             <Link2 /> Link the repository
           </Button>

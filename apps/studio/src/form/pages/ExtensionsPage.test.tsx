@@ -259,8 +259,11 @@ describe('Extensions page: deploying from the repository', () => {
     expect(seeded.asked).toEqual([{ link: 'https://github.com/hac/plant-tools' }]);
     expect(await within(a).findByLabelText('Key to add to the repository')).toHaveTextContent('ssh-ed25519 AAAAlocal form-builder-deploy');
     expect(a).toHaveTextContent('Settings → Deploy keys → Add deploy key');
-    // Until the key is there, nothing can be deployed and the page says what to check.
-    expect(await within(a).findByText(/Check that the key shown here has been added/)).toBeInTheDocument();
+    // Until the key is there, nothing can be deployed; the page only complains once the person has asked it to check.
+    expect(within(a).getByText('Waiting for access')).toBeInTheDocument();
+    expect(within(a).queryByRole('alert')).not.toBeInTheDocument();
+    await userEvent.click(within(a).getByRole('button', { name: 'I have added it: check' }));
+    expect(await within(a).findByRole('alert')).toHaveTextContent(/Check that the key shown here has been added/);
     expect(within(a).getByRole('button', { name: 'Deploy now' })).toBeDisabled();
     expect(within(a).getByLabelText('Branch')).toBeDisabled();
   });

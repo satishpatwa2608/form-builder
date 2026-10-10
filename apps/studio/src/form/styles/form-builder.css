@@ -1129,3 +1129,37 @@
   font-weight: 600;
   color: var(--muted-foreground);
 }
+
+.fb-repo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  font-weight: 600;
+}
+.fb-repo__state {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #92400e;
+}
+.fb-repo__state[data-ok] {
+  background: #dcfce7;
+  color: #166534;
+}
+.fb-step {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.fb-step.flex {
+  display: flex;
+}
