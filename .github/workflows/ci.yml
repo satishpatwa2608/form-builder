@@ -15,9 +15,57 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Real databases for the connectors' own tests: each writes a table's rules back in its own words.
-    # The password is for these throwaway containers only; it protects nothing.
+    timeout-minutes: 25
+    env:
+      # The API's one-second promise is measured on the product's own size of machine; this runner is smaller and shared.
+      API_P95_BUDGET_MS: 2000
+      # Two outside checkers of the PDFs we make, which share no code with what makes them. Here they must run;
+      # on a developer's machine the tests that use them are skipped when they are not installed.
+      REQUIRE_PDFSIG: '1'
+      REQUIRE_VERAPDF: '1'
+      # A real identity provider (Keycloak, started in a step below) for "sign in as a person" on a connector.
+      KEYCLOAK_TEST: http://127.0.0.1:8088
+    steps:
+      # The runner comes with toolchains this project never uses; they are in the way of the images the tests fetch.
+      - run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL && df -h / | tail -1
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # The API's e2e tests run on an in-memory MongoDB, which downloads its binary once.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # Started first, so it is up by the time the tests want it. (It needs a command of its own, which a service cannot be given.)
+      - run: docker run -d --name keycloak -p 8088:8080 -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.0 start-dev
+      - run: pnpm install --frozen-lockfile
+      # pdfsig (poppler) checks the seal on a sealed PDF; veraPDF checks that an archival PDF really is PDF/A.
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils && pdfsig -v && docker pull -q verapdf/cli
+      # The API and gateway load these two packages from their build output.
+      - run: pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/sdk --filter @fb/gateway build
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: Wait for Keycloak
+        run: |
+          for i in $(seq 1 60); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8088/realms/master)" = "200" ]; then echo "Keycloak is ready"; exit 0; fi
+            sleep 3
+          done
+          docker logs keycloak 2>&1 | tail -30
+          exit 1
+      - run: pnpm test
+      - run: pnpm test:infra
+      - run: pnpm build
+
+  # The connectors against the real databases they speak to: each writes a table's rules back in its own words,
+  # and each keeps a file in its own way. A job of its own, because four database servers fill a runner's disk.
+  # The password is for these throwaway containers only; it protects nothing.
+  databases:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       mssql:
         image: mcr.microsoft.com/mssql/server:2022-latest
@@ -50,14 +98,8 @@ jobs:
       ORACLE_TEST: 127.0.0.1:1521:Test-Only-Passw0rd
       PG_TEST: 127.0.0.1:5432:Test-Only-Passw0rd
       MYSQL_TEST: 127.0.0.1:3306:Test-Only-Passw0rd
-      # The API's one-second promise is measured on the product's own size of machine; this runner is smaller and shared.
-      API_P95_BUDGET_MS: 2000
-      # Two outside checkers of the PDFs we make, which share no code with what makes them. Here they must run;
-      # on a developer's machine the tests that use them are skipped when they are not installed.
-      REQUIRE_PDFSIG: '1'
-      REQUIRE_VERAPDF: '1'
-      # A real identity provider (Keycloak, started in a step below) for "sign in as a person" on a connector.
-      KEYCLOAK_TEST: http://127.0.0.1:8088
+      # Here every one of them must really have been reached: a test that skipped itself would prove nothing.
+      REQUIRE_DATABASES: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -65,31 +107,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      # The API's e2e tests run on an in-memory MongoDB, which downloads its binary once.
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/mongodb-binaries
-          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      # Started first, so it is up by the time the tests want it. (It needs a command of its own, which a service cannot be given.)
-      - run: docker run -d --name keycloak -p 8088:8080 -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.0 start-dev
       - run: pnpm install --frozen-lockfile
-      # pdfsig (poppler) checks the seal on a sealed PDF; veraPDF checks that an archival PDF really is PDF/A.
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils && pdfsig -v && docker pull -q verapdf/cli
-      # The API and gateway load these two packages from their build output.
-      - run: pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/sdk --filter @fb/gateway build
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - name: Wait for Keycloak
-        run: |
-          for i in $(seq 1 60); do
-            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8088/realms/master)" = "200" ]; then echo "Keycloak is ready"; exit 0; fi
-            sleep 3
-          done
-          docker logs keycloak 2>&1 | tail -30
-          exit 1
-      - run: pnpm test
-      - run: pnpm test:infra
-      - run: pnpm build
+      - run: pnpm --filter @fb/engine --filter @fb/connectors build
+      - run: pnpm --filter @fb/connectors test
 
   browser:
     # The whole product in a real browser: API, builder, public form app and the gateway agent.
