@@ -27,6 +27,10 @@ export interface EntityField {
   name: string;
   type: 'string' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown';
   nullable?: boolean;
+  /** The longest text the source takes, when it says. */
+  maxLength?: number;
+  /** The source fills it in itself when nothing is given (a default, a counter), so nobody has to. */
+  hasDefault?: boolean;
 }
 
 /** Something a connector exposes: a collection, table, view, REST resource or S3 prefix. */

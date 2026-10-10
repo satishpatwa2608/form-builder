@@ -164,7 +164,7 @@ function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql' | 'mssql'>,
         await (
           await connect(d, ctx)
         ).query(
-          `SELECT table_name AS t, column_name AS c, data_type AS dt FROM information_schema.columns WHERE table_schema = ${param(d, 1)} ORDER BY table_name, ordinal_position`,
+          `SELECT table_name AS t, column_name AS c, data_type AS dt, is_nullable AS n, character_maximum_length AS ml, column_default AS df FROM information_schema.columns WHERE table_schema = ${param(d, 1)} ORDER BY table_name, ordinal_position`,
           [schema],
           10_000,
         )
@@ -173,7 +173,17 @@ function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql' | 'mssql'>,
       for (const r of rows) {
         const t = String(r.t ?? r.T ?? r.TABLE_NAME);
         if (!tables.has(t)) tables.set(t, []);
-        tables.get(t)!.push({ name: String(r.c ?? r.C ?? r.COLUMN_NAME), type: TYPE[String(r.dt ?? r.DT ?? r.DATA_TYPE).toLowerCase()] ?? 'string' });
+        // What the table itself insists on: a column that may not be empty, and the longest text it takes.
+        const nullable = String(r.n ?? r.N ?? r.IS_NULLABLE ?? 'YES').toUpperCase() !== 'NO';
+        const length = Number(r.ml ?? r.ML ?? r.CHARACTER_MAXIMUM_LENGTH);
+        const fallback = r.df ?? r.DF ?? r.COLUMN_DEFAULT;
+        tables.get(t)!.push({
+          name: String(r.c ?? r.C ?? r.COLUMN_NAME),
+          type: TYPE[String(r.dt ?? r.DT ?? r.DATA_TYPE).toLowerCase()] ?? 'string',
+          nullable,
+          ...(Number.isFinite(length) && length > 0 && length <= 100_000 ? { maxLength: length } : {}),
+          ...(fallback !== null && fallback !== undefined && fallback !== '' ? { hasDefault: true } : {}),
+        });
       }
       return [...tables.entries()].slice(0, 300).map(([key, fields]) => ({ key, label: key, fields }));
     },

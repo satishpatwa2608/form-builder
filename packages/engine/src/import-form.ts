@@ -286,7 +286,7 @@ const typeFromName = (name: string): FormField['type'] => {
  * needs no mapping. A known type decides the kind of field; otherwise the
  * name is the hint ("email", "amount", "created_at").
  */
-export function fieldsFromEntity(entity: { fields: (string | { name: string; type?: string })[] }): ImportedFields {
+export function fieldsFromEntity(entity: { fields: (string | { name: string; type?: string; nullable?: boolean; maxLength?: number; hasDefault?: boolean })[] }): ImportedFields {
   const names = new Names();
   const notes: string[] = [];
   const fields: FormField[] = [];
@@ -313,7 +313,12 @@ export function fieldsFromEntity(entity: { fields: (string | { name: string; typ
     }
     taken.add(key);
     const type: FormField['type'] = known === 'number' ? 'NUMBER' : known === 'boolean' ? 'CHECKBOX' : known === 'date' ? 'DATE' : typeFromName(name);
-    fields.push({ id: names.id(), name: key, label: humanise(name).slice(0, 120), type });
+    // What the table insists on comes along: an answer it will not take empty (unless it fills it in itself),
+    // and the longest text it has room for. A tick box is never "required": unticked is an answer.
+    const limits = typeof raw === 'string' ? undefined : raw;
+    const required = limits?.nullable === false && !limits.hasDefault && type !== 'CHECKBOX';
+    const longest = typeof limits?.maxLength === 'number' && limits.maxLength > 0 && (type === 'TEXT' || type === 'TEXTAREA' || type === 'EMAIL' || type === 'PHONE' || type === 'URL') ? Math.min(limits.maxLength, 5000) : undefined;
+    fields.push({ id: names.id(), name: key, label: humanise(name).slice(0, 120), type, ...(required ? { required: true } : {}), ...(longest ? { validation: { maxLength: longest } } : {}) });
   }
   if (!fields.length && !notes.length) notes.push('This table exposes no fields.');
   return { fields, notes };

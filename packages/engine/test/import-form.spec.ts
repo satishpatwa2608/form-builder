@@ -193,6 +193,28 @@ describe('a form from a table a connector exposes', () => {
     expect(notes[0]).toBe('"order-no" cannot be a field key as it is, so its field is called "orderNo". Rename it, or map it when saving to the table.');
     expect(fieldsFromEntity({ fields: [] }).notes).toEqual(['This table exposes no fields.']);
   });
+
+  it('what the table insists on comes along: must be filled, and the longest text it takes', () => {
+    const { fields } = fieldsFromEntity({
+      fields: [
+        { name: 'customer_name', type: 'string', nullable: false, maxLength: 80 },
+        { name: 'notes', type: 'string', nullable: true, maxLength: 20000 },
+        // The table fills these in itself, or unticked is an answer: nobody is made to answer them.
+        { name: 'status', type: 'string', nullable: false, hasDefault: true },
+        { name: 'is_urgent', type: 'boolean', nullable: false },
+        { name: 'amount', type: 'number', nullable: false, maxLength: 10 },
+      ],
+    });
+    const by = Object.fromEntries(fields.map((f) => [f.name, f]));
+    expect(by.customer_name).toMatchObject({ required: true, validation: { maxLength: 80 } });
+    expect(by.notes!.required).toBeUndefined();
+    expect(by.notes!.validation).toEqual({ maxLength: 5000 });
+    expect(by.status!.required).toBeUndefined();
+    expect(by.is_urgent!.required).toBeUndefined();
+    // A number has no "longest text".
+    expect(by.amount).toMatchObject({ required: true });
+    expect(by.amount!.validation).toBeUndefined();
+  });
 });
 
 describe('a form from a fillable PDF', () => {

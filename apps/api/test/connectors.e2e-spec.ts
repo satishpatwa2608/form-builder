@@ -68,11 +68,15 @@ describe('Connectors: a customer database behind forms (e2e)', () => {
       .set(h.bearer(owner))
       .send({
         entities: [
-          { key: 'plants', label: 'Plants', fields: ['code', 'name', 'region'], keyField: 'code', operations: ['list', 'get'], valueField: 'code', labelField: 'name' },
+          // What the source said about each field goes with it, so a form started from the table has the table's limits.
+          { key: 'plants', label: 'Plants', fields: ['code', 'name', 'region'], keyField: 'code', operations: ['list', 'get'], valueField: 'code', labelField: 'name', about: [{ name: 'code', type: 'string', nullable: false, maxLength: 12 }, { name: 'name', type: 'string', nullable: true }] },
           { key: 'complaints', label: 'Complaints', fields: ['plant', 'description', 'reporter'], operations: ['insert'] },
         ],
       })
       .expect(200);
+    const kept = (await h.api().get('/connectors').set(h.bearer(owner)).expect(200)).body.find((c: { id: string }) => c.id === connectorId).entities;
+    expect(kept.find((e: { key: string }) => e.key === 'plants').about).toEqual([{ name: 'code', type: 'string', nullable: false, maxLength: 12 }, { name: 'name', type: 'string', nullable: true }]);
+    expect(kept.find((e: { key: string }) => e.key === 'complaints').about).toEqual([]);
     // Designers see usable sources (no credentials); viewers don't use connectors.
     const sources = (await h.api().get('/connectors/sources').set(h.bearer(designer)).expect(200)).body;
     expect(sources).toEqual([expect.objectContaining({ key: `/connectors/${ref}/plants`, name: 'Plant CRM · Plants', valueField: 'code', labelField: 'name' })]);

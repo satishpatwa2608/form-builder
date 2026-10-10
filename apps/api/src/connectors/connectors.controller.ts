@@ -32,6 +32,10 @@ const entitiesBody = z.object({
         operations: z.array(z.enum(['list', 'get', 'lookup', 'insert', 'update', 'upload', 'log'])).max(7),
         valueField: z.union([ident, z.literal('')]).default(''),
         labelField: z.union([ident, z.literal('')]).default(''),
+        about: z
+          .array(z.object({ name: ident, type: z.enum(['string', 'number', 'boolean', 'date', 'object', 'array', 'unknown']).optional(), nullable: z.boolean().optional(), maxLength: z.number().int().positive().max(100_000).optional(), hasDefault: z.boolean().optional() }))
+          .max(100)
+          .default([]),
       }),
     )
     .max(100),

@@ -13,6 +13,12 @@ export class ExposedEntity {
   /** Dropdowns built on it use these by default. */
   @Prop({ type: String, default: '' }) valueField: string;
   @Prop({ type: String, default: '' }) labelField: string;
+  /**
+   * What the source said about each exposed field when it was last looked at: its kind, whether it may be left
+   * empty, the longest text it takes. A form started from the table begins with these limits.
+   */
+  @Prop({ type: [{ name: String, type: { type: String }, nullable: Boolean, maxLength: Number, hasDefault: Boolean, _id: false }], default: [] })
+  about: { name: string; type?: string; nullable?: boolean; maxLength?: number; hasDefault?: boolean }[];
 }
 
 @Schema({ _id: false })

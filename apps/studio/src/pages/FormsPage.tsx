@@ -50,12 +50,12 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   const [imported, setImported] = useState<{ file: string; result: ImportedFields; error?: string; table?: string }>();
   const source = IMPORT_SOURCES.find((x) => x.key === template);
   /** Tables the signed-in person may use from the organisation's connectors, asked for when that way of starting is chosen. */
-  const [tables, setTables] = useState<{ key: string; name: string; fields: string[] }[]>();
+  const [tables, setTables] = useState<{ key: string; name: string; fields: (string | TableField)[] }[]>();
   const fromTable = template === 'connector';
   useEffect(() => {
     if (!fromTable || tables) return;
-    api<{ id: string; name: string; permissions: { use: boolean }; entities: { key: string; label: string; fields: string[] }[] }[]>('/connectors')
-      .then((list) => setTables(list.filter((c) => c.permissions.use).flatMap((c) => c.entities.map((e) => ({ key: `${c.id}/${e.key}`, name: `${c.name} · ${e.label}`, fields: e.fields })))))
+    api<{ id: string; name: string; permissions: { use: boolean }; entities: { key: string; label: string; fields: string[]; about?: TableField[] }[] }[]>('/connectors')
+      .then((list) => setTables(list.filter((c) => c.permissions.use).flatMap((c) => c.entities.map((e) => ({ key: `${c.id}/${e.key}`, name: `${c.name} · ${e.label}`, fields: e.fields.map((f) => e.about?.find((a) => a.name === f) ?? f) })))))
       .catch(() => setTables([]));
   }, [fromTable, tables]);
   const pickTable = (key: string) => {
@@ -285,6 +285,9 @@ function importSummary(r: ImportResult) {
   ].filter(Boolean);
   return `Imported ${r.code} as draft v${r.version}. Review and publish it when ready.${notes.length ? ` Note - ${notes.join('; ')}.` : ''}`;
 }
+
+/** What a connector kept about a table's field: its kind and the limits the table itself sets. */
+type TableField = { name: string; type?: string; nullable?: boolean; maxLength?: number; hasDefault?: boolean };
 
 export default function FormsPage() {
   const { me } = useAuth();

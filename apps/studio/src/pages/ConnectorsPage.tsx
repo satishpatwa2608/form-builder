@@ -16,6 +16,7 @@ interface ExposedEntity {
   operations: Op[];
   valueField: string;
   labelField: string;
+  about?: { name: string; type?: string; nullable?: boolean; maxLength?: number; hasDefault?: boolean }[];
 }
 interface ConnectorView {
   id: string;
@@ -43,7 +44,7 @@ interface GatewayView {
 interface Discovered {
   key: string;
   label: string;
-  fields: { name: string; type: string }[];
+  fields: { name: string; type: string; nullable?: boolean; maxLength?: number; hasDefault?: boolean }[];
   /** The field that identifies a row, when the system itself says which it is. */
   keyField?: string;
 }
@@ -345,7 +346,13 @@ function ExposeEditor({ c, onSaved }: { c: ConnectorView; onSaved: (msg: string)
   const [draft, setDraft] = useState<Record<string, ExposedEntity>>(() => Object.fromEntries(c.entities.map((e) => [e.key, e])));
   const discover = useSubmit(async () => setFound(await api<Discovered[]>(`/connectors/${c.id}/discover`, { method: 'POST' })));
   const save = useSubmit(async () => {
-    await api(`/connectors/${c.id}/entities`, { method: 'PUT', body: { entities: Object.values(draft) } });
+    // What the source said about each exposed field (must it be filled, how long may it be) is kept with it,
+    // so a form started from the table begins with the table's own limits.
+    const entities = Object.values(draft).map((d) => {
+      const seen = found?.find((f) => f.key === d.key)?.fields.filter((f) => d.fields.includes(f.name) && f.type);
+      return { ...d, about: seen?.length ? seen.map((f) => ({ name: f.name, type: f.type, nullable: f.nullable, maxLength: f.maxLength, hasDefault: f.hasDefault })) : (d.about ?? []) };
+    });
+    await api(`/connectors/${c.id}/entities`, { method: 'PUT', body: { entities } });
     await qc.invalidateQueries({ queryKey: ['connectors'] });
     onSaved(`What ${c.name} exposes was saved.`);
   });
