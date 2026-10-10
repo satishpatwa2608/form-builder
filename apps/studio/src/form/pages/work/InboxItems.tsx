@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { Clock, ShieldCheck } from "lucide-react";
+import { Checkbox } from "@ui/checkbox";
 import { findStatus } from "../../engine";
 import type { InboxPage, RecordRow } from "../../adapters/workflow";
 import type { Priority } from "../../types";
@@ -43,6 +44,9 @@ interface InboxItemsProps {
   /** What the item is about (first answers). */
   summary: (row: RecordRow) => string;
   onOpen: (id: string) => void;
+  /** The items ticked for doing something to several at once; left out, nothing can be ticked. */
+  ticked?: ReadonlySet<string>;
+  onTick?: (ids: string[], on: boolean) => void;
 }
 
 const initials = (name: string) =>
@@ -99,6 +103,8 @@ export function InboxItems({
   emptyText,
   summary,
   onOpen,
+  ticked,
+  onTick,
 }: InboxItemsProps) {
   const rows = data?.rows ?? [];
   if (loading && !data)
@@ -147,6 +153,20 @@ export function InboxItems({
       e.key === "Enter" && e.target === e.currentTarget && onOpen(row.uuid),
   });
 
+  // Ticking is offered only where the page asked for it; a tick never opens the item.
+  const tick = (row: RecordRow) =>
+    ticked &&
+    onTick && (
+      <span className="wi-tick" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        <Checkbox
+          aria-label={`Tick ${row.ref || "work item"}`}
+          checked={ticked.has(row.uuid)}
+          onCheckedChange={(on) => onTick([row.uuid], on === true)}
+        />
+      </span>
+    );
+  const allTicked = !!ticked && rows.every((r) => ticked.has(r.uuid));
+
   if (layout === "cards") {
     return (
       <div className="wi-grid">
@@ -158,6 +178,7 @@ export function InboxItems({
             {...open(row)}
           >
             <div className="wi-card__top">
+              {tick(row)}
               {ref(row)}
               {status(row)}
             </div>
@@ -187,6 +208,15 @@ export function InboxItems({
       <table className="wi-table">
         <thead>
           <tr>
+            {ticked && onTick && (
+              <th className="wi-tick-col">
+                <Checkbox
+                  aria-label="Tick every item on this page"
+                  checked={allTicked}
+                  onCheckedChange={(on) => onTick(rows.map((r) => r.uuid), on === true)}
+                />
+              </th>
+            )}
             <th>Item</th>
             <th>About</th>
             <th>Status</th>
@@ -203,6 +233,7 @@ export function InboxItems({
               className={`wi-row--${row.priority}`}
               {...open(row)}
             >
+              {ticked && onTick && <td className="wi-tick-col">{tick(row)}</td>}
               <td>
                 <div className="wi-cell-stack">
                   {ref(row)}

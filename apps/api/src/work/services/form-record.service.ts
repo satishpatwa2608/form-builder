@@ -321,6 +321,12 @@ export class FormRecordService {
     return [...new Set(rows.map((r) => r.recordId))];
   }
 
+  /** The approval on this record that is waiting for this person's answer, if there is one. */
+  async waitingRun(user: AuthUser, recordId: string): Promise<string | undefined> {
+    const run = await this.runs.findOne({ orgId: user.orgId, recordId, status: 'WAITING', 'approval.approvers': user.uuid, 'approval.approved': { $ne: user.uuid } }).select('uuid').lean();
+    return run?.uuid;
+  }
+
   /**
    * What this user may see, as a filter: Form admins see everything (null);
    * everyone else sees the records assigned to them and the ones waiting on

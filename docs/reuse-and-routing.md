@@ -73,6 +73,15 @@ what their people hold, which they can open and give to someone else.
 To give a record to a colleague with a few words on why, use **Hand over with a
 note** on the record. The note is in their notification and in the history.
 
+## Several records at once
+
+In the Work inbox, tick the items (or the box at the top for the whole page). A
+bar appears with what can be done to all of them: give them to someone, set
+their priority, take them (if nobody holds them), approve or reject (if they
+are waiting for you). Each item still follows its own rules; afterwards you are
+told how many were done and, for any that were not, which and why. Up to 50 at
+a time.
+
 ## Approvals: who must answer, and what if nobody does
 
 Wherever an approval is asked for (a step of a workflow, or a button that needs

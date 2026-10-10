@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Req, UseFilters } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpException, Param, Post, Put, Query, Req, UseFilters } from '@nestjs/common';
 import { RequirePermission } from '../../auth/auth.guard';
 import apiResponse from '../response';
 import { FormFieldErrorsFilter } from '../security/form-http';
@@ -13,6 +13,9 @@ import { FormDefinitionService } from '../services/form-definition.service';
 
 /** The records inbox: submissions being worked on through the form's workflow. */
 /** Sign-in and org membership come from the global AuthGuard; each route names the permission it needs. */
+/** How many ticked records one request may act on. */
+const BULK_LIMIT = 50;
+
 @Controller()
 @UseFilters(FormFieldErrorsFilter)
 export class FormRecordController {
@@ -167,6 +170,39 @@ export class FormRecordController {
   @RequirePermission('record.work')
   assign(@Param('id') id: string, @Body() body: { userId?: unknown; note?: unknown }, @Req() req: any) {
     return this.records.changeAssignee(req.user, id, body ?? {});
+  }
+
+  /**
+   * The same thing done to several records ticked in the inbox. Each record is done by the same code, with the
+   * same checks, as doing it alone; one that cannot be done says why and does not stop the rest.
+   */
+  @Post('records/bulk')
+  @HttpCode(200)
+  @RequirePermission('record.work')
+  async bulk(@Body() body: { ids?: unknown; op?: unknown; userId?: unknown; note?: unknown; priority?: unknown; decision?: unknown; comment?: unknown }, @Req() req: any) {
+    const ids = Array.isArray(body?.ids) ? [...new Set(body.ids.filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(id)))] : [];
+    if (!ids.length) throw new BadRequestException('Tick at least one record');
+    if (ids.length > BULK_LIMIT) throw new BadRequestException(`No more than ${BULK_LIMIT} records at a time`);
+    const op = body.op;
+    if (op !== 'assign' && op !== 'take' && op !== 'priority' && op !== 'decide') throw new BadRequestException('Choose what to do with them');
+    const results: { id: string; ok: boolean; error?: string }[] = [];
+    for (const id of ids) {
+      try {
+        if (op === 'assign') await this.records.changeAssignee(req.user, id, { userId: body.userId, note: body.note });
+        else if (op === 'take') await this.records.take(req.user, id);
+        else if (op === 'priority') await this.records.setPriority(req.user, id, { priority: body.priority });
+        else {
+          // The approval on this record that is waiting for this person.
+          const waiting = await this.records.waitingRun(req.user, id);
+          if (!waiting) throw new BadRequestException('Nothing here is waiting for your approval');
+          await this.automations.decide(req.user, id, waiting, { decision: body.decision, comment: body.comment });
+        }
+        results.push({ id, ok: true });
+      } catch (e) {
+        results.push({ id, ok: false, error: e instanceof HttpException ? e.message : 'That did not work' });
+      }
+    }
+    return { done: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok) };
   }
 
   /** "Take it": make an unassigned record of my team's queue mine. */

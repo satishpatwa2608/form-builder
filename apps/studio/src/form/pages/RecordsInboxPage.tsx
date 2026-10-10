@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LayoutGrid, List, Palette } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@ui/button";
@@ -9,6 +9,7 @@ import {
   INBOX_PAGE_SIZE,
   recordsAvailable,
   useInbox,
+  usePeople,
   useSaveWorkSettings,
   useWorkSettings,
   type InboxFilters,
@@ -27,6 +28,7 @@ import {
   type InboxLayout,
   type InboxTheme,
 } from "./work/InboxItems";
+import { BulkBar } from "./work/BulkBar";
 import { PRIORITIES, type Priority } from "../types";
 import "../styles/form-builder.css";
 import "../styles/work-inbox.css";
@@ -86,6 +88,11 @@ export default function RecordsInboxPage({
       BUILT_IN_VIEWS[0].filters,
   );
   const { data, isLoading } = useInbox(filters);
+  // Items ticked for doing something to several at once. A different list (filter, page) starts with none ticked.
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const listKey = JSON.stringify(filters);
+  useEffect(() => setTicked(new Set()), [listKey]);
+  const { data: people = [] } = usePeople(ticked.size > 0);
   const { data: forms = [] } = useFormDefinitions();
   const set = (changes: Partial<InboxFilters>) =>
     setFilters((f) => ({ ...f, page: 1, ...changes }));
@@ -317,7 +324,19 @@ export default function RecordsInboxPage({
             )}
           </div>
 
+          {ticked.size > 0 && <BulkBar ids={[...ticked]} data={data} people={people} onDone={() => setTicked(new Set())} />}
           <InboxItems
+            ticked={ticked}
+            onTick={(ids, on) =>
+              setTicked((was) => {
+                const next = new Set(was);
+                for (const id of ids) {
+                  if (on) next.add(id);
+                  else next.delete(id);
+                }
+                return next;
+              })
+            }
             layout={layout}
             data={data}
             loading={isLoading}

@@ -64,6 +64,7 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
     niaToken = (await h.login('nia@acme.test')).token;
     samToken = (await h.login('sam@acme.test')).token;
     await publish(form('TONIA', { assignTo: nia }));
+    await publish(form('ANYAP2', { approval: { to: [{ kind: 'USER', userId: nia }, { kind: 'USER', userId: sam }] } }));
   });
   afterAll(async () => h?.close());
 
@@ -184,6 +185,49 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
       await h.api().post(`/records/${queued}/assign`).set(h.bearer(zoeToken)).send({ userId: nia, note: 'Sam is on leave tomorrow' }).expect(200);
       expect((await record(queued)).record.assigneeId).toBe(nia);
       await h.api().patch(`/members/${sam}`).set(h.bearer(owner)).send({ managerId: '' }).expect(200);
+    });
+  });
+
+  describe('several records at once', () => {
+    const bulk = (token: string, body: object, expected = 200) => h.api().post('/records/bulk').set(h.bearer(token)).send(body).expect(expected);
+
+    it('ticked records are taken, given to someone and re-prioritised together; each follows its own rules', async () => {
+      const a = await send('QUEUE');
+      const b = await send('QUEUE');
+      const elsewhere = await send('NOONE');
+      // Sam is in the QUEUE team; the third record is not his to see, and says so without stopping the others.
+      const took = (await bulk(samToken, { ids: [a, b, elsewhere], op: 'take' })).body;
+      expect(took.done).toBe(2);
+      expect(took.failed).toEqual([{ id: elsewhere, ok: false, error: 'Record not found' }]);
+      expect((await record(a)).record.assigneeId).toBe(sam);
+
+      expect((await bulk(owner, { ids: [a, b], op: 'assign', userId: nia, note: 'Sam is out this afternoon' })).body).toEqual({ done: 2, failed: [] });
+      const after = await record(b);
+      expect(after.record.assigneeId).toBe(nia);
+      expect(after.events.filter((e) => e.type === 'ASSIGNED').at(-1)!.message).toBe('Sam is out this afternoon');
+
+      expect((await bulk(owner, { ids: [a, b], op: 'priority', priority: 'HIGH' })).body.done).toBe(2);
+      expect(((await record(a)).record as unknown as { priority: string }).priority).toBe('HIGH');
+    });
+
+    it('approvals waiting on me are answered together; a record with nothing waiting says so', async () => {
+      const one = await send('ANYAP2');
+      const two = await send('ANYAP2');
+      const none = await send('ANYAP2');
+      await askToClose(one);
+      await askToClose(two);
+      const answered = (await bulk(niaToken, { ids: [one, two], op: 'decide', decision: 'APPROVED', comment: 'Both fine' })).body;
+      expect(answered).toEqual({ done: 2, failed: [] });
+      expect((await record(one)).record.status).toBe('DONE');
+      expect((await record(two)).record.status).toBe('DONE');
+      const nothing = (await bulk(owner, { ids: [none], op: 'decide', decision: 'APPROVED' })).body;
+      expect(nothing.failed[0].error).toBe('Nothing here is waiting for your approval');
+    });
+
+    it('needs at least one record, no more than fifty, and something to do', async () => {
+      await bulk(owner, { ids: [], op: 'take' }, 400);
+      await bulk(owner, { ids: Array.from({ length: 51 }, (_, i) => `id-${i}`), op: 'take' }, 400);
+      await bulk(owner, { ids: ['x'], op: 'delete' }, 400);
     });
   });
 

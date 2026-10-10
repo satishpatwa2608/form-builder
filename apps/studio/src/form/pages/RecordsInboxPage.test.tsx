@@ -62,7 +62,7 @@ vi.mock('../adapters/registry/useFormRegistry', async (importOriginal) => ({
   useFormDefinitions: () => ({ data: registry.forms, isLoading: false }),
 }));
 
-const api = vi.hoisted(() => ({ saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown> }));
+const api = vi.hoisted(() => ({ bulk: vi.fn(), saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown> }));
 vi.mock('../adapters/workflow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../adapters/workflow')>();
   const people = [{ uuid: 'u1', name: 'Denim Head', email: 'd@x.test' }, { uuid: 'u2', name: 'Loom Lead', email: 'l@x.test' }];
@@ -70,6 +70,7 @@ vi.mock('../adapters/workflow', async (importOriginal) => {
     ...actual,
     recordsAvailable: true,
     usePeople: () => ({ data: people }),
+    useBulkRecords: () => ({ isPending: false, mutateAsync: api.bulk }),
     useInbox: (filters: unknown) => {
       api.filters.push(filters);
       return {
@@ -291,6 +292,32 @@ describe('Records inbox', () => {
     expect(api.mutate).toHaveBeenCalledWith({ kind: 'take' });
     api.record = {};
     api.extra = {};
+  });
+
+  it('several at once: tick items, then give them to someone or approve them, and hear what could not be done', async () => {
+    Object.assign(registry, { forms: [form] });
+    api.bulk.mockReset();
+    api.bulk.mockResolvedValue({ done: 1, failed: [] });
+    const user = userEvent.setup();
+    render(<Page />);
+    // Nothing ticked, no bar.
+    expect(screen.queryByRole('group', { name: 'Ticked items' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'Tick CCB-000001' }));
+    // A tick does not open the record.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const bar = screen.getByRole('group', { name: 'Ticked items' });
+    expect(within(bar).getByText('1 ticked')).toBeInTheDocument();
+    // This one is held by someone and waits on me: it can be approved, and there is nothing to take.
+    expect(within(bar).queryByRole('button', { name: 'Take them' })).not.toBeInTheDocument();
+    await user.click(within(bar).getByRole('button', { name: 'Approve' }));
+    expect(api.bulk).toHaveBeenCalledWith({ ids: ['r1'], op: 'decide', decision: 'APPROVED' });
+    // Done: the ticks are cleared.
+    await vi.waitFor(() => expect(screen.queryByRole('group', { name: 'Ticked items' })).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole('checkbox', { name: 'Tick every item on this page' }));
+    await user.click(within(screen.getByRole('group', { name: 'Ticked items' })).getByRole('combobox', { name: 'Give ticked items to' }));
+    await user.click(await screen.findByRole('option', { name: 'Loom Lead' }));
+    expect(api.bulk).toHaveBeenLastCalledWith({ ids: ['r1'], op: 'assign', userId: 'u2' });
   });
 
   it('SLA summary, reopen and email requester (WM-2/3)', async () => {

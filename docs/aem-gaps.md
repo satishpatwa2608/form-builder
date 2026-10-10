@@ -47,7 +47,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | Consult a colleague without giving the task away | To-do lists | **Missing** |
 | Share my list with a colleague | To-do lists | **Missing** (team queues cover most of the need) |
 | A manager sees and moves their people's tasks | Manager view | Built (10 Oct): "My team's work" |
-| Finish several like tasks at once | Workspace overview, To-do lists | **Missing.** No ticking of rows in the inbox |
+| Finish several like tasks at once | Workspace overview, To-do lists | Built (10 Oct): tick items in the inbox, then give them to someone, set their priority, take them, or approve or reject them. Named actions (such as Resolve) are still one record at a time |
 | Staff attach files and notes to a task | To-do lists, Starting processes | **Part.** Comments yes; files no |
 | Answer a task from the email | To-do lists | **Missing.** Emails link to the record |
 | Branches that run side by side (AND split) | OSGi and JEE | **Missing.** "Everyone must approve" covers the common case |

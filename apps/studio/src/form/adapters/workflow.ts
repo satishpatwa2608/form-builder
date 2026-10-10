@@ -288,6 +288,27 @@ export function useRecordAction(id: string | undefined) {
   });
 }
 
+export type BulkRecordAction =
+  | { op: 'assign'; userId: string; note?: string }
+  | { op: 'take' }
+  | { op: 'priority'; priority: Priority }
+  | { op: 'decide'; decision: 'APPROVED' | 'REJECTED'; comment?: string };
+
+export interface BulkResult {
+  done: number;
+  /** The ones that could not be done, each with the reason. */
+  failed: { id: string; error?: string }[];
+}
+
+/** The same thing done to every record ticked in the inbox; each follows the rules it would follow alone. */
+export function useBulkRecords() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { ids: string[] } & BulkRecordAction) => unwrap<BulkResult>(await adminApi.post('/records/bulk', input)),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [...KEY] }),
+  });
+}
+
 /**
  * Submits a form as a work item raised in the portal: same field handling
  * as a public submission (files uploaded first), but through the signed-in
