@@ -478,6 +478,10 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* The list of pages scrolls by itself when it is taller than the window, so Account and Sign out stay in reach. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .st-side__label {
   padding: 12px 10px 6px;
@@ -520,6 +524,7 @@
 }
 .st-side__foot {
   margin-top: auto;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 10px;

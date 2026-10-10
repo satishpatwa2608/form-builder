@@ -157,6 +157,8 @@ test('the calendar shows what is due on the day it is due, and a click opens the
   await signIn(page, org.email);
   await page.goto('/work');
   await page.getByRole('group', { name: 'Views' }).getByRole('button', { name: 'Everything' }).click();
+  // However long the menu of pages grows, the way out stays on screen.
+  await expect(page.getByRole('button', { name: /sign out/i })).toBeInViewport();
   await page.getByRole('group', { name: 'Layout' }).getByRole('button', { name: 'Calendar' }).click();
   const calendar = page.getByRole('group', { name: 'Calendar of what is due' });
   // Due in two days: this month, or the next when today is one of the month's last two days.
