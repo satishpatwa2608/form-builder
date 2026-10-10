@@ -53,7 +53,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | A workflow drawn as a picture (the workflow model editor) | Workflow | **Part.** Built (10 Oct): the workflow opens on a Picture tab: statuses left to right, an arrow for each button, approvals and rejections marked, each automation as a row of steps; clicking a part opens where it is changed. An approval's two outcomes are drawn as branches side by side, each with its own steps and its own "Add a step". A workflow in the library is built on a page of its own (Workflows, then New workflow or Edit), opening on its picture. Not yet: steps that run side by side, and dragging boxes by hand (it lays itself out) |
 | Branches that run side by side (AND split) | OSGi and JEE | **Missing.** "Everyone must approve" covers the common case |
 | Jump back to an earlier step; typed variables | Variables | **Part.** "Run only if" on each step and the results of earlier steps; no jumping back |
-| A calendar of what is due | Inbox | **Missing** |
+| A calendar of what is due | Inbox | Built (10 Oct): the Work inbox has a third layout, Calendar: the same view as a month, each record on the day it is due |
 | History of a task | To-do lists | Built: the History tab |
 | Saved searches; follow what I started | Tracking | Built: saved views; the requests portal |
 | Email, PDF, signature and "call my system" steps | Step reference | Built |

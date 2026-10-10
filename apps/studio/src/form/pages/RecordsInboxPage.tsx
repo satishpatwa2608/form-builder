@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LayoutGrid, List, Palette } from "lucide-react";
+import { CalendarDays, LayoutGrid, List, Palette } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@ui/button";
 import { Input } from "@ui/input";
@@ -25,10 +25,10 @@ import { answerText, PRIORITY_LABEL, RecordDrawer } from "./RecordDrawer";
 import {
   INBOX_THEMES,
   InboxItems,
-  type InboxLayout,
   type InboxTheme,
 } from "./work/InboxItems";
 import { BulkBar } from "./work/BulkBar";
+import { InboxCalendar } from "./work/InboxCalendar";
 import { PRIORITIES, type Priority } from "../types";
 import "../styles/form-builder.css";
 import "../styles/work-inbox.css";
@@ -67,7 +67,8 @@ function usePreference<T extends string>(
   };
   return [value, set];
 }
-const LAYOUTS = ["table", "cards"] as const;
+const LAYOUTS = ["table", "cards", "calendar"] as const;
+type Layout = (typeof LAYOUTS)[number];
 const isTheme = (v: string | undefined): v is InboxTheme =>
   INBOX_THEMES.some((t) => t.key === v);
 type Assignee = "me" | "waiting" | "unassigned" | "reports" | typeof ALL;
@@ -96,7 +97,7 @@ export default function RecordsInboxPage({
   const { data: forms = [] } = useFormDefinitions();
   const set = (changes: Partial<InboxFilters>) =>
     setFilters((f) => ({ ...f, page: 1, ...changes }));
-  const [layout, setLayout] = usePreference<InboxLayout>(
+  const [layout, setLayout] = usePreference<Layout>(
     "fb-inbox-layout",
     LAYOUTS,
     "table",
@@ -194,12 +195,8 @@ export default function RecordsInboxPage({
                     aria-pressed={layout === l}
                     onClick={() => setLayout(l)}
                   >
-                    {l === "table" ? (
-                      <List size={14} />
-                    ) : (
-                      <LayoutGrid size={14} />
-                    )}
-                    {l === "table" ? "Table" : "Cards"}
+                    {l === "table" ? <List size={14} /> : l === "cards" ? <LayoutGrid size={14} /> : <CalendarDays size={14} />}
+                    {l === "table" ? "Table" : l === "cards" ? "Cards" : "Calendar"}
                   </button>
                 ))}
               </div>
@@ -326,37 +323,43 @@ export default function RecordsInboxPage({
             )}
           </div>
 
-          {ticked.size > 0 && <BulkBar ids={[...ticked]} data={data} people={people} onDone={() => setTicked(new Set())} />}
-          <InboxItems
-            ticked={ticked}
-            onTick={(ids, on) =>
-              setTicked((was) => {
-                const next = new Set(was);
-                for (const id of ids) {
-                  if (on) next.add(id);
-                  else next.delete(id);
-                }
-                return next;
-              })
-            }
-            layout={layout}
-            data={data}
-            loading={isLoading}
-            summary={summary}
-            onOpen={(id) => onOpenRecord(id)}
-            emptyText={
-              filters.waiting
-                ? "Nothing is waiting for your approval."
-                : filters.assignee === "reports"
-                  ? "Nobody you manage holds any open work. (Managers are set on the Members page.)"
-                  : filters.assignee === "unassigned" && !admin
-                    ? "Nothing is waiting in your team's queue."
-                    : filters.assignee === "me"
-                  ? "Nothing assigned to you."
-                  : "No records."
-            }
-          />
-          {data && data.total > INBOX_PAGE_SIZE && (
+          {layout === "calendar" ? (
+            <InboxCalendar filters={filters} onOpen={(id) => onOpenRecord(id)} />
+          ) : (
+            <>
+            {ticked.size > 0 && <BulkBar ids={[...ticked]} data={data} people={people} onDone={() => setTicked(new Set())} />}
+            <InboxItems
+              ticked={ticked}
+              onTick={(ids, on) =>
+                setTicked((was) => {
+                  const next = new Set(was);
+                  for (const id of ids) {
+                    if (on) next.add(id);
+                    else next.delete(id);
+                  }
+                  return next;
+                })
+              }
+              layout={layout}
+              data={data}
+              loading={isLoading}
+              summary={summary}
+              onOpen={(id) => onOpenRecord(id)}
+              emptyText={
+                filters.waiting
+                  ? "Nothing is waiting for your approval."
+                  : filters.assignee === "reports"
+                    ? "Nobody you manage holds any open work. (Managers are set on the Members page.)"
+                    : filters.assignee === "unassigned" && !admin
+                      ? "Nothing is waiting in your team's queue."
+                      : filters.assignee === "me"
+                    ? "Nothing assigned to you."
+                    : "No records."
+              }
+            />
+            </>
+          )}
+          {layout !== "calendar" && data && data.total > INBOX_PAGE_SIZE && (
             <div className="flex items-center justify-end gap-3">
               <Button
                 type="button"

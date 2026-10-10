@@ -135,3 +135,34 @@ test('several at once: two items are ticked and given to one person', async ({ p
   await expect(bar).toHaveCount(0);
   expect(problems).toEqual([]);
 });
+
+test('the calendar shows what is due on the day it is due, and a click opens the record', async ({ page }) => {
+  // A form whose records must be resolved within two days.
+  await publishForm(org, {
+    name: 'Urgent request',
+    code: 'URGENT',
+    fields: [{ id: 'w', type: 'TEXT', name: 'what', label: 'What do you need', required: true }],
+    workflow: {
+      enabled: true,
+      refPrefix: 'URG',
+      statuses: [
+        { key: 'NEW', label: 'New', category: 'OPEN' },
+        { key: 'DONE', label: 'Done', category: 'DONE' },
+      ],
+      assignment: { type: 'NONE' },
+      sla: { resolutionHours: 48 },
+    },
+  });
+  await call(201, `/public/forms/URGENT/submissions?org=${org.orgId}`, { method: 'POST', body: { values: { what: 'A visitor pass' } } });
+  await signIn(page, org.email);
+  await page.goto('/work');
+  await page.getByRole('group', { name: 'Views' }).getByRole('button', { name: 'Everything' }).click();
+  await page.getByRole('group', { name: 'Layout' }).getByRole('button', { name: 'Calendar' }).click();
+  const calendar = page.getByRole('group', { name: 'Calendar of what is due' });
+  // Due in two days: this month, or the next when today is one of the month's last two days.
+  if (new Date(Date.now() + 48 * 3600_000).getMonth() !== new Date().getMonth()) await calendar.getByRole('button', { name: 'Next month' }).click();
+  await expect(calendar.getByRole('button', { name: 'URG-000001' })).toBeVisible();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/inbox-calendar.png` });
+  await calendar.getByRole('button', { name: 'URG-000001' }).click();
+  await expect(page.getByRole('dialog')).toContainText('URG-000001');
+});

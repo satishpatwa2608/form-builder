@@ -81,6 +81,9 @@ export interface InboxQuery {
   q?: string;
   page?: string;
   limit?: string;
+  /** Only records due in this stretch of time (ISO date-times; the end is not included): what a calendar shows. */
+  dueFrom?: string;
+  dueTo?: string;
 }
 
 export interface Person {
@@ -472,11 +475,21 @@ export class FormRecordService {
         and.push(fieldCondition(form, raw));
       }
     }
+    // Due in a stretch of time: the time to resolve it, or (without one) the time allowed in its status.
+    const from = query.dueFrom ? new Date(query.dueFrom) : null;
+    const to = query.dueTo ? new Date(query.dueTo) : null;
+    if (from || to) {
+      if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) throw new BadRequestException('Invalid dates');
+      const within = { ...(from ? { $gte: from } : {}), ...(to ? { $lt: to } : {}) };
+      and.push({ $or: [{ resolutionDueAt: within }, { resolutionDueAt: null, dueAt: within }] });
+    }
     return { filter, waiting };
   }
 
   async inbox(user: AuthUser, query: InboxQuery) {
-    const limit = Math.min(Math.max(1, Math.floor(Number(query.limit)) || 20), 50);
+    // A calendar shows a whole month at once, so a stretch of time may ask for more than a page of a list.
+    const most = query.dueFrom || query.dueTo ? 300 : 50;
+    const limit = Math.min(Math.max(1, Math.floor(Number(query.limit)) || 20), most);
     const page = Math.max(1, Math.floor(Number(query.page)) || 1);
     const { filter, waiting } = await this.inboxFilter(user, query);
 

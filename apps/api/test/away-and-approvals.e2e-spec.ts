@@ -296,6 +296,22 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
     });
   });
 
+  describe('what is due, by date', () => {
+    it('records are found by when they are due, for a calendar to show', async () => {
+      await publish({ ...form('DUEFORM'), workflow: { ...(form('DUEFORM').workflow as object), sla: { resolutionHours: 48 } } });
+      const id = await send('DUEFORM');
+      const due = new Date(((await record(id)).record as unknown as { resolutionDueAt: string }).resolutionDueAt);
+      const day = (offset: number) => new Date(due.getTime() + offset * 86_400_000).toISOString();
+      const found = async (from: string, to: string) => ((await h.api().get(`/records?formCode=DUEFORM&dueFrom=${encodeURIComponent(from)}&dueTo=${encodeURIComponent(to)}&limit=300`).set(h.bearer(owner)).expect(200)).body.rows as { uuid: string }[]).map((r) => r.uuid);
+      expect(await found(day(-1), day(1))).toEqual([id]);
+      expect(await found(day(1), day(2))).toEqual([]);
+      expect(await found(day(-3), day(-1))).toEqual([]);
+      await h.api().get('/records?dueFrom=not-a-date').set(h.bearer(owner)).expect(400);
+      // A list is still at most 50 at a time.
+      expect((await h.api().get('/records?limit=300').set(h.bearer(owner)).expect(200)).body.limit).toBe(50);
+    });
+  });
+
   describe('several records at once', () => {
     const bulk = (token: string, body: object, expected = 200) => h.api().post('/records/bulk').set(h.bearer(token)).send(body).expect(expected);
 

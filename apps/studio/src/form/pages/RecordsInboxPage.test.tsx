@@ -62,7 +62,7 @@ vi.mock('../adapters/registry/useFormRegistry', async (importOriginal) => ({
   useFormDefinitions: () => ({ data: registry.forms, isLoading: false }),
 }));
 
-const api = vi.hoisted(() => ({ addFile: vi.fn(), fileLink: vi.fn(async () => 'https://files.test/letter.pdf'), bulk: vi.fn(), saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown> }));
+const api = vi.hoisted(() => ({ rowExtra: {} as Record<string, unknown>, addFile: vi.fn(), fileLink: vi.fn(async () => 'https://files.test/letter.pdf'), bulk: vi.fn(), saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown> }));
 vi.mock('../adapters/workflow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../adapters/workflow')>();
   const people = [{ uuid: 'u1', name: 'Denim Head', email: 'd@x.test' }, { uuid: 'u2', name: 'Loom Lead', email: 'l@x.test' }];
@@ -77,7 +77,7 @@ vi.mock('../adapters/workflow', async (importOriginal) => {
       api.filters.push(filters);
       return {
         isLoading: false,
-        data: { rows: [record], total: 1, page: 1, limit: 20, forms: { 'form-v1': { name: form.name, code: form.code, statuses: form.workflow!.statuses } }, people: { u1: people[0] }, waitingOnMe: ['r1'] },
+        data: { rows: [{ ...record, ...api.rowExtra }], total: 1, page: 1, limit: 20, forms: { 'form-v1': { name: form.name, code: form.code, statuses: form.workflow!.statuses } }, people: { u1: people[0] }, waitingOnMe: ['r1'] },
       };
     },
     useRecord: (id: string | undefined) => ({
@@ -381,6 +381,32 @@ describe('Records inbox', () => {
     await user.click(within(screen.getByRole('group', { name: 'Ticked items' })).getByRole('combobox', { name: 'Give ticked items to' }));
     await user.click(await screen.findByRole('option', { name: 'Loom Lead' }));
     expect(api.bulk).toHaveBeenLastCalledWith({ ids: ['r1'], op: 'assign', userId: 'u2' });
+  });
+
+  it('calendar: the same view as a month, asked for all at once, with a record on the day it is due', async () => {
+    Object.assign(registry, { forms: [form] });
+    const due = new Date();
+    due.setHours(15, 0, 0, 0);
+    api.rowExtra = { resolutionDueAt: due.toISOString() };
+    const user = userEvent.setup();
+    render(<Page />);
+    await user.click(within(screen.getByRole('group', { name: 'Layout' })).getByRole('button', { name: 'Calendar' }));
+    const calendar = screen.getByRole('group', { name: 'Calendar of what is due' });
+    // It asks for a stretch of time (the month on show) and more rows than a page of the list.
+    expect(api.filters.at(-1)).toMatchObject({ limit: 300, sort: 'due', page: 1, dueFrom: expect.any(String), dueTo: expect.any(String) });
+    const today = within(calendar).getByRole('gridcell', { name: new RegExp(`^${due.getDate()} ${due.toLocaleString('en', { month: 'long' })}: 1 due`) });
+    expect(within(today).getByRole('button', { name: 'CCB-000001' })).toBeInTheDocument();
+    // The list's paging has no place here.
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
+    const before = (api.filters.at(-1) as { dueFrom: string }).dueFrom;
+    await user.click(within(calendar).getByRole('button', { name: 'Next month' }));
+    expect((api.filters.at(-1) as { dueFrom: string }).dueFrom > before).toBe(true);
+    await user.click(within(calendar).getByRole('button', { name: 'This month' }));
+    // One click on a record opens it.
+    await user.click(within(screen.getByRole('group', { name: 'Calendar of what is due' })).getByRole('button', { name: 'CCB-000001' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    api.rowExtra = {};
+    window.localStorage.clear();
   });
 
   it('SLA summary, reopen and email requester (WM-2/3)', async () => {

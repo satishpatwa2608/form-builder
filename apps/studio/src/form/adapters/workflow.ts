@@ -114,6 +114,10 @@ export interface InboxFilters {
   overdue?: boolean;
   /** Only items not resolved yet. */
   open?: boolean;
+  /** Only what is due in this stretch of time (the calendar asks for a month at once, so also for more rows). */
+  dueFrom?: string;
+  dueTo?: string;
+  limit?: number;
   /** Needs formCode. */
   ff?: FieldFilter[];
   sort?: InboxSort;
@@ -209,7 +213,9 @@ export function useInbox(filters: InboxFilters) {
             sort: filters.sort && filters.sort !== 'newest' ? filters.sort : undefined,
             q: filters.q?.trim() || undefined,
             page: filters.page,
-            limit: INBOX_PAGE_SIZE,
+            limit: filters.limit ?? INBOX_PAGE_SIZE,
+            dueFrom: filters.dueFrom,
+            dueTo: filters.dueTo,
           },
         }),
       ),
