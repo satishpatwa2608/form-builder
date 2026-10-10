@@ -297,7 +297,18 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
         );
         if (!chosen?.inputs?.length) return picker;
         // A step that writes to another system: each of its fields, and the answer that fills it.
-        const answers = [...answerFields(form), ...(form.workflow?.workFields ?? [])];
+        // A question that takes a file offers the file itself and, beside it, its name and its kind, so a table
+        // with a column for each is matched by name like any other answer.
+        const files = form.fields.filter((f) => f.type === 'FILE' && !f.parentId);
+        const answers = [
+          ...answerFields(form),
+          ...(form.workflow?.workFields ?? []),
+          ...files.flatMap((f) => [
+            { name: f.name, label: `${f.label || f.name} (the file itself)` },
+            { name: `${f.name}__name`, label: `${f.label || f.name}: the file's name` },
+            { name: `${f.name}__type`, label: `${f.label || f.name}: the kind of file` },
+          ]),
+        ];
         const names = answers.map((f) => f.name);
         const setSource = (target: string, source: string) => {
           const map = { ...(action.map ?? {}) };
@@ -309,7 +320,7 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
         return (
           <>
             {picker}
-            <Setting label="What goes into each field" hint="Matched by name where it can be. Change any that are wrong.">
+            <Setting label="What goes into each field" hint={`Matched by name where it can be. Change any that are wrong.${files.length ? ' A file goes into a field that can hold one (a binary column), up to 10 MB; when several were uploaded, the first.' : ''}`}>
               {() => (
                 <div className="fb-settings" style={{ gap: 6 }} role="group" aria-label="What goes into each field">
                   {chosen.inputs!.map((target) => {

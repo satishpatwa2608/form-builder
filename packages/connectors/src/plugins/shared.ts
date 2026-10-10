@@ -27,12 +27,26 @@ export function filtersFrom(entity: EntityRef, params: Record<string, unknown>):
 }
 
 /** Values to write: only exposed fields, primitives or string lists. */
-export function rowFrom(entity: EntityRef, values: Record<string, unknown>): Record<string, Primitive | string[]> {
-  const row: Record<string, Primitive | string[]> = {};
+/** A file on its way into a field: its bytes as text (base64), so it travels as JSON, through a gateway too. */
+export interface FileValue {
+  $file: string;
+  name?: string;
+  type?: string;
+}
+export const isFileValue = (v: unknown): v is FileValue => !!v && typeof v === 'object' && !Array.isArray(v) && typeof (v as FileValue).$file === 'string';
+
+/**
+ * The row to write: exposed fields only, plain values only. A file goes in as the system takes one: as bytes
+ * where a column can hold them (`files: 'bytes'`, the databases), otherwise as base64 text, which is how web
+ * APIs take binary fields (Salesforce's Body, OData's Edm.Binary).
+ */
+export function rowFrom(entity: EntityRef, values: Record<string, unknown>, files: 'bytes' | 'base64' = 'base64'): Record<string, Primitive | string[] | Uint8Array> {
+  const row: Record<string, Primitive | string[] | Uint8Array> = {};
   for (const [k, v] of Object.entries(values)) {
     if (!entity.fields.includes(k)) continue;
     if (isPrimitive(v)) row[k] = v;
     else if (Array.isArray(v) && v.every((x) => typeof x === 'string')) row[k] = v as string[];
+    else if (isFileValue(v)) row[k] = files === 'bytes' ? Buffer.from(v.$file, 'base64') : v.$file;
   }
   if (!Object.keys(row).length) throw new ConnectorError('UNSUPPORTED', 'Nothing to write: no values for the exposed fields');
   return row;

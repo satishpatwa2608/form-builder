@@ -77,13 +77,13 @@ export const mongodbPlugin: ConnectorPlugin = {
         return { rows: doc ? [req.kind === 'lookup' ? { exists: true } : plain(doc)] : [], durationMs: elapsed(start) };
       }
       case 'insert': {
-        const res = await col.insertOne(rowFrom(req.entity, req.params) as Document);
+        const res = await col.insertOne(rowFrom(req.entity, req.params, 'bytes') as Document);
         return { rows: [{ id: res.insertedId.toString() }], affected: 1, durationMs: elapsed(start) };
       }
       case 'update': {
         const { [keyField]: key, ...rest } = req.params;
         if (key === undefined) throw new ConnectorError('UNSUPPORTED', `${keyField} is required`);
-        const res = await col.updateOne({ [assertIdentifier(keyField, [...req.entity.fields, '_id'])]: idValue(keyField, key) } as Filter<Document>, { $set: rowFrom(req.entity, rest) });
+        const res = await col.updateOne({ [assertIdentifier(keyField, [...req.entity.fields, '_id'])]: idValue(keyField, key) } as Filter<Document>, { $set: rowFrom(req.entity, rest, 'bytes') });
         return { rows: [], affected: res.modifiedCount, durationMs: elapsed(start) };
       }
       default:

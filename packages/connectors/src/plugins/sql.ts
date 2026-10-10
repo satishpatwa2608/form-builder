@@ -46,7 +46,7 @@ export function buildSql(d: Dialect, schema: string | undefined, req: OperationR
       return { text: `SELECT ${top}${req.kind === 'lookup' ? (d === 'mssql' ? '1 AS found' : '1') : cols.join(', ')} FROM ${table} WHERE ${k} = ${next(key)}${limit}`, values };
     }
     case 'insert': {
-      const row = rowFrom(req.entity, req.params);
+      const row = rowFrom(req.entity, req.params, 'bytes');
       const keys = Object.keys(row);
       const placeholders = keys.map((k) => next(row[k]));
       return { text: `INSERT INTO ${table} (${keys.map((k) => quote(d, k)).join(', ')}) VALUES (${placeholders.join(', ')})`, values };
@@ -54,7 +54,7 @@ export function buildSql(d: Dialect, schema: string | undefined, req: OperationR
     case 'update': {
       const { [keyField]: key, ...rest } = req.params;
       if (key === undefined) throw new ConnectorError('UNSUPPORTED', `${keyField} is required`);
-      const row = rowFrom(req.entity, rest);
+      const row = rowFrom(req.entity, rest, 'bytes');
       const sets = Object.keys(row).map((k) => `${quote(d, k)} = ${next(row[k])}`);
       const k = quote(d, assertIdentifier(keyField, req.entity.fields));
       return { text: `UPDATE ${table} SET ${sets.join(', ')} WHERE ${k} = ${next(key)}`, values };

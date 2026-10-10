@@ -65,7 +65,9 @@ export class ConnectorRegistry {
       // returns the columns asked for, but an API is free to ignore "only these" and send everything it has.
       const exposed = request.entity.fields;
       const reads = request.kind === 'list' || request.kind === 'get';
-      const rows = result.rows.slice(0, limits.maxRows);
+      // A column that holds a file comes back as a note of its size, never as its bytes: rows are for showing and
+      // matching, and a file read into a dropdown or a look-up would be megabytes nobody asked for.
+      const rows = result.rows.slice(0, limits.maxRows).map((row) => (Object.values(row).some(isBytes) ? Object.fromEntries(Object.entries(row).map(([k, v]) => [k, isBytes(v) ? `(file, ${sizeOf(v)} bytes)` : v])) : row));
       return { ...result, rows: reads && exposed.length ? rows.map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => exposed.includes(k)))) : rows };
     } catch (e) {
       if (e instanceof ConnectorError) throw e;
@@ -76,3 +78,7 @@ export class ConnectorRegistry {
     }
   }
 }
+
+/** Bytes as a driver hands them back: a Buffer, or MongoDB's own wrapper around one. */
+const isBytes = (v: unknown): boolean => v instanceof Uint8Array || (!!v && typeof v === 'object' && (v as { _bsontype?: unknown })._bsontype === 'Binary');
+const sizeOf = (v: unknown): number => (v instanceof Uint8Array ? v.byteLength : Number((v as { length?: () => number; position?: number }).position ?? (v as { length?: () => number }).length?.() ?? 0));

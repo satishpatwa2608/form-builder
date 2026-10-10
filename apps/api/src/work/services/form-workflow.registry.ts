@@ -104,6 +104,12 @@ export class FormHandlerRegistry implements OnApplicationBootstrap {
             const { FormUploadService } = await import('./form-upload.service');
             return this.moduleRef.get(FormUploadService, { strict: false }).copiesOf(ctx.orgId, (ctx.record.files ?? []).map((f) => f.uploadId), room);
           },
+          one: async (uploadId, room) => {
+            // Only a file that came with this response: a step cannot be pointed at somebody else's upload.
+            if (!(ctx.record.files ?? []).some((f) => f.uploadId === uploadId)) return null;
+            const { FormUploadService } = await import('./form-upload.service');
+            return (await this.moduleRef.get(FormUploadService, { strict: false }).copiesOf(ctx.orgId, [uploadId], room)).files[0] ?? null;
+          },
           pdf: async () => {
             // Loaded when first needed: the document service's own file leads back to this one.
             const { DocumentsService } = await import('../../documents/documents.service');

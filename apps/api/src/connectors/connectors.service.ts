@@ -85,6 +85,31 @@ export interface ResponseFiles {
   pdf: () => Promise<Buffer | null>;
   /** The respondent's uploads that fit in `room` bytes together, and how many did not. */
   attachments: (room: number) => Promise<{ files: { name: string; type: string; content: Buffer }[]; leftOut: number }>;
+  /** One of the respondent's uploads, when it is no bigger than `room` bytes. */
+  one?: (uploadId: string, room: number) => Promise<{ name: string; type: string; content: Buffer } | null>;
+}
+
+/** The biggest file written into a field of another system (a database column, an API's binary field). Through a gateway, less. */
+export const MAX_FIELD_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_FIELD_FILE_BYTES_GATEWAY = 3 * 1024 * 1024;
+
+/** A file answer as the form stores it: what was uploaded, not the bytes. */
+type FileAnswer = { uploadId: string; name?: string; contentType?: string; type?: string };
+const isFileAnswer = (v: unknown): v is FileAnswer[] => Array.isArray(v) && v.length > 0 && v.every((x) => !!x && typeof x === 'object' && typeof (x as FileAnswer).uploadId === 'string');
+
+/**
+ * The answers as a write step can map them. A question that takes a file offers three things: the file itself
+ * (under the question's own name) and, beside it, the file's name and kind (`photo__name`, `photo__type`), so a
+ * table with `photo`, `photo_name` and `photo_type` columns is matched with nobody choosing anything.
+ */
+export function withFileFacets(values: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...values };
+  for (const [name, v] of Object.entries(values)) {
+    if (!isFileAnswer(v)) continue;
+    out[`${name}__name`] = v[0]!.name ?? '';
+    out[`${name}__type`] = v[0]!.contentType ?? v[0]!.type ?? '';
+  }
+  return out;
 }
 const REF = /^[a-z0-9]{8}$/;
 /** Data source keys in form definitions: /connectors/<ref>/<entity>. */
@@ -574,7 +599,18 @@ export class ConnectorsService implements OnModuleDestroy {
             leftOut = attachments.leftOut;
             named = { name: file.name, pdf: (await file.pdf().catch(() => null))?.toString('base64'), attachments: attachments.files.map((a) => ({ name: a.name, type: a.type, content: a.content.toString('base64') })) };
           }
-          const res = await this.run(c, e, op, op === 'upload' || op === 'log' ? { data: values, ...named } : mappedValues(e.fields, values, map), `automation:${formCode}`, op === 'upload' ? UPLOAD_LIMITS : undefined);
+          const toWrite: Record<string, unknown> = op === 'upload' || op === 'log' ? { data: values, ...named } : mappedValues(e.fields, withFileFacets(values), map);
+          if (op === 'insert' || op === 'update') {
+            // A file answer matched to a field is written there as the file itself: the first one, when several were uploaded.
+            const room = c.gatewayId ? MAX_FIELD_FILE_BYTES_GATEWAY : MAX_FIELD_FILE_BYTES;
+            for (const [field, v] of Object.entries(toWrite)) {
+              if (!isFileAnswer(v)) continue;
+              const got = await file?.one?.(v[0]!.uploadId, room).catch(() => null);
+              if (!got) throw new Error(`the file for "${field}" is larger than ${Math.round(room / 1024 / 1024)} MB, or is no longer there`);
+              toWrite[field] = { $file: got.content.toString('base64'), name: got.name, type: got.type };
+            }
+          }
+          const res = await this.run(c, e, op, toWrite, `automation:${formCode}`, op === 'upload' ? UPLOAD_LIMITS : undefined);
           if (op === 'upload') {
             const count = res.affected ?? 1;
             return { summary: `saved ${count} ${count === 1 ? 'file' : 'files'} in ${c.name}${leftOut ? ` (${leftOut} uploaded ${leftOut === 1 ? 'file was' : 'files were'} not copied: too large together, or no longer there)` : ''}`, data: { id: String(res.rows[0]?.id ?? res.rows[0]?.key ?? '') } };
