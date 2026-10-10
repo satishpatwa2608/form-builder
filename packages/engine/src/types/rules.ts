@@ -96,6 +96,8 @@ export type FormEventTrigger =
   | { type: 'LOAD' }
   /** `field` is the name of a BUTTON field. */
   | { type: 'CLICK'; field: string }
+  /** `field` is the name of a question: the actions run a moment after the person changes its answer. */
+  | { type: 'CHANGE'; field: string }
   | { type: 'SUBMIT_SUCCESS' }
   | { type: 'SUBMIT_ERROR' };
 

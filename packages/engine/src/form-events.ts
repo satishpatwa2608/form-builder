@@ -42,11 +42,15 @@ export function eventActions(
       (e) =>
         !e.disabled &&
         e.on.type === trigger.type &&
-        (e.on.type !== 'CLICK' || e.on.field === (trigger as { field?: string }).field) &&
+        ((e.on.type !== 'CLICK' && e.on.type !== 'CHANGE') || e.on.field === (trigger as { field?: string }).field) &&
         conditionHolds(e.when, values, ctx),
     )
     .flatMap((e) => e.do);
 }
+
+/** Questions that have something to do when their answer changes. */
+export const watchedFields = (def: Pick<FormDefinition, 'events'>): Set<string> =>
+  new Set((def.events ?? []).flatMap((e) => (!e.disabled && e.on.type === 'CHANGE' ? [e.on.field] : [])));
 
 /** Buttons that have something to do when clicked. */
 export const clickableButtons = (def: Pick<FormDefinition, 'events'>): Set<string> =>

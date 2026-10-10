@@ -22,7 +22,7 @@ function renameInEvent(event: FormEvent, from: string, to: string): FormEvent {
   const swap = (name: string) => (name === from ? to : name);
   return {
     ...event,
-    on: event.on.type === 'CLICK' ? { ...event.on, field: swap(event.on.field) } : event.on,
+    on: event.on.type === 'CLICK' || event.on.type === 'CHANGE' ? { ...event.on, field: swap(event.on.field) } : event.on,
     ...(event.when ? { when: renameInWhen(event.when, from, to) } : {}),
     do: event.do.map((a) => {
       if (a.type === 'SET_VALUE') return { ...a, target: swap(a.target), value: renameExpressionField(a.value, from, to) };

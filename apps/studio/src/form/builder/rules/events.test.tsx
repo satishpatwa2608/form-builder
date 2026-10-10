@@ -8,7 +8,7 @@ import { validateFormDefinition } from '../../engine';
 import { publishIssues } from '../publish-issues';
 import { FormSettingsPanel } from '../components/FormSettingsPanel';
 import { RulesDialog } from './RulesDialog';
-import { eventActionOf, eventProblems, newEvent, withTrigger } from './rule-edits';
+import { eventActionOf, eventProblems, newEvent, watchableFields, withTrigger } from './rule-edits';
 
 beforeAll(() => {
   globalThis.ResizeObserver ??= class {
@@ -58,6 +58,19 @@ describe('event edits', () => {
     expect(withTrigger(event, 'LOAD', fields)).toEqual({ id: 'e', on: { type: 'LOAD' }, do: [{ type: 'SET_VALUE', target: 'email', value: '' }] });
     expect(withTrigger(event, 'SUBMIT_ERROR', fields).do).toEqual([{ type: 'SHOW_MESSAGE', message: '' }]);
     expect(withTrigger({ ...event, on: { type: 'LOAD' } }, 'CLICK', fields).on).toEqual({ type: 'CLICK', field: 'find' });
+  });
+
+  it('"When an answer changes" waits on a question a person answers, and may not change that same answer', () => {
+    const made = withTrigger(newEvent([], fields), 'CHANGE', fields);
+    expect(made.on).toEqual({ type: 'CHANGE', field: watchableFields(fields)[0]!.name });
+    expect(made.do[0]!.type).toBe('FETCH');
+    // Buttons and hidden fields are not answers to wait on.
+    expect(watchableFields(fields).some((f) => f.type === 'BUTTON' || f.type === 'HIDDEN')).toBe(false);
+    const watched = made.on.type === 'CHANGE' ? made.on.field : '';
+    const round = { ...made, do: [{ type: 'SET_VALUE' as const, target: watched, value: '1' }] };
+    const result = validateFormDefinition({ ...form(), events: [round] });
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.success ? '' : result.issues)).toContain('the very answer it waits on');
   });
 
   it('reports what stops an event from publishing, per event and in the issues list', () => {

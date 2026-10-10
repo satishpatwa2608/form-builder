@@ -74,7 +74,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | Required, lowest, highest and pattern taken from the source | Data model 2 | **Part.** Types are worked out; limits are not brought in |
 | Start a form from a model | Data model 3 | Built: from a table, JSON Schema, a spreadsheet, a fillable PDF |
 | Fill the whole form from a record as it opens | Data model 3, prefill | **Part.** A look-up on open runs in the browser, reads one row and cannot fill repeating rows |
-| Call a service from a rule when an answer changes | Data model 3, rule editor | **Part.** Look-ups run when the form opens or a button is pressed, not when an answer changes |
+| Call a service from a rule when an answer changes | Data model 3, rule editor | Built (10 Oct): events have a third moment, "When an answer changes", that looks up and fills in (or sets a value) just after the person stops typing |
 | Write an upload into the source | Data model 3 | **Part.** Files go to a folder or bucket, not into a database column |
 
 ## 3. The form itself (rule editor, drafts, themes, languages)

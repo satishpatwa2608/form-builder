@@ -104,6 +104,7 @@ const eventSchema = z.object({
   on: z.union([
     z.object({ type: z.enum(['LOAD', 'SUBMIT_SUCCESS', 'SUBMIT_ERROR']) }),
     z.object({ type: z.literal('CLICK'), field: z.string().min(1) }),
+    z.object({ type: z.literal('CHANGE'), field: z.string().min(1) }),
   ]),
   when: z.union([z.object({ expr: expressionText }), conditionSchema]).optional(),
   do: z.array(eventActionSchema).min(1).max(10),
@@ -859,6 +860,7 @@ function checkPaymentAndCodes(def: FormDefinition, ctx: z.RefinementCtx) {
 const EVENT_ACTIONS: Record<string, ReadonlySet<FormEventAction['type']>> = {
   LOAD: new Set(['SET_VALUE', 'FETCH']),
   CLICK: new Set(['SET_VALUE', 'FETCH', 'GO_TO_STEP']),
+  CHANGE: new Set(['SET_VALUE', 'FETCH']),
   SUBMIT_SUCCESS: new Set(['SHOW_MESSAGE', 'REDIRECT']),
   SUBMIT_ERROR: new Set(['SHOW_MESSAGE']),
 };
@@ -876,6 +878,17 @@ function checkEvents(def: FormDefinition, ctx: z.RefinementCtx) {
       const button = byName.get(event.on.field);
       if (!button) issue(['on'], `Unknown button "${event.on.field}"`);
       else if (button.type !== 'BUTTON') issue(['on'], `"${button.name}" is not a button`);
+    }
+    if (event.on.type === 'CHANGE') {
+      const watched = byName.get(event.on.field);
+      if (!watched) issue(['on'], `Unknown field "${event.on.field}"`);
+      else if (!isValueField(watched) || watched.type === 'HIDDEN' || watched.type === 'CAPTCHA' || watched.type === 'FILE' || watched.type === 'SIGNATURE') issue(['on'], `"${watched.name}" is not a question whose answer can be watched`);
+      else if (formShape(def.fields).repeatOf.has(watched.name)) issue(['on'], `"${watched.name}" is inside a repeating section; an event cannot watch it`);
+      // Filling the watched answer from its own change would go round for ever.
+      for (const [a, action] of event.do.entries()) {
+        const fills = action.type === 'SET_VALUE' ? [action.target] : action.type === 'FETCH' ? Object.keys(action.set) : [];
+        if (fills.includes(event.on.field)) issue(['do', a], `This would change "${event.on.field}", the very answer it waits on`);
+      }
     }
     if (event.when && isExpressionCondition(event.when)) {
       const problem = checkExpression(event.when.expr, names);

@@ -11,6 +11,7 @@ import { errorText, VISIBLE_BORDER } from '../../runtime/styles';
 import { FormulaInput } from './FormulaInput';
 import {
   buttonsOf,
+  watchableFields,
   EVENT_ACTION_LABEL,
   EVENT_ACTIONS_FOR,
   eventActionOf,
@@ -199,6 +200,7 @@ function EventCard({ event, index, fields, names, problems, onChange, onRemove }
   const title = event.name?.trim() || `Event ${index + 1}`;
   const allowed = EVENT_ACTIONS_FOR[event.on.type];
   const buttons = buttonsOf(fields);
+  const watchable = watchableFields(fields);
   const setMode = (mode: ConditionMode) => {
     if (mode === modeOf(event)) return;
     const { when: _when, ...rest } = event;
@@ -226,6 +228,15 @@ function EventCard({ event, index, fields, names, problems, onChange, onRemove }
             value={buttons.some((b) => b.name === (event.on as { field: string }).field) ? (event.on as { field: string }).field : undefined}
             options={buttons.map((b) => ({ label: fieldName(b), value: b.name }))}
             onChange={(field) => onChange({ ...event, on: { type: 'CLICK', field } })}
+          />
+        )}
+        {event.on.type === 'CHANGE' && (
+          <ChoiceSelect
+            ariaLabel="Answer"
+            placeholder="Choose the question"
+            value={watchable.some((f) => f.name === (event.on as { field: string }).field) ? (event.on as { field: string }).field : undefined}
+            options={watchable.map((f) => ({ label: fieldName(f), value: f.name }))}
+            onChange={(field) => onChange({ ...event, on: { type: 'CHANGE', field } })}
           />
         )}
         <ChoiceSelect<ConditionMode> ariaLabel="Runs" value={modeOf(event)} options={MODES} onChange={setMode} />

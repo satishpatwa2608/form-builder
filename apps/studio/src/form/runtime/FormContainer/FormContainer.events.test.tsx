@@ -124,6 +124,41 @@ describe('FormContainer — form events', () => {
     expect(value(/^Full name/)).toBe('');
   });
 
+  it('when an answer changes: one look-up after the typing stops, not one per key, and nothing said while it is empty', async () => {
+    const onChange: FormEvent = { ...lookup, id: 'auto', on: { type: 'CHANGE', field: 'email' } };
+    const { user, fetchRows } = renderForm(form([onChange]), { rows: [{ name: 'Asha Rao', contact: { phone: '98200 00000' } }] });
+    // Opening the form with nothing typed looks nothing up.
+    await new Promise((r) => setTimeout(r, 700));
+    expect(fetchRows).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText(/^Email/), 'asha@acme.test');
+    await waitFor(() => expect(value(/^Full name/)).toBe('Asha Rao'), { timeout: 3000 });
+    expect(value(/^Phone/)).toBe('98200 00000');
+    expect(fetchRows).toHaveBeenCalledTimes(1);
+    expect(fetchRows.mock.calls[0]![1]).toEqual({ email: 'asha@acme.test' });
+
+    // Emptied again: no look-up, and no complaint about it.
+    await user.clear(screen.getByLabelText(/^Email/));
+    await new Promise((r) => setTimeout(r, 700));
+    expect(fetchRows).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('when an answer changes: an answer an event fills in does not set off the event that waits on it', async () => {
+    const chain: FormEvent[] = [
+      { id: 'a', on: { type: 'CHANGE', field: 'email' }, do: [{ type: 'SET_VALUE', target: 'fullName', value: '"From email"' }] },
+      { id: 'b', on: { type: 'CHANGE', field: 'fullName' }, do: [{ type: 'SET_VALUE', target: 'phone', value: '"Typed by a person"' }] },
+    ];
+    const { user } = renderForm(form(chain));
+    await user.type(screen.getByLabelText(/^Email/), 'a@b.test');
+    await waitFor(() => expect(value(/^Full name/)).toBe('From email'), { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 800));
+    expect(value(/^Phone/)).toBe('');
+    // The person changing it themselves does.
+    await user.type(screen.getByLabelText(/^Full name/), '!');
+    await waitFor(() => expect(value(/^Phone/)).toBe('Typed by a person'), { timeout: 3000 });
+  });
+
   it('a button opens another step', async () => {
     const steps: FormField[] = [
       { id: 's1', type: 'SECTION', name: 'about', label: 'About you' },

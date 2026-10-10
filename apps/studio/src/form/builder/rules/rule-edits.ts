@@ -129,6 +129,7 @@ export type EventActionType = FormEventAction['type'];
 export const TRIGGER_LABEL: Record<TriggerType, string> = {
   LOAD: 'When the form opens',
   CLICK: 'When a button is clicked',
+  CHANGE: 'When an answer changes',
   SUBMIT_SUCCESS: 'After a successful submit',
   SUBMIT_ERROR: 'When a submit fails',
 };
@@ -145,6 +146,7 @@ export const EVENT_ACTION_LABEL: Record<EventActionType, string> = {
 export const EVENT_ACTIONS_FOR: Record<TriggerType, EventActionType[]> = {
   LOAD: ['SET_VALUE', 'FETCH'],
   CLICK: ['SET_VALUE', 'FETCH', 'GO_TO_STEP'],
+  CHANGE: ['FETCH', 'SET_VALUE'],
   SUBMIT_SUCCESS: ['SHOW_MESSAGE', 'REDIRECT'],
   SUBMIT_ERROR: ['SHOW_MESSAGE'],
 };
@@ -167,9 +169,19 @@ export function eventActionOf(type: EventActionType, fields: FormField[]): FormE
   }
 }
 
+/** Questions whose answer an event can wait on: ones a person answers, outside repeating sections. */
+export function watchableFields(fields: FormField[]): FormField[] {
+  const repeats = new Set(fields.filter((f) => f.type === 'REPEAT').map((f) => f.id));
+  const inRepeat = (f: FormField): boolean => {
+    for (let p = f.parentId; p; p = fields.find((x) => x.id === p)?.parentId) if (repeats.has(p)) return true;
+    return false;
+  };
+  return fields.filter((f) => isValueField(f) && !['HIDDEN', 'CAPTCHA', 'FILE', 'SIGNATURE'].includes(f.type) && !inRepeat(f));
+}
+
 /** Changing when an event happens keeps the actions that still fit, or starts with one that does. */
 export function withTrigger(event: FormEvent, type: TriggerType, fields: FormField[]): FormEvent {
-  const on: FormEvent['on'] = type === 'CLICK' ? { type, field: buttonsOf(fields)[0]?.name ?? '' } : { type };
+  const on: FormEvent['on'] = type === 'CLICK' ? { type, field: buttonsOf(fields)[0]?.name ?? '' } : type === 'CHANGE' ? { type, field: watchableFields(fields)[0]?.name ?? '' } : { type };
   const kept = event.do.filter((a) => EVENT_ACTIONS_FOR[type].includes(a.type));
   return { ...event, on, do: kept.length ? kept : [eventActionOf(EVENT_ACTIONS_FOR[type][0], fields)] };
 }

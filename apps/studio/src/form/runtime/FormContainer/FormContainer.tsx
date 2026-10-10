@@ -13,6 +13,7 @@ import {
   buildZodSchema,
   childrenOf,
   clickableButtons,
+  watchedFields,
   coerceToField,
   computeFormState,
   eventActions,
@@ -81,6 +82,8 @@ export interface FormContainerProps extends FormRuntimeProps {
   formCode?: string;
 }
 
+/** How long after the last change to a watched answer its events run: long enough not to look things up on every key. */
+const CHANGE_SETTLE_MS = 600;
 const FOCUSABLE = 'input:not([type="hidden"]), textarea, select, button, [tabindex]:not([tabindex="-1"])';
 const fullPageNavigate = (url: string) => window.location.assign(url);
 
@@ -355,12 +358,20 @@ function FormRuntime({
    * look a row up. All of it is a convenience for the person filling in - the
    * server trusts none of it and applies every rule again on submit.
    */
+  const watched = useMemo(() => watchedFields(definition), [definition]);
+  const lastSeen = useRef<Record<string, string>>();
+  const pendingChanges = useRef(new Set<string>());
+  const selfFilled = useRef(new Set<string>());
+
   const runEvent = useCallback(
     async (trigger: FormEventTrigger) => {
       const current = () => computeFormState(definition, form.getValues(), context).values;
       const fill = (name: string, value: unknown) => {
         const target = definition.fields.find((f) => f.name === name);
-        if (target) form.setValue(name, coerceToField(value, target), { shouldDirty: true, shouldValidate: !!form.formState.errors[name] });
+        if (!target) return;
+        // An answer an event fills in is not the person changing it: it starts no event of its own.
+        if (watched.has(name)) selfFilled.current.add(name);
+        form.setValue(name, coerceToField(value, target), { shouldDirty: true, shouldValidate: !!form.formState.errors[name] });
       };
       setNotice(null);
       for (const action of eventActions(definition, trigger, current(), context)) {
@@ -371,7 +382,8 @@ function FormRuntime({
         } else if (action.type === 'FETCH') {
           const { params, unresolved } = resolveParams(action.source.params, current(), context);
           if (unresolved.length) {
-            setNotice(ui('lookupNeeds'));
+            // Waiting on an answer that has just been emptied is not a mistake to point out.
+            if (trigger.type !== 'CHANGE') setNotice(ui('lookupNeeds'));
             continue;
           }
           try {
@@ -384,8 +396,26 @@ function FormRuntime({
         }
       }
     },
-    [definition, form, context, dataSourceAdapter],
+    [definition, form, context, dataSourceAdapter, watched],
   );
+
+  // "When an answer changes": a moment after the person stops changing a watched answer, its events run.
+  useEffect(() => {
+    if (!watched.size) return;
+    const now = Object.fromEntries([...watched].map((name) => [name, JSON.stringify(values[name] ?? null)]));
+    const before = lastSeen.current;
+    lastSeen.current = now;
+    // The first look is what the form opened with, not a change.
+    if (!before) return;
+    for (const name of watched) if (before[name] !== now[name] && !selfFilled.current.delete(name)) pendingChanges.current.add(name);
+    if (!pendingChanges.current.size) return;
+    const timer = setTimeout(() => {
+      const changed = [...pendingChanges.current];
+      pendingChanges.current.clear();
+      for (const field of changed) void runEvent({ type: 'CHANGE', field });
+    }, CHANGE_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [values, watched, runEvent]);
 
   const loaded = useRef(false);
   useEffect(() => {
