@@ -193,6 +193,11 @@ export interface StepMeta {
   if?: Condition;
   /** Default: a failed step stops the rest of the flow. */
   continueOnError?: boolean;
+  /**
+   * Starts at the same moment as the step before it instead of after it. Only for steps that send or call
+   * something (email, notification, webhook, flow, custom step); neither sees what the other returns.
+   */
+  withPrevious?: boolean;
 }
 
 /**
@@ -236,6 +241,12 @@ export type AutomationAction = StepMeta &
    * (flow-services.ts). Output: what the flow answered, and httpStatus.
    */
   | { type: 'FLOW'; service: FlowService; url: string }
+  /**
+   * Carry on from an earlier step again (`to` is that step's key), at most `times` times (default 3, never more
+   * than 10) so a flow cannot go round for ever. Usually given a condition: "if rejected, go back and ask again".
+   * Output: { times, wentBack }.
+   */
+  | { type: 'GO_BACK'; to: string; times?: number }
   /** Code registered on the server under this key, for logic that can't be configured. */
   | { type: 'HANDLER'; key: string; /** For a step that writes to another system: its field -> the answer that fills it ('' = leave empty). Unlisted fields are matched by name. */ map?: Record<string, string> }
   );

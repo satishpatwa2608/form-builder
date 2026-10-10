@@ -1423,6 +1423,10 @@
 .fb-lane__arrow {
   color: #9ca3af;
 }
+.fb-lane__and {
+  font-weight: 700;
+  color: var(--primary);
+}
 .fb-lane__box {
   display: inline-flex;
   align-items: center;

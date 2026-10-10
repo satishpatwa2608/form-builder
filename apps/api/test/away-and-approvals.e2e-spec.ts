@@ -1,4 +1,5 @@
 import { FormAutomationService } from '../src/work/services/form-automation.service';
+import { FormHandlerRegistry } from '../src/work/services/form-workflow.registry';
 import { startApp, type Harness } from './harness';
 
 /**
@@ -549,6 +550,167 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
       expect(after.record.status).toBe('NEW');
       expect(after.events.find((e) => e.data?.phase === 'late')!.data).toMatchObject({ did: 'REMIND', approvers: [nia, sam] });
       expect((await h.api().get('/notifications').set(h.bearer(niaToken)).expect(200)).body.unread).toBe(before + 1);
+    });
+  });
+
+  describe('a flow that goes back, and steps that run at the same time', () => {
+    const waitFor = async <T>(get: () => Promise<T | undefined | false>, what: string): Promise<T> => {
+      for (let i = 0; i < 200; i++) {
+        const v = await get();
+        if (v) return v;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error(`timed out waiting for ${what}`);
+    };
+    const decision = (way: 'APPROVED' | 'REJECTED') => ({ field: '$steps.ask.decision', operator: 'equals', value: way });
+    /** The approval now waiting, once it has been asked `already + 1` times. Asking again reopens the same approval: its earlier answers stay on the timeline. */
+    const waitingOne = (id: string, already: number) =>
+      waitFor(async () => {
+        const r = await record(id);
+        const times = r.events.filter((e) => e.type === 'AUTOMATION' && e.message.includes('waiting for approval')).length;
+        return times === already + 1 ? (r.approvals.find((a) => a.status === 'WAITING') as unknown as { runId: string }) : undefined;
+      }, `the approval to be asked for time number ${already + 1}`);
+    const said = async (id: string) => (await record(id)).events.filter((e) => e.type === 'AUTOMATION').map((e) => e.message);
+
+    beforeAll(async () => {
+      await publish({
+        ...form('GOBACK'),
+        automations: [
+          {
+            id: 'a',
+            name: 'Ask until agreed',
+            enabled: true,
+            when: 'SUBMITTED',
+            actions: [
+              { id: 'ask', type: 'APPROVAL', to: [{ kind: 'USER', userId: nia }], title: 'Agree?' },
+              { id: 'again', type: 'GO_BACK', to: 'ask', times: 2, if: decision('REJECTED') },
+              { id: 'yes', type: 'SET_STATUS', status: 'DONE', if: decision('APPROVED') },
+              { id: 'no', type: 'SET_STATUS', status: 'REFUSED', if: decision('REJECTED') },
+            ],
+          },
+        ],
+      });
+    });
+
+    it('a rejection sends the flow back to ask again; an approval then lets it carry on', async () => {
+      const id = await send('GOBACK');
+      const first = await waitingOne(id, 0);
+      await decide(niaToken, id, first.runId, 'REJECTED');
+      // Asked again: a second approval, the record untouched meanwhile.
+      const second = await waitingOne(id, 1);
+      expect((await record(id)).record.status).toBe('NEW');
+      expect((await said(id)).some((m) => m.includes('going back to step 1: Approval (1 of 2)'))).toBe(true);
+      await decide(niaToken, id, second.runId, 'APPROVED');
+      await waitFor(async () => (await record(id)).record.status === 'DONE', 'the flow to carry on once approved');
+      // Having been approved, it did not go back again.
+      expect((await said(id)).filter((m) => m.includes('going back'))).toHaveLength(1);
+    });
+
+    it('it goes back only as many times as it is allowed, then carries on with what follows', async () => {
+      const id = await send('GOBACK');
+      for (let n = 0; n < 3; n++) {
+        const ask = await waitingOne(id, n);
+        await decide(niaToken, id, ask.runId, 'REJECTED');
+      }
+      // Twice back, and the third rejection stands.
+      await waitFor(async () => (await record(id)).record.status === 'REFUSED', 'the flow to stop going back');
+      const lines = await said(id);
+      expect(lines.filter((m) => m.includes('going back to step 1'))).toHaveLength(2);
+      expect(lines.some((m) => m.includes('gone back 2 times already: carrying on'))).toBe(true);
+      // Each answer is kept on the timeline, though the approval itself was reopened each time.
+      expect((await record(id)).events.filter((e) => e.message.includes('rejected') || e.message.includes('Rejected')).length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('a step that goes back must name a step before it', async () => {
+      const bad = (to: string) => ({ ...form(`BAD${to.toUpperCase()}`), automations: [{ id: 'a', name: 'A', enabled: true, when: 'SUBMITTED', actions: [{ id: 'first', type: 'NOTIFY', to: [{ kind: 'USER', userId: nia }], message: 'Hello' }, { id: 'again', type: 'GO_BACK', to }, { id: 'later', type: 'NOTIFY', to: [{ kind: 'USER', userId: nia }], message: 'Bye' }] }] });
+      for (const to of ['later', 'nowhere', 'again']) {
+        const made = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: bad(to) }).expect(201)).body.definition.id as string;
+        expect(JSON.stringify((await h.api().post(`/forms/${made}/publish`).set(h.bearer(owner)).expect(400)).body)).toContain('choose the earlier step to go back to');
+      }
+    });
+
+    it('steps marked to run together are started at the same moment, and what follows waits for all of them', async () => {
+      // Each of these two steps finishes only once the other has started: one after the other, neither could.
+      const started: Record<string, () => void> = {};
+      const hasStarted = { one: new Promise<void>((r) => (started.one = r)), two: new Promise<void>((r) => (started.two = r)) };
+      const order: string[] = [];
+      const within = (p: Promise<void>, ms: number) => Promise.race([p, new Promise<never>((_r, no) => setTimeout(() => no(new Error('the other step never started')), ms))]);
+      const registry = h.app.get(FormHandlerRegistry);
+      registry.register({ key: 'test-side-one', label: 'One', outputs: ['saw'] }, async () => {
+        order.push('one starts');
+        started.one!();
+        await within(hasStarted.two, 3000);
+        order.push('one ends');
+        return { summary: 'one done', data: { saw: 'two' } };
+      });
+      registry.register({ key: 'test-side-two', label: 'Two', outputs: ['saw'] }, async () => {
+        order.push('two starts');
+        started.two!();
+        await within(hasStarted.one, 3000);
+        order.push('two ends');
+        return { summary: 'two done', data: { saw: 'one' } };
+      });
+      await publish({
+        ...form('SIDEBY'),
+        automations: [
+          {
+            id: 'a',
+            name: 'Tell two systems',
+            enabled: true,
+            when: 'SUBMITTED',
+            actions: [
+              { id: 'one', type: 'HANDLER', key: 'test-side-one' },
+              { id: 'two', type: 'HANDLER', key: 'test-side-two', withPrevious: true },
+              // Not one of the kinds that may run at once: it waits for both, and sees what both returned.
+              { id: 'done', type: 'SET_STATUS', status: 'DONE', if: { field: '$steps.two.saw', operator: 'equals', value: 'one' } },
+            ],
+          },
+        ],
+      });
+      const id = await send('SIDEBY');
+      await waitFor(async () => (await record(id)).record.status === 'DONE', 'both steps to finish and the flow to carry on');
+      expect(order.slice(0, 2).sort()).toEqual(['one starts', 'two starts']);
+      const events = (await record(id)).events.filter((e) => e.type === 'AUTOMATION');
+      // Told in the order they are drawn.
+      expect(events.filter((e) => e.data?.together).map((e) => e.data?.stepKey)).toEqual(['one', 'two']);
+    });
+
+    it('when one of the steps run together fails, the others still finish, and then the flow stops', async () => {
+      const registry = h.app.get(FormHandlerRegistry);
+      let finished = false;
+      registry.register({ key: 'test-side-fails', label: 'Fails' }, async () => {
+        throw new Error('the other system said no');
+      });
+      registry.register({ key: 'test-side-slow', label: 'Slow' }, async () => {
+        await new Promise((r) => setTimeout(r, 150));
+        finished = true;
+        return 'slow one done';
+      });
+      await publish({
+        ...form('SIDEFAIL'),
+        automations: [
+          {
+            id: 'a',
+            name: 'One fails',
+            enabled: true,
+            when: 'SUBMITTED',
+            actions: [
+              { id: 'bad', type: 'HANDLER', key: 'test-side-fails' },
+              { id: 'slow', type: 'HANDLER', key: 'test-side-slow', withPrevious: true },
+              { id: 'done', type: 'SET_STATUS', status: 'DONE' },
+            ],
+          },
+        ],
+      });
+      const id = await send('SIDEFAIL');
+      const lines = await waitFor(async () => {
+        const all = await said(id);
+        return all.some((m) => m.includes('stopped after step 1 failed')) ? all : undefined;
+      }, 'the flow to stop');
+      expect(finished).toBe(true);
+      expect(lines.some((m) => m.includes('slow one done'))).toBe(true);
+      expect(lines.some((m) => m.includes('the other system said no'))).toBe(true);
+      expect((await record(id)).record.status).toBe('NEW');
     });
   });
 });

@@ -49,6 +49,7 @@ const STEP_NAME: Record<AutomationAction['type'], string> = {
   HANDLER: 'Custom API',
   APPROVAL: 'Approval',
   SIGN: 'Send for signature',
+  GO_BACK: 'Go back',
 };
 const stepName = (a: AutomationAction) => a.label || STEP_NAME[a.type];
 
@@ -80,6 +81,20 @@ const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
  * outcome is written to the record's timeline; one failing action never
  * stops the others or the submission.
  */
+/** Steps that only send something out or call something, so that running them at once cannot change the record under one another. */
+const SIDE_BY_SIDE: ReadonlySet<AutomationAction['type']> = new Set(['EMAIL', 'NOTIFY', 'WEBHOOK', 'FLOW', 'HANDLER']);
+
+/**
+ * Where a run of steps that go together ends, given where it starts: the following steps marked "with the one
+ * before", as long as each (and the first) is of a kind that can run at once. Returns `start` when it stands alone.
+ */
+export function sideBySideEnd(actions: AutomationAction[], start: number): number {
+  if (!SIDE_BY_SIDE.has(actions[start]!.type)) return start;
+  let end = start;
+  while (end + 1 < actions.length && actions[end + 1]!.withPrevious && SIDE_BY_SIDE.has(actions[end + 1]!.type)) end++;
+  return end;
+}
+
 @Injectable()
 export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FormAutomationService.name);
@@ -416,17 +431,87 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       const key = stepKey(action, index);
       const base = { stepKey: key, stepIndex: index, action: action.type };
       const before = earlier.get(index);
-      if (before) {
+      // A "go back" that did go back is asked again when the flow comes round to it, with the count it had reached.
+      const round = action.type === 'GO_BACK' && before?.wentBack === true;
+      if (before?.output && typeof before.output === 'object') steps[key] = before.output;
+      if (before && !round) {
         // Already done before the restart: take its outcome instead of doing it again.
         if (before.waiting) return;
         if (before.ok === false && !action.continueOnError) return finish('STOPPED');
-        if (before.output && typeof before.output === 'object') steps[key] = before.output;
+        continue;
+      }
+      // Steps marked to run with the one before them: all started together, none waiting for another.
+      const last = sideBySideEnd(automation.actions, index);
+      if (last > index) {
+        const live = (await this.records.load(orgId, recordId)).record;
+        const seen = { ...steps };
+        const outcomes = await Promise.all(
+          automation.actions.slice(index, last + 1).map(async (step, n) => {
+            const at = index + n;
+            const k = stepKey(step, at);
+            const info = { stepKey: k, stepIndex: at, action: step.type };
+            const done = earlier.get(at);
+            if (done) return { step, k, info, done };
+            if (step.if && !evaluateCondition(step.if, conditionValues(run.values, live.status, seen, { priority: live.priority, work: live.work }))) return { step, k, info, skipped: true };
+            try {
+              return { step, k, info, result: await this.execute(step, { ...run, record: live, steps: { ...seen }, stepKey: k }, depth, actor) };
+            } catch (err) {
+              return { step, k, info, error: ((err as Error).message ?? 'failed').slice(0, 300) };
+            }
+          }),
+        );
+        // Told in the order they are drawn, whichever finished first.
+        let failed: number | undefined;
+        for (const o of outcomes) {
+          if (o.done) {
+            if (o.done.output && typeof o.done.output === 'object') steps[o.k] = o.done.output;
+            if (o.done.ok === false && !o.step.continueOnError) failed ??= o.info.stepIndex;
+          } else if (o.skipped) {
+            await log(`${stepName(o.step)} skipped (condition not met)`, { ...o.info, ok: true, skipped: true });
+          } else if (o.error !== undefined) {
+            this.logger.warn(`automation "${automation.name}" step ${o.k} (${o.step.type}) on ${recordId}: ${o.error}`);
+            await log(`${o.step.type} failed - ${o.error}`, { ...o.info, ok: false, error: o.error });
+            if (!o.step.continueOnError) failed ??= o.info.stepIndex;
+          } else if (o.result !== undefined) {
+            const { summary, data } = typeof o.result === 'string' ? { summary: o.result, data: undefined } : o.result;
+            if (data) steps[o.k] = data;
+            await log(summary, { ...o.info, ok: true, together: true, ...(data ? { output: boundedOutput(data) } : {}) });
+          }
+        }
+        if (failed !== undefined) {
+          await log(`stopped after step ${failed + 1} failed`, { ok: false, stopped: true, stepIndex: failed });
+          return finish('STOPPED');
+        }
+        index = last;
         continue;
       }
       // Earlier steps (ASSIGN, SET_STATUS) may have changed the record.
       const live = (await this.records.load(orgId, recordId)).record;
       if (action.if && !evaluateCondition(action.if, conditionValues(run.values, live.status, steps, { priority: live.priority, work: live.work }))) {
         await log(`${stepName(action)} skipped (condition not met)`, { ...base, ok: true, skipped: true });
+        continue;
+      }
+      if (action.type === 'GO_BACK') {
+        // The flow goes round again from an earlier step, a set number of times at most, so it can never go round for ever.
+        const target = automation.actions.findIndex((a, i) => i < index && stepKey(a, i) === action.to);
+        const most = Math.min(Math.max(Math.trunc(action.times ?? 3) || 3, 1), 10);
+        const gone = Number((steps[key] as { times?: unknown } | undefined)?.times) || 0;
+        if (target < 0) {
+          await log('GO_BACK failed - the step to go back to is not before this one', { ...base, ok: false, error: 'the step to go back to is not before this one' });
+          if (action.continueOnError) continue;
+          await log(`stopped after step ${index + 1} failed`, { ok: false, stopped: true, stepIndex: index });
+          return finish('STOPPED');
+        }
+        if (gone >= most) {
+          await log(`gone back ${most} ${most === 1 ? 'time' : 'times'} already: carrying on`, { ...base, ok: true, output: { times: gone, wentBack: false } });
+          steps[key] = { times: gone, wentBack: false };
+          continue;
+        }
+        steps[key] = { times: gone + 1, wentBack: true };
+        await log(`going back to step ${target + 1}: ${stepName(automation.actions[target])} (${gone + 1} of ${most})`, { ...base, ok: true, wentBack: true, backTo: target, output: { times: gone + 1, wentBack: true } });
+        // What was done between there and here is to be done afresh, not remembered from an earlier attempt of this job.
+        for (let i = target; i <= index; i++) earlier.delete(i);
+        index = target - 1;
         continue;
       }
       if (action.type === 'SIGN') {
@@ -790,6 +875,9 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     const { orgId, record, definition } = ctx;
 
     switch (action.type) {
+      case 'GO_BACK':
+        // The flow itself goes back (runFlow); there is nothing for a single step to do.
+        throw new Error('a step that goes back cannot run on its own');
       case 'EMAIL': {
         const to = await this.emails(action.to, ctx);
         if (!to.length) throw new Error('no one to email');

@@ -1,5 +1,5 @@
 import type { Automation, FormDefinition, WorkflowConfig } from '../../types';
-import { ACTION_LABEL } from './workflow-edits';
+import { ACTION_LABEL, canRunWithPrevious } from './workflow-edits';
 
 /** One way a record gets from a status to another, as the picture draws it. */
 export interface MapMove {
@@ -79,6 +79,6 @@ export function automationLanes(form: Pick<FormDefinition, 'automations' | 'work
     name: a.name || 'Untitled',
     off: !a.enabled,
     when: a.when === 'STATUS_CHANGED' && a.toStatus ? `When the status becomes ${name(a.toStatus)}` : WHEN[a.when],
-    steps: a.actions.map((step) => ({ label: step.label || ACTION_LABEL[step.type], type: step.type, conditional: !!step.if })),
+    steps: a.actions.map((step, i) => ({ label: step.label || ACTION_LABEL[step.type], type: step.type, conditional: !!step.if, together: !!step.withPrevious && canRunWithPrevious(a.actions, i) })),
   }));
 }

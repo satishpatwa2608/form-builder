@@ -26,6 +26,7 @@ export const ACTION_LABEL: Record<AutomationAction['type'], string> = {
   WEBHOOK: 'Call a webhook',
   FLOW: 'Send to an automation tool',
   HANDLER: 'Run a custom API',
+  GO_BACK: 'Go back to an earlier step',
 };
 
 /** Step types this product doesn't run (Tasks were a Sangam app): shown if present, not offered. */
@@ -204,6 +205,7 @@ const STEP_ID_BASE: Record<AutomationAction['type'], string> = {
   WEBHOOK: 'webhook',
   FLOW: 'flow',
   HANDLER: 'api',
+  GO_BACK: 'back',
 };
 
 /** A step key not used yet in this flow: email, email_2, ... */
@@ -218,8 +220,19 @@ export function nextStepId(type: AutomationAction['type'], steps: AutomationActi
 
 /** A new step, keyed so later steps can use its output. */
 export function newStep(type: AutomationAction['type'], form: FormDefinition, steps: AutomationAction[]): AutomationAction {
-  return { ...newAction(type, form), id: nextStepId(type, steps) };
+  const step = { ...newAction(type, form), id: nextStepId(type, steps) };
+  if (step.type !== 'GO_BACK') return step;
+  // Going back is most often "ask again": to the nearest approval before it, or else to the first step.
+  const approval = steps.map((s) => s.type).lastIndexOf('APPROVAL');
+  const to = steps.length ? stepKey(steps[Math.max(approval, 0)], Math.max(approval, 0)) : '';
+  return { ...step, to, ...(approval >= 0 ? { if: decisionIf(to, 'REJECTED') } : {}) };
 }
+
+/** Kinds of step that can start at the same moment as the one before: they send or call something, and change nothing on the record. */
+export const SIDE_BY_SIDE: ReadonlySet<AutomationAction['type']> = new Set(['EMAIL', 'NOTIFY', 'WEBHOOK', 'FLOW', 'HANDLER']);
+
+/** Whether the step at `index` may be set to start together with the one before it. */
+export const canRunWithPrevious = (steps: AutomationAction[], index: number) => index > 0 && SIDE_BY_SIDE.has(steps[index].type) && SIDE_BY_SIDE.has(steps[index - 1].type);
 
 export function insertStep(steps: AutomationAction[], at: number, step: AutomationAction): AutomationAction[] {
   return [...steps.slice(0, at), step, ...steps.slice(at)];
@@ -342,6 +355,8 @@ export function stepSummary(s: AutomationAction, form: FormDefinition, people: P
       return isFlowAddress(s.service, s.url) ? `To ${FLOW_SERVICE_INFO[s.service].label}` : `Paste the ${FLOW_SERVICE_INFO[s.service].label} flow's address`;
     case 'HANDLER':
       return customWorkflows.find((w) => w.key === s.key)?.label ?? (s.key || 'Choose a custom API');
+    case 'GO_BACK':
+      return s.to ? `To "${s.to}", at most ${s.times ?? 3} ${(s.times ?? 3) === 1 ? 'time' : 'times'}` : 'Choose the step to go back to';
     case 'APPROVAL':
       return `By ${who(s.to)}${s.together?.length ? ` · and ${s.together.length} more at the same time` : ''}${s.dueInHours ? ` · due in ${s.dueInHours}h` : ''}`;
     case 'SIGN':
@@ -384,6 +399,8 @@ export function newAction(type: AutomationAction['type'], form: FormDefinition):
       return { type, service: 'POWER_AUTOMATE', url: '' };
     case 'HANDLER':
       return { type, key: '' };
+    case 'GO_BACK':
+      return { type, to: '', times: 3 };
   }
 }
 

@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FormDefinition, WorkflowConfig } from '../../types';
 import { fixtureDefinitions } from '../../fixtures';
 import { WorkflowMap } from './WorkflowMap';
-import { connectStatuses, disconnectStatuses, removeStatus, renameStatus, setRestricted, STARTER_WORKFLOW } from './workflow-edits';
+import { canRunWithPrevious, connectStatuses, decisionIf, disconnectStatuses, newStep, removeStatus, renameStatus, setRestricted, STARTER_WORKFLOW, stepSummary } from './workflow-edits';
 
 beforeAll(() => {
   globalThis.ResizeObserver ??= class {
@@ -191,5 +191,37 @@ describe('the picture as the place a workflow is built', () => {
     await user.click(within(lane).getByRole('button', { name: /step 2: Send an email/ }));
     await user.click(within(screen.getByRole('complementary', { name: 'Step 2' })).getByRole('button', { name: 'Delete this step' }));
     expect(last(spy).automations![0]!.actions.map((a) => a.type)).toEqual(['SET_STATUS']);
+  });
+});
+
+describe('going back, and steps at the same time', () => {
+  const tracked = { ...basic, workflow: STARTER_WORKFLOW };
+
+  it('a new "go back" step points at the nearest approval before it and runs only when that was rejected', () => {
+    const ask = newStep('APPROVAL', tracked, []);
+    const mail = newStep('EMAIL', tracked, [ask]);
+    const back = newStep('GO_BACK', tracked, [ask, mail]);
+    expect(back).toMatchObject({ type: 'GO_BACK', id: 'back', to: 'approval', times: 3, if: decisionIf('approval', 'REJECTED') });
+    expect(stepSummary(back, tracked, [], [])).toBe('To "approval", at most 3 times');
+    // With no approval before it, it goes back to the first step, and is given no condition of its own.
+    expect(newStep('GO_BACK', tracked, [mail])).toMatchObject({ to: 'email' });
+    expect(newStep('GO_BACK', tracked, [mail])).not.toHaveProperty('if');
+  });
+
+  it('only steps that send or call something can be set to start with the one before', () => {
+    const steps = [newStep('EMAIL', tracked, []), newStep('NOTIFY', tracked, []), newStep('SET_STATUS', tracked, []), newStep('WEBHOOK', tracked, [])];
+    expect(steps.map((_, i) => canRunWithPrevious(steps, i))).toEqual([false, true, false, false]);
+  });
+
+  it('the switch is offered beside the picture, and is kept on the step', async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    const automations = [{ id: 'a1', name: 'Tell everyone', enabled: true, when: 'SUBMITTED' as const, actions: [newStep('EMAIL', tracked, []), { ...newStep('NOTIFY', tracked, []), id: 'notify' }] }];
+    render(<Canvas initial={{ ...tracked, automations }} spy={spy} />);
+    await user.click(screen.getByRole('button', { name: /step 1: Send an email/ }));
+    expect(screen.queryByRole('switch', { name: 'At the same time as the step before' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /step 2: Notify in Form Builder/ }));
+    await user.click(screen.getByRole('switch', { name: 'At the same time as the step before' }));
+    expect(last(spy).automations![0]!.actions[1]).toMatchObject({ type: 'NOTIFY', withPrevious: true });
   });
 });

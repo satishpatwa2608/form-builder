@@ -261,6 +261,7 @@ const stepMeta = {
   label: z.string().max(80).optional(),
   if: conditionSchema.optional(),
   continueOnError: z.boolean().optional(),
+  withPrevious: z.boolean().optional(),
 };
 
 const actionSchema = z.union([
@@ -307,6 +308,7 @@ const actionSchema = z.union([
   }),
   z.object({ ...stepMeta, type: z.literal('SET_STATUS'), status: z.string().max(40) }),
   z.object({ ...stepMeta, type: z.literal('WEBHOOK'), url: z.string().max(500) }),
+  z.object({ ...stepMeta, type: z.literal('GO_BACK'), to: z.string().max(30), times: z.number().int().min(1).max(10).optional() }),
   z.object({ ...stepMeta, type: z.literal('FLOW'), service: z.enum(FLOW_SERVICES), url: z.string().max(2000) }),
   z.object({ ...stepMeta, type: z.literal('HANDLER'), key: z.string().max(60), map: z.record(z.string().max(100), z.string().max(100)).optional() }),
 ]);
@@ -537,7 +539,11 @@ function checkWorkflow(def: FormDefinition, ctx: z.RefinementCtx) {
         missing(action.url.trim() ? `that is not a ${FLOW_SERVICE_INFO[action.service].label} address` : `paste the ${FLOW_SERVICE_INFO[action.service].label} flow's address`);
       }
       if (action.type === 'HANDLER' && !/^[a-z0-9-]{1,60}$/.test(action.key)) missing('choose a custom API');
-      const recipients = 'to' in action ? action.to : [];
+      if (action.type === 'GO_BACK') {
+        const earlier = auto.actions.slice(0, k).map((step, n) => stepKey(step, n));
+        if (!earlier.includes(action.to)) missing(k === 0 ? 'there is no earlier step to go back to' : 'choose the earlier step to go back to');
+      }
+      const recipients = 'to' in action && action.type !== 'GO_BACK' ? action.to : [];
       for (const r of recipients) {
         if (r.kind === 'FIELD' && fields.get(r.field)?.type !== 'EMAIL') add(at('actions'), `"${r.field}" is not an email field`);
         if ((r.kind === 'ASSIGNEE' || r.kind === 'MANAGER') && !wf?.enabled) add(at('actions'), `The assignee: ${needsWorkflow}`);

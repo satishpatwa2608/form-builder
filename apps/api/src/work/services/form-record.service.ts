@@ -616,12 +616,16 @@ export class FormRecordService {
    * `-1` is present once the run was stopped after a failed step.
    */
   async runSteps(orgId: string, recordId: string, runId: string): Promise<Map<number, Record<string, unknown>>> {
-    const rows = await this.events.find({ orgId, recordId, type: 'AUTOMATION', 'data.runId': runId }).select('data').lean();
+    const rows = await this.events.find({ orgId, recordId, type: 'AUTOMATION', 'data.runId': runId }).sort({ _id: 1 }).select('data').lean();
     const steps = new Map<number, Record<string, unknown>>();
     for (const row of rows) {
       const data = (row.data ?? {}) as Record<string, unknown>;
       if (data.stopped) steps.set(-1, data);
-      else if (typeof data.stepIndex === 'number') steps.set(data.stepIndex, data);
+      else if (typeof data.stepIndex === 'number') {
+        // The flow went back to an earlier step here: what it had done from there on is to be done again.
+        if (data.wentBack === true && typeof data.backTo === 'number') for (let i = data.backTo; i < data.stepIndex; i++) steps.delete(i);
+        steps.set(data.stepIndex, data);
+      }
     }
     return steps;
   }

@@ -608,7 +608,7 @@ function Lanes({ form, lanes, onOpen, edit, picked, setPicked }: LanesProps) {
                 const on = picked?.kind === 'step' && picked.flow === lane.index && picked.index === i;
                 return (
                   <span key={i} className="fb-lane__step">
-                    <ArrowRight size={14} aria-hidden className="fb-lane__arrow" />
+                    <Join together={step.together} />
                     <button
                       type="button"
                       className={`fb-lane__box${step.conditional ? ' fb-lane__box--if' : ''}${on ? ' fb-lane__box--picked' : ''}`}
@@ -668,7 +668,7 @@ function ViewLane({ lane, onOpen }: { lane: ReturnType<typeof automationLanes>[n
         </span>
         {lane.steps.map((step, i) => (
           <span key={i} className="fb-lane__step">
-            <ArrowRight size={14} aria-hidden className="fb-lane__arrow" />
+            <Join together={step.together} />
             <span className={`fb-lane__box${step.conditional ? ' fb-lane__box--if' : ''}`}>
               {step.label}
               {step.conditional && <span className="fb-lane__if">only if…</span>}
@@ -678,5 +678,16 @@ function ViewLane({ lane, onOpen }: { lane: ReturnType<typeof automationLanes>[n
         {lane.steps.length === 0 && <span className="fb-muted">no steps yet</span>}
       </span>
     </button>
+  );
+}
+
+/** Between two steps: an arrow when one follows the other, a plus when they start together. */
+function Join({ together }: { together: boolean }) {
+  return together ? (
+    <span className="fb-lane__and" title="At the same time as the step before" aria-label="at the same time as">
+      +
+    </span>
+  ) : (
+    <ArrowRight size={14} aria-hidden className="fb-lane__arrow" />
   );
 }

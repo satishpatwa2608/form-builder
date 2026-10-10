@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowRightLeft, ArrowUp, Bell, Code2, Flag, ListChecks, Mail, Play, Plus, Trash2, UserCheck, UserPlus, Webhook, X, PenLine, Workflow } from 'lucide-react';
+import { ArrowDown, ArrowRightLeft, ArrowUp, Bell, Code2, Flag, ListChecks, Mail, Play, Plus, Trash2, UserCheck, UserPlus, Webhook, X, PenLine, Workflow, Undo2 } from 'lucide-react';
 import { Button } from '@ui/button';
 import { Input } from '@ui/input';
 import type { Automation, AutomationAction, AutomationTrigger, FormDefinition } from '../../types';
@@ -11,6 +11,7 @@ import { ActionEditor } from './ActionEditor';
 import {
   ACTION_LABEL,
   availableData,
+  canRunWithPrevious,
   branchEnd,
   branchOf,
   DECISION_LABEL,
@@ -49,6 +50,7 @@ export const STEP_ICON: Record<AutomationAction['type'], ReactNode> = {
   WEBHOOK: <Webhook size={16} />,
   FLOW: <Workflow size={16} />,
   HANDLER: <Code2 size={16} />,
+  GO_BACK: <Undo2 size={16} />,
 };
 
 export const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
@@ -142,7 +144,10 @@ export function FlowEditor({ form, people, customWorkflows, startAt = 0, onChang
             <span className="fb-flow__title">
               {i + 1}. {stepTitle(step)}
             </span>
-            <span className="fb-flow__summary">{stepSummary(step, form, people, customWorkflows)}</span>
+            <span className="fb-flow__summary">
+              {step.withPrevious && canRunWithPrevious(flow.actions, i) ? 'At the same time as the step before · ' : ''}
+              {stepSummary(step, form, people, customWorkflows)}
+            </span>
             <span className="fb-flow__badges">
               <span className="fb-code">{stepKey(step, i)}</span>
               {/* On a branch the branch's own title already says when it runs. */}
@@ -393,6 +398,37 @@ export function StepSettings({ form, steps, index, people, customWorkflows, onCh
       </Setting>
 
       <ActionEditor form={form} action={step} people={people} customWorkflows={customWorkflows} onChange={onChange} />
+      {step.type === 'GO_BACK' && (
+        <>
+          <SelectSetting
+            label="Go back to"
+            value={step.to || undefined}
+            options={steps.slice(0, index).map((s, n) => ({ label: `${n + 1}. ${stepTitle(s)}`, value: stepKey(s, n) }))}
+            hint={index === 0 ? 'There is no earlier step: move this one further down.' : 'The flow carries on from that step again. Give this step a condition below, so it only goes back when it should.'}
+            onChange={(to) => onChange({ ...step, to })}
+          />
+          <Setting label="At most this many times" hint="After that the flow carries on with the next step, so it can never go round for ever (1 to 10).">
+            {(id) => (
+              <Input
+                id={id}
+                type="number"
+                min={1}
+                max={10}
+                value={step.times ?? 3}
+                onChange={(e) => onChange({ ...step, times: Math.min(Math.max(Math.trunc(Number(e.target.value)) || 1, 1), 10) })}
+              />
+            )}
+          </Setting>
+        </>
+      )}
+      {canRunWithPrevious(steps, index) && (
+        <SwitchSetting
+          label="At the same time as the step before"
+          checked={!!step.withPrevious}
+          hint="Both start together and neither waits for the other, so this step cannot use what that one returns."
+          onChange={(on) => onChange({ ...step, withPrevious: on || undefined })}
+        />
+      )}
 
       <SwitchSetting
         label="Run only if..."
