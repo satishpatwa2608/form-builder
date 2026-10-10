@@ -61,7 +61,20 @@ describe('Documents of record (e2e)', () => {
     return id;
   };
   const submit = async (code: string, values: object) => (await h.api().post(`/public/forms/${code}/submissions?org=${orgId}`).send({ values }).expect(201)).body as { submissionId: string; ref: string };
-  const pdfOf = (res: { body: Buffer }) => pdfParse(res.body).then((p) => ({ pages: p.numpages, text: p.text.replace(/\s+/g, ' ') }));
+  // If the reader ever cannot read a PDF, say what it was given (small ones in full), so the failure can be looked into
+  // from the log alone: the reader throws something that is not an Error and carries no message.
+  const pdfOf = (res: { body: Buffer }) =>
+    pdfParse(res.body).then(
+      (p) => ({ pages: p.numpages, text: p.text.replace(/\s+/g, ' ') }),
+      (e: unknown) => {
+        const body = Buffer.isBuffer(res.body) ? res.body : Buffer.from(JSON.stringify(res.body ?? null));
+        throw new Error(
+          `The PDF could not be read (${(e as { name?: string })?.name ?? typeof e}: ${(e as { message?: string })?.message ?? String(e)}). ` +
+            `It is ${body.length} bytes, starts ${JSON.stringify(body.subarray(0, 8).toString('latin1'))}, ends ${JSON.stringify(body.subarray(-8).toString('latin1'))}` +
+            (body.length <= 16_000 ? `; in full (base64): ${body.toString('base64')}` : ''),
+        );
+      },
+    );
   const download = (formId: string, sid: string, token = owner) => h.api().get(`/forms/${formId}/submissions/${sid}/document`).set(h.bearer(token)).buffer(true).parse((res, cb) => { const chunks: Buffer[] = []; res.on('data', (c: Buffer) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks))); });
   const stored = (code: string) => { try { return readdirSync(join(dir, 'documents', orgId, code)); } catch { return []; } };
   const waitFor = async (check: () => boolean | Promise<boolean>, what: string) => {
