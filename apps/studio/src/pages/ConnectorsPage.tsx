@@ -439,9 +439,89 @@ function ExposeEditor({ c, onSaved }: { c: ConnectorView; onSaved: (msg: string)
   );
 }
 
+const TRY_ROWS = 20;
+
+/**
+ * "Try it": read one of the exposed tables now, with the filter values typed here, and see what comes back.
+ * It is the same call a form's dropdown or look-up makes, so what shows here is what a form would get.
+ */
+export function TryIt({ c }: { c: ConnectorView }) {
+  const readable = c.entities.filter((e) => e.operations.includes('list'));
+  const [key, setKey] = useState(readable[0]?.key ?? '');
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [rows, setRows] = useState<Record<string, unknown>[]>();
+  const entity = readable.find((e) => e.key === key);
+  const read = useSubmit(async () => {
+    setRows(undefined);
+    const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v.trim() !== ''));
+    setRows(await api<Record<string, unknown>[]>('/connectors/query', { method: 'POST', body: { key: `/connectors/${c.ref}/${key}`, params } }));
+  });
+  const shown = (rows ?? []).slice(0, TRY_ROWS);
+  const columns = [...new Set(shown.flatMap((r) => Object.keys(r)))].slice(0, 12);
+  const cell = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+  return (
+    <form className="st-stack" onSubmit={read.submit} aria-label={`Try ${c.name}`}>
+      <div className="st-away">
+        <SelectField
+          label="Read from"
+          value={key}
+          onChange={(e) => {
+            setKey(e.target.value);
+            setFilters({});
+            setRows(undefined);
+          }}
+        >
+          {readable.map((e) => (
+            <option key={e.key} value={e.key}>
+              {e.label}
+            </option>
+          ))}
+        </SelectField>
+        {(entity?.fields ?? []).slice(0, 8).map((f) => (
+          <TextField key={f} label={`Only where ${f} is`} placeholder="anything" value={filters[f] ?? ''} onChange={(e) => setFilters((was) => ({ ...was, [f]: e.target.value }))} />
+        ))}
+      </div>
+      <div>
+        <Button type="submit" variant="secondary" size="sm" busy={read.busy}>
+          Read now
+        </Button>
+      </div>
+      {read.error && <Alert tone="error">{read.error}</Alert>}
+      {rows && rows.length === 0 && <Alert tone="info">It answered, with no rows. A form's dropdown would be empty, and a look-up would find nothing.</Alert>}
+      {shown.length > 0 && (
+        <>
+          <p className="st-muted">
+            {rows!.length > TRY_ROWS ? `The first ${TRY_ROWS} of ${rows!.length} rows.` : `${rows!.length} ${rows!.length === 1 ? 'row' : 'rows'}.`} This is what a form gets.
+          </p>
+          <div className="st-table-wrap" style={{ overflowX: 'auto' }}>
+            <table className="st-table" aria-label="Rows that came back">
+              <thead>
+                <tr>
+                  {columns.map((col) => (
+                    <th key={col}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r, i) => (
+                  <tr key={i}>
+                    {columns.map((col) => (
+                      <td key={col}>{cell(r[col]).slice(0, 120)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </form>
+  );
+}
+
 function ConnectorCard({ c, onMessage }: { c: ConnectorView; onMessage: (tone: 'success' | 'error', text: string) => void }) {
   const qc = useQueryClient();
-  const [open, setOpen] = useState<'expose' | 'calls' | 'secrets' | null>(null);
+  const [open, setOpen] = useState<'expose' | 'calls' | 'secrets' | 'try' | null>(null);
   const [secret, setSecret] = useState<Record<string, string>>({});
   const refresh = () => qc.invalidateQueries({ queryKey: ['connectors'] });
   const calls = useQuery({ queryKey: ['connector-calls', c.id], queryFn: () => api<Call[]>(`/connectors/${c.id}/calls`), enabled: open === 'calls' });
@@ -503,6 +583,11 @@ function ConnectorCard({ c, onMessage }: { c: ConnectorView; onMessage: (tone: '
                 <KeyRound size={14} /> Credentials
               </Button>
             )}
+            {c.entities.some((e) => e.operations.includes('list')) && (
+              <Button variant="secondary" size="sm" onClick={() => setOpen(open === 'try' ? null : 'try')}>
+                Try it
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => setOpen(open === 'calls' ? null : 'calls')}>
               Calls
             </Button>
@@ -521,6 +606,7 @@ function ConnectorCard({ c, onMessage }: { c: ConnectorView; onMessage: (tone: '
       }
     >
       {open === 'expose' && <ExposeEditor c={c} onSaved={(m) => onMessage('success', m)} />}
+      {open === 'try' && <TryIt c={c} />}
       {open === 'secrets' && (
         <form
           className="st-stack"

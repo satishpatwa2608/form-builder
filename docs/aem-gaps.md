@@ -69,7 +69,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | Show only chosen tables and services | Data model 1, 2 | Built |
 | One model over several sources, with "a customer has many orders" | Data model 2 | **Missing.** A look-up reads one row of one table |
 | Worked-out values kept on the model | Data model 2 | **Part.** Calculations are per form (a fragment can carry them) |
-| Try a read or write with typed-in values and see the answer | Data model 2 | **Part.** A connection can be tested and its tables listed; one operation cannot be tried |
+| Try a read or write with typed-in values and see the answer | Data model 2 | **Part.** Built (10 Oct): "Try it" on a connector reads an exposed table with typed filters and shows the rows a form would get. Writes cannot be tried |
 | Sample data to preview a form | Data model 2, 3 | **Missing** |
 | Required, lowest, highest and pattern taken from the source | Data model 2 | **Part.** Types are worked out; limits are not brought in |
 | Start a form from a model | Data model 3 | Built: from a table, JSON Schema, a spreadsheet, a fillable PDF |
