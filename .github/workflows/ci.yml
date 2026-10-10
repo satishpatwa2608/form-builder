@@ -144,24 +144,24 @@ jobs:
   # to start, so the Db2 connector has a job of its own: the real database, IBM's real driver, the connector's own test.
   db2:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    services:
-      db2:
-        image: icr.io/db2_community/db2:11.5.9.0
-        env:
-          LICENSE: accept
-          DB2INSTANCE: db2inst1
-          DB2INST1_PASSWORD: Test-Only-Passw0rd
-          DBNAME: testdb
-          ARCHIVE_LOGS: 'false'
-          AUTOCONFIG: 'false'
-        ports: ['50000:50000']
-        options: --privileged
+    timeout-minutes: 40
     env:
       DB2_TEST: 127.0.0.1:50000:Test-Only-Passw0rd
       DB2_DRIVER_PATH: /tmp/db2driver/node_modules/ibm_db
     steps:
       - uses: actions/checkout@v4
+      # Db2 is started in a step, not as a service: IBM's registry is sometimes slow to answer, and a service that
+      # cannot be fetched fails the job before anything can try again. Docker Hub keeps a copy of the image.
+      - name: Start Db2
+        run: |
+          for image in icr.io/db2_community/db2:11.5.9.0 icr.io/db2_community/db2:11.5.9.0 ibmcom/db2:11.5.8.0; do
+            if docker pull -q "$image"; then
+              docker run -d --name db2 --privileged -p 50000:50000 -e LICENSE=accept -e DB2INSTANCE=db2inst1 -e DB2INST1_PASSWORD=Test-Only-Passw0rd -e DBNAME=testdb -e ARCHIVE_LOGS=false -e AUTOCONFIG=false "$image"
+              exit 0
+            fi
+            sleep 20
+          done
+          exit 1
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -173,12 +173,11 @@ jobs:
       - run: mkdir -p /tmp/db2driver && cd /tmp/db2driver && npm init -y >/dev/null && npm install ibm_db@3
       - name: Wait for Db2 to finish setting itself up
         run: |
-          id=$(docker ps -q --filter "ancestor=icr.io/db2_community/db2:11.5.9.0")
           for i in $(seq 1 150); do
-            if docker logs "$id" 2>&1 | grep -q "Setup has completed"; then echo "Db2 is ready"; exit 0; fi
+            if docker logs db2 2>&1 | grep -q "Setup has completed"; then echo "Db2 is ready"; exit 0; fi
             sleep 10
           done
-          docker logs "$id" 2>&1 | tail -40
+          docker logs db2 2>&1 | tail -40
           exit 1
       - run: pnpm --filter @fb/connectors test -- db2-live
 

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readPdf as pdfParse } from './read-pdf';
@@ -397,6 +397,26 @@ describe('Signing a response (e2e)', () => {
         expect(`${said.stdout}${said.stderr}`).toMatch(/Total document signed/);
       }
     });
+
+    it('an archival form\'s signed copy is archival too, page of signatures and seal included (checked by veraPDF where it is to hand)', async () => {
+      const def = { ...one('ARCHSIGN', {}), document: { keep: true, seal: true, archival: true } };
+      await publish(def);
+      const sub = await submit('ARCHSIGN', 'archival@customer.test');
+      const { token } = await waitFor(() => linkTo('archival@customer.test'), 'the signer\'s email');
+      expect((await h.api().post(`/public/sign/${token}`).send(signBody('Ravi Kumar')).expect(200)).body.status).toBe('SIGNED');
+      await waitFor(async () => ((await statusOf(sub.submissionId)) === 'SIGNED' ? true : undefined), 'the flow to carry on');
+      const signed = (await h.api().get(`/public/sign/${token}/document`).buffer(true).parse(binary).expect(200)).body as Buffer;
+      expect(signed.toString('latin1')).toContain('pdfaid:part');
+      expect(signed.toString('latin1')).toMatch(/\/Perms\s*<<\s*\/DocMDP \d+ 0 R/);
+      if (spawnSync('docker', ['image', 'inspect', 'verapdf/cli'], { stdio: 'ignore' }).status === 0 || process.env.REQUIRE_VERAPDF) {
+        const folder = mkdtempSync(join(tmpdir(), 'fb-archsign-'));
+        chmodSync(folder, 0o755);
+        writeFileSync(join(folder, 'signed.pdf'), signed);
+        const run = spawnSync('docker', ['run', '--rm', '-v', `${folder}:/data:ro`, 'verapdf/cli', '--flavour', '2b', '--format', 'text', '/data/signed.pdf'], { encoding: 'utf8', timeout: 200_000 });
+        rmSync(folder, { recursive: true, force: true });
+        expect(`${run.stdout}\n${run.stderr}`).toContain('PASS /data/signed.pdf 2b');
+      }
+    }, 240_000);
 
     it('a step that asks for something they know must say what, and what to call it', async () => {
       const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: one('KNOWN_BAD', { confirm: 'KNOWN', known: '{{customer}}' }) }).expect(201)).body.definition.id as string;

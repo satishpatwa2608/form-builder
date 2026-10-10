@@ -110,15 +110,17 @@ export class DocumentsService implements OnModuleInit {
    * The document as it is put in front of people who will sign it: never sealed, because the page of signatures
    * is added to it afterwards, and it is that finished document which is sealed. `seal` says whether it should be.
    */
-  async forSigning(orgId: string, submissionId: string): Promise<{ pdf: Buffer; seal: boolean }> {
+  async forSigning(orgId: string, submissionId: string): Promise<{ pdf: Buffer; seal: boolean; archival: boolean }> {
     const row = await this.submissions.findOne({ orgId, uuid: submissionId }).lean();
     if (!row) throw new NotFoundException('Response not found');
     const stored = await this.definitions.findVersion(orgId, row.formId);
     if (!stored) throw new NotFoundException('The form this response belongs to no longer exists');
-    if (!stored.document?.seal) return { pdf: (await this.forRecord(orgId, submissionId)).pdf, seal: false };
+    // An archival document stays archival once signed: the page of signatures is then made to the same standard. (Not the organisation's own PDF, which is as archival as they made it.)
+    const archival = stored.document?.archival === true && !stored.document.ownPdf?.id;
+    if (!stored.document?.seal) return { pdf: (await this.forRecord(orgId, submissionId)).pdf, seal: false, archival };
     const def = row.language && !isRtl(row.language) ? localize(stored, row.language) : stored;
     const status = row.ref ? (findStatus(workflowOf(def), row.status)?.label ?? row.status) : undefined;
-    return { pdf: await this.render(orgId, def, row.payload as FormValues, { ref: row.ref || undefined, submittedAt: (row as unknown as { createdAt: Date }).createdAt, status }), seal: true };
+    return { pdf: await this.render(orgId, def, row.payload as FormValues, { ref: row.ref || undefined, submittedAt: (row as unknown as { createdAt: Date }).createdAt, status }), seal: true, archival };
   }
 
   private static keyOf(orgId: string, code: string, submissionId: string) {

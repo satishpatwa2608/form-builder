@@ -111,7 +111,7 @@ export class SignaturesService implements OnModuleInit {
     const emails = [...new Set(p.signers.map((e) => e.trim().toLowerCase()))].slice(0, 10);
     if (!emails.length) throw new BadRequestException('There is no one to sign');
     // What they will all be shown: fixed now, so nobody signs something other than what the first signer saw.
-    const { pdf, seal } = await this.documents.forSigning(p.orgId, p.recordId);
+    const { pdf, seal, archival } = await this.documents.forSigning(p.orgId, p.recordId);
     const id = newId();
     // Asking for something they know only works when there is something to ask: a response without that answer
     // must not go out for signature guarded by an empty word.
@@ -123,7 +123,7 @@ export class SignaturesService implements OnModuleInit {
     const maxReminders = Math.min(5, Math.floor((days * 86_400_000 - 1) / REMIND_EVERY_MS));
     const blank = (email: string): Signer => ({ email, tokenHash: '', status: 'WAITING', sentAt: null, remindedAt: null, name: '', signature: '', signedAt: null, ip: '', userAgent: '', declineReason: '' });
     const request = (
-      await this.requests.create({ id, orgId: p.orgId, recordId: p.recordId, runId: p.runId, stepKey: p.stepKey, title: oneLine(p.title, 200), message: (p.message ?? '').slice(0, 2000), order, ...guard, seal, signers: emails.map(blank), expiresAt, maxReminders, documentHash: sha256(pdf) })
+      await this.requests.create({ id, orgId: p.orgId, recordId: p.recordId, runId: p.runId, stepKey: p.stepKey, title: oneLine(p.title, 200), message: (p.message ?? '').slice(0, 2000), order, ...guard, seal, archival, signers: emails.map(blank), expiresAt, maxReminders, documentHash: sha256(pdf) })
     ).toObject() as SignatureRequest;
     await this.store.put(SignaturesService.originalKey(request), pdf, 'application/pdf');
     for (const index of order === 'PARALLEL' ? emails.map((_, i) => i) : [0]) await this.invite(request, index);
@@ -366,7 +366,7 @@ export class SignaturesService implements OnModuleInit {
       org: { name: await this.orgName(request.orgId) },
       form: { name: request.title, code: '', version: 0 },
       record: { ref: record?.ref || undefined, submittedAt: (record as { createdAt?: Date } | null)?.createdAt ?? request.createdAt },
-      options: { title: `Signatures: ${request.title}` },
+      options: { title: `Signatures: ${request.title}`, ...(request.archival ? { archival: true } : {}) },
       rows,
       generatedAt: new Date(),
     });

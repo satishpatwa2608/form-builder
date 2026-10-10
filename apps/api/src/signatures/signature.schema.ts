@@ -58,6 +58,8 @@ export class SignatureRequest {
   @Prop({ type: String, default: '' }) knownHash: string;
   /** The finished, signed document is sealed with the organisation's certificate (the form's own setting, taken when the request was made). */
   @Prop({ type: Boolean, default: false }) seal: boolean;
+  /** The document was made to the archival standard, so its page of signatures is too. */
+  @Prop({ type: Boolean, default: false }) archival: boolean;
   /** SHA-256 of the PDF that was put in front of the signers. */
   @Prop({ type: String, default: '' }) documentHash: string;
   /** Where the signed PDF is kept, once everyone has signed. */
