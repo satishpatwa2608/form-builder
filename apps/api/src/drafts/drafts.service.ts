@@ -1,3 +1,4 @@
+import { openAnswers, sealAnswers, sealedKeys } from '../work/sealed-answers';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { FormDefinition } from '@fb/engine';
@@ -34,7 +35,9 @@ export class DraftsService {
     // Whose it is on the portal is decided afresh at every save, from who is signed in there now. It is never
     // handed on from the draft being replaced: a link someone else planted must not make their portal the owner
     // of what this person types next.
-    await this.drafts.create({ tokenHash: hashToken(fresh), orgId, code: def.code, userId, email, values: values as Record<string, unknown>, expiresAt });
+    // Answers to questions marked Sensitive are sealed in a draft exactly as they are in a response.
+    const kept = values as Record<string, unknown>;
+    await this.drafts.create({ tokenHash: hashToken(fresh), orgId, code: def.code, userId, email, values: sealAnswers(kept, sealedKeys({ fields: def.fields, submission: { ...def.submission, mapping: undefined } }, kept)), expiresAt });
     return { token: fresh, expiresAt };
   }
 
@@ -64,7 +67,8 @@ export class DraftsService {
     if (!row) throw new NotFoundException('Saved answers not found. They may have expired or already been submitted.');
     // Only fields the current version still has (the form may have changed since).
     const keep = new Set(def.fields.map((f) => f.name));
-    return { values: Object.fromEntries(Object.entries(row.values).filter(([k]) => keep.has(k))), savedAt: row.updatedAt, expiresAt: row.expiresAt };
+    const opened = openAnswers(row.values) ?? {};
+    return { values: Object.fromEntries(Object.entries(opened).filter(([k]) => keep.has(k))), savedAt: row.updatedAt, expiresAt: row.expiresAt };
   }
 
   async discard(orgId: string, code: string, token: string) {

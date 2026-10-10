@@ -270,6 +270,9 @@ function CustomFieldSetting({ field, onChange }: Pick<PanelProps, 'field' | 'onC
   );
 }
 
+/** Kinds of question with nothing to seal: files are kept in file storage, and a hidden or CAPTCHA value is not an answer. */
+const SENSITIVE_NOT_FOR = new Set(['FILE', 'HIDDEN', 'CAPTCHA', 'SIGNATURE', 'REPEAT']);
+
 const ADD_BY_HAND = '__by_hand__';
 
 function RepeatSettings({ field, form, onChange }: Pick<PanelProps, 'field' | 'form' | 'onChange'>) {
@@ -474,6 +477,14 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns, canMana
       )}
       {!hidden && !NO_HELP.has(field.type) && (
         <TextSetting label="Help text" multiline value={field.helpText} onChange={(helpText) => onChange({ helpText: helpText || undefined })} />
+      )}
+      {isValueField(field) && !SENSITIVE_NOT_FOR.has(field.type) && (
+        <SwitchSetting
+          label="Sensitive"
+          hint="For an ID number, a bank account and the like. The answer is stored encrypted and is left out of the inbox summary. It cannot be searched or filtered on. People who may open the record or export responses still see it."
+          checked={!!field.sensitive}
+          onChange={(on) => onChange({ sensitive: on || undefined })}
+        />
       )}
       {field.type === 'TEXTAREA' && (
         <NumberSetting

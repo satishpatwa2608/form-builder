@@ -122,6 +122,11 @@ export interface FormField {
   label?: string;
   placeholder?: string;
   helpText?: string;
+  /**
+   * The answer is private (an ID number, a bank account): it is stored encrypted, so a copy of the database
+   * does not give it away. It cannot be searched or filtered on, and lists show dots in its place.
+   */
+  sensitive?: boolean;
 
   /** Always required. */
   required?: boolean;

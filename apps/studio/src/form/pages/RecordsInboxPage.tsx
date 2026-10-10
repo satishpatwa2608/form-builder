@@ -141,6 +141,8 @@ export default function RecordsInboxPage({
           f.type !== "HIDDEN" &&
           f.type !== "CAPTCHA" &&
           f.type !== "FILE" &&
+          // A sensitive answer is for whoever opens the record, not for a list on a screen.
+          !f.sensitive &&
           values[f.name] !== undefined &&
           values[f.name] !== "",
       )

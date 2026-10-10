@@ -153,6 +153,7 @@ const fieldSchema = z.object({
   label: z.string().optional(),
   placeholder: z.string().optional(),
   helpText: z.string().optional(),
+  sensitive: z.boolean().optional(),
   required: z.boolean().optional(),
   requiredWhen: conditionSchema.optional(),
   disabled: z.boolean().optional(),

@@ -1,3 +1,4 @@
+import { sealedAnswersPlugin } from '../sealed-answers';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
 
@@ -101,6 +102,10 @@ export class FormSubmission {
   @Prop({ type: String, default: '' })
   assigneeId: string;
 
+  /** The answers (by their key in `payload`) that are stored encrypted: those of questions marked Sensitive when it was sent. */
+  @Prop({ type: [String], default: [] })
+  sealedFields: string[];
+
   /**
    * Colleagues asked for their view ("Ask a colleague"). While a question is open, the person asked can see the
    * record and answer; they never own it and cannot move it. Each entry: who asked whom, what, and the answer.
@@ -173,6 +178,7 @@ export class FormSubmission {
 
 export type FormSubmissionDocument = HydratedDocument<FormSubmission>;
 export const FormSubmissionSchema = SchemaFactory.createForClass(FormSubmission);
+FormSubmissionSchema.plugin(sealedAnswersPlugin);
 FormSubmissionSchema.index({ uuid: 1 }, { unique: true });
 FormSubmissionSchema.index({ orgId: 1, requesterEmail: 1, createdAt: -1 });
 FormSubmissionSchema.index({ orgId: 1, formCode: 1, createdAt: -1 });

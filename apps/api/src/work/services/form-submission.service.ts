@@ -7,7 +7,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { HttpException } from '@nestjs/common';
+import { HttpException, Inject } from '@nestjs/common';
 import { toMinor } from '../../payments/providers';
 import { VerifyService } from '../../verify/verify.service';
 import { InjectModel } from '@nestjs/mongoose';
@@ -31,6 +31,9 @@ import {
   uiText,
 } from '@fb/engine';
 import { CHANNELS, FORM_SUBMITTED_EVENT, LIMITS } from '../constants';
+import { sealedKeys, useSealingKey } from '../sealed-answers';
+import { SecretBox } from '../../common/crypto';
+import { APP_CONFIG, type AppConfig } from '../../config';
 import { checkSubmissionShape, isPlainObject } from '../../forms/payload-guard';
 import { FormFieldErrors } from '../security/form-http';
 import { FormSubmission, FormSubmissionDocument } from '../schemas/form-submission.schema';
@@ -91,6 +94,7 @@ export class FormSubmissionService {
   private readonly logger = new Logger(FormSubmissionService.name);
 
   constructor(
+    @Inject(APP_CONFIG) config: AppConfig,
     @InjectModel(FormSubmission.name) private readonly submissions: Model<FormSubmissionDocument>,
     private readonly definitions: FormDefinitionService,
     private readonly master: DataSourceQueryService,
@@ -101,7 +105,10 @@ export class FormSubmissionService {
     private readonly records: FormRecordService,
     private readonly extensions: ExtensionsService,
     private readonly verify: VerifyService,
-  ) {}
+  ) {
+    // Sensitive answers are sealed with the installation's key as they are saved, and opened as they are read.
+    useSealingKey(new SecretBox(Buffer.from(config.SECRET_KEY, 'base64')));
+  }
 
   /** The published form a public caller may open (sign-in-only forms need a user of the same org). */
   /**
@@ -279,6 +286,8 @@ export class FormSubmissionService {
         formVersion: def.version,
         formId: def.id,
         payload,
+        // Questions marked Sensitive: their answers are sealed as this is saved (see sealed-answers.ts).
+        sealedFields: sealedKeys(def, payload),
         files: [],
         submittedBy: user?.uuid ?? '',
         requesterEmail: (await this.records.contactEmail(orgId, { payload, submittedBy: user?.uuid ?? '' }, def)).toLowerCase(),

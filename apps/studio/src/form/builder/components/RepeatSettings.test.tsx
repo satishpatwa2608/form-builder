@@ -99,4 +99,28 @@ describe('repeating section settings', () => {
     await user.click(screen.getByRole('tab', { name: 'Logic' }));
     expect(screen.getByText('Clear this field when these change')).toBeInTheDocument();
   });
+
+  it('a question can be marked Sensitive; a repeating section itself cannot (its questions can)', async () => {
+    const spy = vi.fn();
+    const user = userEvent.setup();
+    const first = render(<Panel fieldId="c" spy={spy} />);
+    await user.click(screen.getByRole('switch', { name: 'Sensitive' }));
+    expect(last(spy).sensitive).toBe(true);
+    expect(screen.getByText(/stored encrypted/)).toBeInTheDocument();
+    await user.click(screen.getByRole('switch', { name: 'Sensitive' }));
+    expect(last(spy).sensitive).toBeUndefined();
+    first.unmount();
+    render(<Panel fieldId="r" spy={spy} />);
+    expect(screen.queryByRole('switch', { name: 'Sensitive' })).not.toBeInTheDocument();
+  });
+
+  it('the number of rows can follow a number question outside the section, and only such a question', async () => {
+    const spy = vi.fn();
+    const user = userEvent.setup();
+    render(<Panel fieldId="r" spy={spy} />);
+    await user.click(screen.getByRole('combobox', { name: 'How many rows' }));
+    // Numbers inside the rows (Qty, Price) are not a count of rows; with no number outside, there is nothing to follow.
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['People add and remove rows']);
+    expect(screen.getByText(/add a number question outside this section first/)).toBeInTheDocument();
+  });
 });

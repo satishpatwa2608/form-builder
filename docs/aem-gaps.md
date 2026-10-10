@@ -121,3 +121,9 @@ Chosen by how often a team working a queue, or a person filling a form, would me
 10. Staff files on a record; approve from the email.
 11. Try a connector operation; related tables; OAuth for REST; SOAP and Oracle.
 12. Fill the customer's own PDF; PDF/A; a code for signers.
+
+## Not from Adobe's pages, asked for by us
+
+| Capability | Form Builder |
+|---|---|
+| Answers encrypted in the database, question by question | Built (10 Oct): the "Sensitive" switch on a question. See [sensitive-answers.md](sensitive-answers.md) |
