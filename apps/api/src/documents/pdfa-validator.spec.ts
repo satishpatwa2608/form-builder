@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newSealIdentity, sealPdf } from './pdf-seal';
@@ -37,6 +37,8 @@ const sample = (options: object) =>
   let dir: string;
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'fb-pdfa-'));
+    // The validator runs as a user of its own inside its container, and a new temporary folder is ours alone: let it look in.
+    chmodSync(dir, 0o755);
   });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
