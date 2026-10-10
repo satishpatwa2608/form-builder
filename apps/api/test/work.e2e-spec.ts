@@ -156,10 +156,12 @@ describe('Work items: public submissions, records, approvals, uploads (e2e)', ()
     const pending = asked.approvals.find((a: { status: string }) => a.status === 'WAITING');
     expect(pending.approvers).toEqual([bossId]);
 
-    // The manager sees it (waiting on them) and approves; then it leaves their view.
+    // The manager sees it (waiting on them) and approves. It is no longer waiting on them, and they still see it,
+    // because a manager sees what their people hold (someone who only approves loses sight of it: away-and-approvals).
     expect((await h.api().get('/records?waiting=me').set(h.bearer(boss)).expect(200)).body.rows.map((r: { uuid: string }) => r.uuid)).toEqual([id]);
     const decided = (await h.api().post(`/records/${id}/approvals/${pending.runId}`).set(h.bearer(boss)).send({ decision: 'APPROVED', comment: 'OK' }).expect(200)).body;
-    expect(decided).toEqual({ gone: true });
+    expect(decided.record.status).toBe('CLOSED');
+    expect((await h.api().get('/records?waiting=me').set(h.bearer(boss)).expect(200)).body.total).toBe(0);
     const closed = (await h.api().get(`/records/${id}`).set(h.bearer(owner)).expect(200)).body;
     expect(closed.record).toMatchObject({ status: 'CLOSED', resolvedAt: expect.any(String) });
   });

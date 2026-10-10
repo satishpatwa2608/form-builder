@@ -65,7 +65,7 @@ vi.mock('../adapters/registry/useFormRegistry', async (importOriginal) => ({
 const api = vi.hoisted(() => ({ saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown> }));
 vi.mock('../adapters/workflow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../adapters/workflow')>();
-  const people = [{ uuid: 'u1', name: 'Denim Head', email: 'd@x.test' }];
+  const people = [{ uuid: 'u1', name: 'Denim Head', email: 'd@x.test' }, { uuid: 'u2', name: 'Loom Lead', email: 'l@x.test' }];
   return {
     ...actual,
     recordsAvailable: true,
@@ -253,6 +253,46 @@ describe('Records inbox', () => {
     api.actions = [];
   });
 
+  it('hand over with a note: a colleague other than the owner, and what they need to know', async () => {
+    Object.assign(registry, { forms: [form] });
+    api.mutate.mockReset();
+    api.mutate.mockResolvedValue({});
+    const user = userEvent.setup();
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    const drawer = await screen.findByRole('dialog');
+    await user.click(within(drawer).getByRole('button', { name: 'Hand over with a note' }));
+    const handOver = within(drawer).getByRole('group', { name: 'Hand over' });
+    expect(within(handOver).getByRole('button', { name: 'Hand over' })).toBeDisabled();
+    await user.click(within(handOver).getByRole('combobox', { name: 'Hand over to' }));
+    // The person who has it now is not offered.
+    expect(screen.queryByRole('option', { name: /Denim Head/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('option', { name: /Loom Lead/ }));
+    await user.type(within(handOver).getByRole('textbox', { name: 'Note for them' }), 'Customer is calling back at 4');
+    await user.click(within(handOver).getByRole('button', { name: 'Hand over' }));
+    expect(api.mutate).toHaveBeenCalledWith({ kind: 'assign', userId: 'u2', note: 'Customer is calling back at 4' });
+  });
+
+  it('"Take it" is offered on work nobody holds, and only there', async () => {
+    Object.assign(registry, { forms: [form] });
+    api.mutate.mockReset();
+    api.mutate.mockResolvedValue({});
+    const user = userEvent.setup();
+    const first = render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Take it' })).not.toBeInTheDocument();
+    first.unmount();
+
+    api.record = { assigneeId: '' };
+    api.extra = { canTake: true };
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Take it' }));
+    expect(api.mutate).toHaveBeenCalledWith({ kind: 'take' });
+    api.record = {};
+    api.extra = {};
+  });
+
   it('SLA summary, reopen and email requester (WM-2/3)', async () => {
     Object.assign(registry, {
       forms: [{ ...form, workflow: { ...form.workflow!, requestInfoStatus: 'WIP', emailTemplates: [{ key: 'ask', name: 'Ask for lot', subject: 'About {{$record.ref}}', body: 'Please send the lot.' }] } }],
@@ -328,8 +368,14 @@ describe('Records inbox', () => {
     const views = screen.getByRole('group', { name: 'Views' });
     expect(within(views).queryByRole('button', { name: /Save view/ })).not.toBeInTheDocument();
     expect(within(views).queryByRole('button', { name: 'Unassigned' })).not.toBeInTheDocument();
+    // What nobody holds is, for them, their team's queue; and a manager has their people's work.
+    await user.click(within(views).getByRole('button', { name: "My team's queue" }));
+    expect(api.filters.at(-1)).toMatchObject({ assignee: 'unassigned', open: true });
+    await user.click(within(views).getByRole('button', { name: "My team's work" }));
+    expect(api.filters.at(-1)).toMatchObject({ assignee: 'reports', open: true });
     await user.click(screen.getByRole('combobox', { name: 'Assigned to' }));
     expect(screen.queryByRole('option', { name: 'Unassigned' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: "My team's queue" })).toBeInTheDocument();
     await user.keyboard('{Escape}');
 
     // The API answers null when the change took the item away (e.g. reassigned): the drawer closes.

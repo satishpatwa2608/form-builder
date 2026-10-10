@@ -38,6 +38,8 @@ export interface Member {
   /** Optional: approves / is told when their reports' work needs it. */
   managerId: string;
   twoFactorEnabled: boolean;
+  /** Away (out of office): new work meant for them goes to `toUserId` meanwhile. */
+  away?: { set: boolean; now: boolean; from: string | null; until: string | null; toUserId: string };
 }
 
 export interface Invitation {

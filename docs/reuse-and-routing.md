@@ -41,6 +41,49 @@ your system and returns their email, and the Assign step after it gives them the
 record. If nobody is found the step fails and says so on the record, rather than
 leaving it with no one.
 
+## When someone is away
+
+On **Account & security**, the **Away** card takes three things: from which day
+(empty means now), back on which day (empty means "until I say I'm back"), and
+the colleague who gets your new work.
+
+While you are away:
+
+- A new record that would have been yours goes to that colleague. This holds for
+  the form's own rule, an Assign step, and someone giving it to you by hand; the
+  record's history says who it was meant for.
+- An approval that would have been asked of you is asked of them.
+- What you already hold stays with you. Nothing moves behind your back.
+- If your colleague is away too, it goes on to theirs. If that comes back round
+  to you, or you named nobody, the work comes to you as usual.
+
+An administrator can see who is away on the Members page.
+
+## A team's queue, and "Take it"
+
+A form can name the team that works its records (form settings, "Who works
+these records"): people by name, or whole departments. A record of that form
+that nobody holds is the team's queue. Each member sees it under **My team's
+queue** and presses **Take it** to make it theirs. If two press at once, one
+gets it and the other is told who did.
+
+Someone who manages people (set on the Members page) has **My team's work**:
+what their people hold, which they can open and give to someone else.
+
+To give a record to a colleague with a few words on why, use **Hand over with a
+note** on the record. The note is in their notification and in the history.
+
+## Approvals: who must answer, and what if nobody does
+
+Wherever an approval is asked for (a step of a workflow, or a button that needs
+approval) there are three choices:
+
+| Choice | What it means |
+|---|---|
+| Who must approve | *Any one of them*: the first answer decides. *Every one of them*: it goes ahead when all have approved, and one rejection refuses it |
+| Time to answer (hours) | Left empty, it waits for as long as it takes |
+| If nobody answers in time | *Remind them*, *Ask their manager instead* (each person who has not answered gives way to their manager), or *Treat it as rejected* |
+
 ## How this compares with AEM Forms
 
 | AEM Forms | Here |
@@ -58,6 +101,14 @@ leaving it with no one.
 | OR split, goto | A condition on each step |
 | Variables | What earlier steps returned: `{{$steps.<step>.<value>}}` |
 | Inbox and workspace | Work inbox, as a modal with tabs |
+| Out of office | The Away card: from, back on, and who gets my new work |
+| A task assigned to a group, claimed by one member | A team's queue and "Take it" |
+| Manager view of a team's tasks | "My team's work" |
+| Forward a task with a note | "Hand over with a note" |
+| A task several people must all complete | "Every one of them" must approve |
+| Task deadline and reminders | Time to answer, then remind, ask the manager, or refuse |
+
+The full list of what AEM Forms has and where we stand is in [aem-gaps.md](aem-gaps.md).
 
 Still missing against AEM: several branches of a workflow running side by side,
 a visual drawing of the workflow, themes edited on screen, interactive

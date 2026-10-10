@@ -257,6 +257,32 @@ describe('Workflow dialog', () => {
     expect(screen.getByRole('option', { name: 'Work: Root cause' })).toBeInTheDocument();
   });
 
+  it('an approval says who must approve, how long they have, and what happens when nobody answers', async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    const wf = { ...STARTER_WORKFLOW, actions: [{ key: 'resolve', label: 'Resolve', to: 'CLOSED', approval: { to: [{ kind: 'MANAGER' as const }] } }] };
+    render(<Harness initial={{ ...basic, workflow: wf }} spy={spy} />);
+    const action = screen.getByLabelText('Action Resolve');
+    const approval = () => spy.mock.lastCall![0].workflow.actions[0].approval;
+
+    // Nothing is asked about lateness until there is a time to be late for.
+    expect(within(action).queryByRole('combobox', { name: 'If nobody answers in time' })).not.toBeInTheDocument();
+    await user.click(within(action).getByRole('combobox', { name: 'Who must approve' }));
+    await user.click(await screen.findByRole('option', { name: 'Every one of them' }));
+    expect(approval()).toMatchObject({ need: 'ALL' });
+    expect(within(action).getByText(/One rejection refuses it/)).toBeInTheDocument();
+
+    await user.type(within(action).getByRole('spinbutton', { name: 'Time to answer (hours)' }), '8');
+    expect(approval()).toMatchObject({ dueInHours: 8 });
+    await user.click(within(action).getByRole('combobox', { name: 'If nobody answers in time' }));
+    await user.click(await screen.findByRole('option', { name: 'Ask their manager instead' }));
+    expect(approval()).toEqual({ to: [{ kind: 'MANAGER' }], need: 'ALL', dueInHours: 8, whenLate: 'MANAGER' });
+
+    // Taking the time away takes its consequence away too.
+    await user.clear(within(action).getByRole('spinbutton', { name: 'Time to answer (hours)' }));
+    expect(approval().whenLate).toBeUndefined();
+  });
+
   it('SLA targets, escalation, approval on an action and email templates (WM-2/3)', async () => {
     const user = userEvent.setup();
     const spy = vi.fn();

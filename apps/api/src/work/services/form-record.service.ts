@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FilterQuery, Model } from 'mongoose';
@@ -264,7 +264,18 @@ export class FormRecordService {
       const c = await this.counters.findOneAndUpdate({ orgId, formCode: def.code }, { $inc: { roundRobin: 1 } }, { upsert: true, new: true });
       userId = rule.userIds[(c.roundRobin - 1) % rule.userIds.length];
     }
-    return userId && (await this.findPeople(orgId, [userId])).length ? userId : '';
+    return this.someoneHere(orgId, userId);
+  }
+
+  /** `userId` if they work records, or their stand-in while they are away; nobody ('') otherwise. */
+  private async someoneHere(orgId: string, userId: string): Promise<string> {
+    if (!userId || !(await this.findPeople(orgId, [userId])).length) return '';
+    return (await this.directory.standIn(orgId, userId)).userId;
+  }
+
+  /** These people, with anyone who is away replaced by whoever they named. */
+  present(orgId: string, userIds: string[]): Promise<string[]> {
+    return this.directory.present(orgId, userIds);
   }
 
   /**
@@ -285,7 +296,7 @@ export class FormRecordService {
       const wanted = email.trim().toLowerCase();
       userId = (await this.findPeople(orgId)).find((p) => p.email?.toLowerCase() === wanted)?.uuid ?? '';
     }
-    return userId && (await this.findPeople(orgId, [userId])).length ? userId : '';
+    return this.someoneHere(orgId, userId);
   }
 
   // ---------------------------------------------------------------- people
@@ -306,7 +317,7 @@ export class FormRecordService {
 
   /** Records with an approval waiting on this user. */
   async waitingOn(user: AuthUser): Promise<string[]> {
-    const rows = await this.runs.find({ orgId: user.orgId, status: 'WAITING', 'approval.approvers': user.uuid }).select('recordId').limit(500).lean();
+    const rows = await this.runs.find({ orgId: user.orgId, status: 'WAITING', 'approval.approvers': user.uuid, 'approval.approved': { $ne: user.uuid } }).select('recordId').limit(500).lean();
     return [...new Set(rows.map((r) => r.recordId))];
   }
 
@@ -317,7 +328,25 @@ export class FormRecordService {
    */
   private async scope(user: AuthUser, waiting: string[]): Promise<FilterQuery<FormSubmission> | null> {
     if (isRecordAdmin(user)) return null;
-    return { $or: [{ assigneeId: user.uuid }, { uuid: { $in: waiting } }] };
+    const [queues, reports] = await Promise.all([this.queuesOf(user), this.directory.reportsOf(user.orgId, user.uuid)]);
+    return {
+      $or: [
+        { assigneeId: user.uuid },
+        { uuid: { $in: waiting } },
+        // Their team's queue: work nobody has taken yet, on forms whose team they are in.
+        ...(queues.length ? [{ assigneeId: '', formCode: { $in: queues } }] : []),
+        // A manager sees what their people hold.
+        ...(reports.length ? [{ assigneeId: { $in: reports } }] : []),
+      ],
+    };
+  }
+
+  /** The forms whose team this person is in (by name or by department): their unassigned records are the team's queue. */
+  private async queuesOf(user: AuthUser): Promise<string[]> {
+    const teams = [...(await this.definitions.recordAccessByCode(user.orgId)).entries()].filter(([, team]) => !!team);
+    if (!teams.length) return [];
+    const department = teams.some(([, team]) => team!.departments.length) ? await this.directory.department(user.orgId, user.uuid) : undefined;
+    return teams.filter(([, team]) => team!.userIds.includes(user.uuid) || (!!department && team!.departments.includes(department))).map(([code]) => code);
   }
 
   /** 404 (not 403) for records outside the user's scope - don't reveal they exist. */
@@ -325,6 +354,8 @@ export class FormRecordService {
     const found = await this.mustGet(user.orgId, id);
     if (isRecordAdmin(user) || found.record.assigneeId === user.uuid) return found;
     if ((await this.waitingOn(user)).includes(id)) return found;
+    if (!found.record.assigneeId && (await this.queuesOf(user)).includes(found.record.formCode)) return found;
+    if (found.record.assigneeId && (await this.directory.reportsOf(user.orgId, user.uuid)).includes(found.record.assigneeId)) return found;
     throw new NotFoundException('Record not found');
   }
 
@@ -381,6 +412,8 @@ export class FormRecordService {
     }
     if (query.assignee === 'me') filter.assigneeId = user.uuid;
     if (query.assignee === 'unassigned') filter.assigneeId = '';
+    // "My team's work": what the people this person manages hold.
+    if (query.assignee === 'reports') filter.assigneeId = { $in: await this.directory.reportsOf(user.orgId, user.uuid) };
     if (query.overdue === 'true') {
       const now = new Date();
       and.push(openCondition(latest), { $or: [{ dueAt: { $lte: now } }, { resolutionDueAt: { $lte: now } }, { responseDueAt: { $lte: now }, respondedAt: null }] });
@@ -477,7 +510,7 @@ export class FormRecordService {
       kind: r.kind ?? 'FLOW',
       status: r.status,
       ...r.approval!,
-      canDecide: r.status === 'WAITING' && (r.approval!.approvers.includes(user.uuid) || isRecordAdmin(user)),
+      canDecide: r.status === 'WAITING' && ((r.approval!.approvers.includes(user.uuid) && !(r.approval!.approved ?? []).includes(user.uuid)) || isRecordAdmin(user)),
     }));
     const people = await this.contacts(user.orgId, [
       record.assigneeId,
@@ -490,6 +523,8 @@ export class FormRecordService {
       definition,
       events,
       approvals,
+      // Nobody's yet, and this person may work it: the screen offers "Take it".
+      canTake: !record.assigneeId && !!definition.workflow?.enabled,
       people: Object.fromEntries(people),
       // Forms with named actions move only through them; others offer the allowed statuses.
       actions: definition.workflow?.enabled ? actionsFor(workflowOf(definition), record.status) : [],
@@ -717,8 +752,11 @@ export class FormRecordService {
     await this.log(orgId, id, 'PRIORITY', by, 'Raised by escalation', { from: record.priority, to: next });
   }
 
-  /** Assign (or unassign with ''). The new assignee gets an in-app notification. */
-  async assign(orgId: string, id: string, userId: string, by: string) {
+  /**
+   * Assign (or unassign with ''). The new assignee gets an in-app notification, with the note if one was
+   * written. Someone who is away is passed over for whoever they named, and the timeline says so.
+   */
+  async assign(orgId: string, id: string, userId: string, by: string, note = '') {
     const { record, definition } = await this.mustGet(orgId, id);
     if (typeof userId !== 'string') throw new BadRequestException('userId is required');
     if (!definition.workflow?.enabled) throw new BadRequestException('This form has no workflow');
@@ -727,11 +765,23 @@ export class FormRecordService {
     if (userId && !person) {
       throw new BadRequestException(team ? 'That user isn\'t in the team that works this form\'s records' : 'That user can\'t work on records (they need a Form records module)');
     }
+    // Away: their stand-in gets it, as long as the stand-in may work this form's records too.
+    let insteadOf = '';
+    if (userId) {
+      const standIn = (await this.directory.standIn(orgId, userId)).userId;
+      if (standIn !== userId && (await this.findPeople(orgId, [standIn], undefined, team)).length) {
+        insteadOf = userId;
+        userId = standIn;
+      }
+    }
     if (record.assigneeId === userId) return;
 
     await this.records.updateOne({ uuid: id, orgId }, { $set: { assigneeId: userId } });
-    await this.log(orgId, id, 'ASSIGNED', by, '', { from: record.assigneeId, to: userId });
-    if (userId && userId !== by) this.notify(orgId, [userId], `${record.ref || 'A record'} (${definition.name}) was assigned to you`, record.uuid, record.ref, definition.name);
+    await this.log(orgId, id, 'ASSIGNED', by, note, { from: record.assigneeId, to: userId, ...(insteadOf ? { insteadOf } : {}) });
+    if (userId && userId !== by) {
+      const said = note ? `: "${note}"` : '';
+      this.notify(orgId, [userId], `${record.ref || 'A record'} (${definition.name}) was assigned to you${insteadOf ? ' while a colleague is away' : ''}${said}`, record.uuid, record.ref, definition.name);
+    }
   }
 
   /** In-app notification + email (NotificationsService). */
@@ -790,7 +840,9 @@ export class FormRecordService {
    * decide endpoint as flow approvals); the decision makes (or refuses) the move.
    */
   private async requestActionApproval(user: AuthUser, record: FormSubmission, definition: FormDefinition, action: WorkflowAction, comment: string) {
-    const approvers = (await this.resolveUsers(user.orgId, action.approval!.to, record)).filter((u) => u !== user.uuid || action.approval!.to.length === 1);
+    const named = (await this.resolveUsers(user.orgId, action.approval!.to, record)).filter((u) => u !== user.uuid || action.approval!.to.length === 1);
+    // Anyone away is replaced by whoever they named.
+    const approvers = await this.present(user.orgId, named);
     if (!approvers.length) throw new BadRequestException(`No one to approve "${action.label}" (is the assignee's manager set?)`);
     const now = new Date();
     const runId = uuidv4();
@@ -814,7 +866,11 @@ export class FormRecordService {
         instructions: comment,
         approvers,
         requestedAt: now,
-        dueAt: null,
+        dueAt: action.approval!.dueInHours ? new Date(now.getTime() + action.approval!.dueInHours * 3600_000) : null,
+        need: action.approval!.need ?? 'ANY',
+        approved: [],
+        whenLate: action.approval!.whenLate ?? 'REMIND',
+        lateAt: null,
         decision: null,
         decidedBy: '',
         comment: '',
@@ -889,9 +945,30 @@ export class FormRecordService {
     return this.getAfterChange(user, id);
   }
 
-  async changeAssignee(user: AuthUser, id: string, body: { userId?: unknown }) {
+  /**
+   * "Take it": someone in the form's team makes an unassigned record theirs. Two people pressing at once: the
+   * write only lands while the record is still nobody's, so one gets it and the other is told who did.
+   */
+  async take(user: AuthUser, id: string) {
+    const { record, definition } = await this.mustSee(user, id);
+    if (!definition.workflow?.enabled) throw new BadRequestException('This form has no workflow');
+    const team = (await this.definitions.recordAccessByCode(user.orgId)).get(record.formCode);
+    if (!(await this.findPeople(user.orgId, [user.uuid], undefined, team)).length) throw new ForbiddenException('You are not in the team that works this form\'s records');
+    const took = await this.records.updateOne({ uuid: id, orgId: user.orgId, assigneeId: '' }, { $set: { assigneeId: user.uuid } });
+    if (!took.modifiedCount) {
+      const now = await this.records.findOne({ uuid: id, orgId: user.orgId }).select('assigneeId').lean();
+      if (now?.assigneeId === user.uuid) return this.getAfterChange(user, id);
+      const holder = now?.assigneeId ? (await this.contacts(user.orgId, [now.assigneeId])).get(now.assigneeId)?.name : undefined;
+      throw new ConflictException(holder ? `${holder} has already taken this` : 'Someone has already taken this');
+    }
+    await this.log(user.orgId, id, 'ASSIGNED', user.uuid, '', { from: '', to: user.uuid, took: true });
+    return this.getAfterChange(user, id);
+  }
+
+  async changeAssignee(user: AuthUser, id: string, body: { userId?: unknown; note?: unknown }) {
     await this.mustSee(user, id);
-    await this.assign(user.orgId, id, body?.userId as string, user.uuid);
+    const note = typeof body?.note === 'string' ? body.note.trim().slice(0, WORKFLOW.commentLength) : '';
+    await this.assign(user.orgId, id, body?.userId as string, user.uuid, note);
     return this.getAfterChange(user, id);
   }
 

@@ -13,6 +13,7 @@ export const BUILT_IN_VIEWS: { key: string; name: string; filters: InboxFilters 
   { key: 'mine', name: 'My open', filters: { page: 1, assignee: 'me', open: true } },
   { key: 'approvals', name: 'Waiting for my approval', filters: { page: 1, waiting: true, assignee: '' } },
   { key: 'unassigned', name: 'Unassigned', filters: { page: 1, assignee: 'unassigned', open: true } },
+  { key: 'reports', name: "My team's work", filters: { page: 1, assignee: 'reports', open: true } },
   { key: 'overdue', name: 'Overdue', filters: { page: 1, assignee: '', overdue: true, sort: 'due' } },
   { key: 'all', name: 'Everything', filters: { page: 1, assignee: '' } },
 ];
@@ -23,7 +24,7 @@ const same = (a: InboxFilters, b: InboxFilters) => JSON.stringify(filtersToQuery
 interface ViewsBarProps {
   filters: InboxFilters;
   onPick: (filters: InboxFilters) => void;
-  /** Form admins: see unassigned items and save views. Others work only what's assigned to them. */
+  /** Form admins: see everything unassigned and save views. Others see their own work, their team's queue and their people's work. */
   admin?: boolean;
 }
 
@@ -48,7 +49,8 @@ export function ViewsBar({ filters, onPick, admin = true }: ViewsBarProps) {
   return (
     <div className="fb-settings" style={{ gap: 8 }}>
       <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }} role="group" aria-label="Views">
-        {BUILT_IN_VIEWS.filter((v) => admin || v.key !== 'unassigned').map((v) => chip(v.key, v.name, v.filters))}
+        {/* For someone who is not an administrator, what nobody holds is their team's queue: the work they may take. */}
+        {BUILT_IN_VIEWS.map((v) => chip(v.key, !admin && v.key === 'unassigned' ? "My team's queue" : v.name, v.filters))}
         {saved.map((v) =>
           chip(
             v.uuid,

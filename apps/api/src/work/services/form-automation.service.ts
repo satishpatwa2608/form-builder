@@ -185,8 +185,57 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       fired += await this.sweepResponse(now);
       fired += await this.sweepApproaching(now);
       fired += await this.sweepEscalation(now);
+      fired += await this.sweepApprovals(now);
     } finally {
       this.sweeping = false;
+    }
+    return fired;
+  }
+
+  /**
+   * Approvals whose time has run out, once each: the people still to answer are reminded, or their managers are
+   * asked in their place, or it is refused, as the form says. Claimed with a conditional write like the rest.
+   */
+  private async sweepApprovals(now: Date): Promise<number> {
+    let fired = 0;
+    const late = await this.runs
+      .find({ status: 'WAITING', 'approval.dueAt': { $ne: null, $lte: now }, 'approval.lateAt': null })
+      .limit(WORKFLOW.sweepBatch)
+      .lean();
+    for (const run of late) {
+      const claimed = await this.runs.updateOne({ uuid: run.uuid, status: 'WAITING', 'approval.lateAt': null }, { $set: { 'approval.lateAt': now } });
+      if (!claimed.modifiedCount || !run.approval) continue;
+      fired++;
+      try {
+        const { record, definition } = await this.records.load(run.orgId, run.recordId);
+        const approval = run.approval;
+        const pending = approval.approvers.filter((a) => !(approval.approved ?? []).includes(a));
+        const tell = (ids: string[], text: string) => this.records.notify(run.orgId, ids, `${text}: ${approval.title}${record.ref ? ` (${record.ref})` : ''}`, run.recordId, record.ref, definition.name);
+        if (approval.whenLate === 'REJECT') {
+          await this.records.log(run.orgId, run.recordId, 'APPROVAL', '', 'No answer in time', { phase: 'late', runId: run.uuid, title: approval.title, did: 'REJECT' });
+          await this.decide({ uuid: '', orgId: run.orgId }, run.recordId, run.uuid, { decision: 'REJECTED', comment: 'No answer in time' }, true);
+          continue;
+        }
+        if (approval.whenLate === 'MANAGER') {
+          // Each person who has not answered gives way to their manager; someone with no manager keeps it and is reminded.
+          const next: string[] = [...(approval.approved ?? [])];
+          const added: string[] = [];
+          for (const person of pending) {
+            const manager = (await this.records.present(run.orgId, [await this.records.managerOf(run.orgId, person)]))[0];
+            if (manager && !approval.approvers.includes(manager)) added.push(manager);
+            next.push(manager || person);
+          }
+          const approvers = [...new Set(next)];
+          await this.runs.updateOne({ uuid: run.uuid, status: 'WAITING' }, { $set: { 'approval.approvers': approvers } });
+          await this.records.log(run.orgId, run.recordId, 'APPROVAL', '', 'No answer in time', { phase: 'late', runId: run.uuid, title: approval.title, did: 'MANAGER', approvers });
+          tell(approvers.filter((a) => !(approval.approved ?? []).includes(a)), added.length ? 'Approval passed to you' : 'Approval overdue');
+          continue;
+        }
+        await this.records.log(run.orgId, run.recordId, 'APPROVAL', '', 'No answer in time', { phase: 'late', runId: run.uuid, title: approval.title, did: 'REMIND', approvers: pending });
+        tell(pending, 'Approval overdue');
+      } catch (err) {
+        this.logger.error(`late approval ${run.uuid} failed: ${(err as Error).message}`);
+      }
     }
     return fired;
   }
@@ -403,7 +452,8 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       }
       if (action.type === 'APPROVAL') {
         // Participant step: save where we are and stop; a decision resumes from the next step.
-        const approvers = await this.userIds(action.to, { orgId: run.orgId, record: live });
+        // Anyone away is replaced by whoever they named.
+        const approvers = await this.records.present(run.orgId, await this.userIds(action.to, { orgId: run.orgId, record: live }));
         if (approvers.length) {
           const title = await this.pause(automation, run, { runId, depth, actor, index, key, steps, approvers, action, live });
           await log(`waiting for approval: ${title}`, { ...base, ok: true, waiting: true, approvers });
@@ -472,6 +522,10 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
             approvers: p.approvers,
             requestedAt: now,
             dueAt: p.action.dueInHours ? new Date(now.getTime() + p.action.dueInHours * 3600_000) : null,
+            need: p.action.need ?? 'ANY',
+            approved: [],
+            whenLate: p.action.whenLate ?? 'REMIND',
+            lateAt: null,
             decision: null,
             decidedBy: '',
             comment: '',
@@ -490,13 +544,27 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
    * clicking at once: one wins, the other gets 409), then the flow resumes
    * from the next step with { decision, decidedBy, comment } as this step's output.
    */
-  async decide(user: { uuid: string; orgId: string; name?: string; modules?: string[] }, recordId: string, runId: string, body: { decision?: unknown; comment?: unknown }) {
+  async decide(user: { uuid: string; orgId: string; name?: string; modules?: string[] }, recordId: string, runId: string, body: { decision?: unknown; comment?: unknown }, system = false) {
     const decision = body?.decision === 'APPROVED' || body?.decision === 'REJECTED' ? body.decision : null;
     if (!decision) throw new BadRequestException('Choose approve or reject');
     const comment = typeof body.comment === 'string' ? body.comment.trim().slice(0, WORKFLOW.commentLength) : '';
     const run = await this.runs.findOne({ uuid: runId, orgId: user.orgId, recordId }).lean();
     if (!run?.approval) throw new NotFoundException('Approval not found');
-    if (!run.approval.approvers.includes(user.uuid) && !isRecordAdmin(user)) throw new ForbiddenException('You are not an approver for this step');
+    const mine = run.approval.approvers.includes(user.uuid);
+    if (!system && !mine && !isRecordAdmin(user)) throw new ForbiddenException('You are not an approver for this step');
+
+    // Everyone must approve: an approval that is not the last one is noted, and the others are still waited for.
+    // A rejection, or an administrator stepping in, settles it at once.
+    if (run.approval.need === 'ALL' && decision === 'APPROVED' && mine && !system) {
+      if ((run.approval.approved ?? []).includes(user.uuid)) throw new ConflictException('You have already approved this');
+      const noted = await this.runs.findOneAndUpdate({ uuid: runId, orgId: user.orgId, status: 'WAITING' }, { $addToSet: { 'approval.approved': user.uuid } }, { new: true }).lean();
+      if (!noted?.approval) throw new ConflictException('This approval was already decided');
+      const left = noted.approval.approvers.filter((a) => !(noted.approval!.approved ?? []).includes(a));
+      if (left.length) {
+        await this.records.log(user.orgId, recordId, 'APPROVAL', user.uuid, comment, { phase: 'approved-by-one', runId, title: run.approval.title, waitingFor: left });
+        return;
+      }
+    }
 
     const decidedAt = new Date();
     const claimed = await this.runs.findOneAndUpdate(

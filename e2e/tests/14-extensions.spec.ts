@@ -124,7 +124,7 @@ test('a designer uses it from the builder: its step, its list, and its check tic
   // The list is among the places a dropdown's options can come from.
   await page.locator('.fb-canvas, [aria-label="Form canvas"]').first().getByText('Branch', { exact: true }).click();
   await page.getByRole('tab', { name: 'Options' }).click();
-  await expect(page.getByRole('combobox', { name: 'Data source' })).toContainText('Acme rules · Branches');
+  await expect(page.getByRole('combobox', { name: 'Which one' })).toContainText('Acme rules · Branches');
 
   // A field drawn by their own code is in the palette; with one on offer it needs no choosing.
   await page.getByLabel('Field palette').getByRole('button', { name: 'Custom field' }).click();

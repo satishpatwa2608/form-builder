@@ -1267,3 +1267,24 @@
 .fb-list-items__row:has(> :nth-child(3)) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
 }
+
+/* Hand over with a note: a quiet link under the owner, opening to a colleague, a note and two buttons. */
+.fb-handover__open {
+  align-self: flex-start;
+  padding: 0;
+  height: auto;
+}
+.fb-handover {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.fb-handover__buttons {
+  display: flex;
+  gap: 8px;
+}
+.fb-handover__take {
+  align-self: flex-start;
+  margin-top: 6px;
+}

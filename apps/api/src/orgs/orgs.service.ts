@@ -19,6 +19,15 @@ import { idleMinutesOf } from './org.schemas';
 
 const INVITE_TTL_MS = 7 * 24 * 3600_000;
 
+/** A member's away setting as the screens read it. `now` is true while it is in force. */
+function awayOf(m: { awayFrom?: Date | null; awayUntil?: Date | null; awayTo?: string }) {
+  const now = new Date();
+  const on = !!m.awayFrom && (!m.awayUntil || m.awayUntil > now);
+  return on
+    ? { set: true, now: m.awayFrom! <= now, from: m.awayFrom!.toISOString(), until: m.awayUntil ? m.awayUntil.toISOString() : null, toUserId: m.awayTo ?? '' }
+    : { set: false, now: false, from: null, until: null, toUserId: '' };
+}
+
 @Injectable()
 export class OrgsService {
   constructor(
@@ -94,9 +103,38 @@ export class OrgsService {
     return rows
       .map((m) => {
         const u = users.find((x) => x.id === m.userId);
-        return { userId: m.userId, name: u?.name ?? '', email: u?.email ?? '', role: m.role, status: m.status, department: m.department ?? '', managerId: m.managerId ?? '', twoFactorEnabled: !!u?.totpEnabledAt };
+        return { userId: m.userId, name: u?.name ?? '', email: u?.email ?? '', role: m.role, status: m.status, department: m.department ?? '', managerId: m.managerId ?? '', twoFactorEnabled: !!u?.totpEnabledAt, away: awayOf(m) };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Whether this member is away, until when, and who gets their new work. */
+  async away(auth: AuthContext, userId: string) {
+    return awayOf(await this.mustMember(auth.orgId, userId));
+  }
+
+  /**
+   * Say someone is away. The stand-in must be an active member other than themselves; whether they can work
+   * records is checked when work arrives, since roles change. Work the person already holds stays with them.
+   */
+  async setAway(auth: AuthContext, userId: string, body: { off?: boolean; from?: string; until?: string; toUserId?: string }) {
+    const m = await this.mustMember(auth.orgId, userId);
+    const before = awayOf(m);
+    if (body.off) {
+      m.set({ awayFrom: null, awayUntil: null, awayTo: '' });
+    } else {
+      const from = body.from ? new Date(body.from) : new Date();
+      const until = body.until ? new Date(body.until) : null;
+      if (until && until <= from) throw new BadRequestException('The day you are back must be after the day you leave');
+      if (until && until <= new Date()) throw new BadRequestException('The day you are back has already passed');
+      const to = body.toUserId ?? '';
+      if (to === userId) throw new BadRequestException("Someone can't stand in for themselves");
+      if (to && !(await this.memberships.exists({ orgId: auth.orgId, userId: to, status: 'ACTIVE' }))) throw new BadRequestException('The person standing in must be an active member');
+      m.set({ awayFrom: from, awayUntil: until, awayTo: to });
+    }
+    await m.save();
+    await this.audit.record(actorOf(auth), { action: 'member.away', targetType: 'user', targetId: userId, before, after: awayOf(m) });
+    return awayOf(m);
   }
 
   private async activeOwners(orgId: string) {

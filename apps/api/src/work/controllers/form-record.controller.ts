@@ -165,8 +165,16 @@ export class FormRecordController {
   @Post('records/:id/assign')
   @HttpCode(200)
   @RequirePermission('record.work')
-  assign(@Param('id') id: string, @Body() body: { userId?: unknown }, @Req() req: any) {
+  assign(@Param('id') id: string, @Body() body: { userId?: unknown; note?: unknown }, @Req() req: any) {
     return this.records.changeAssignee(req.user, id, body ?? {});
+  }
+
+  /** "Take it": make an unassigned record of my team's queue mine. */
+  @Post('records/:id/take')
+  @HttpCode(200)
+  @RequirePermission('record.work')
+  take(@Param('id') id: string, @Req() req: any) {
+    return this.records.take(req.user, id);
   }
 
   /** Approve / reject a flow waiting at an approval step; the flow then carries on. */

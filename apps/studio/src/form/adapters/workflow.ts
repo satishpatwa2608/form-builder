@@ -30,6 +30,9 @@ export interface RecordApproval {
   approvers: string[];
   requestedAt: string;
   dueAt: string | null;
+  /** ALL = every approver must approve; `approved` are the ones who have so far. */
+  need?: 'ANY' | 'ALL';
+  approved?: string[];
   decision: 'APPROVED' | 'REJECTED' | null;
   decidedBy: string;
   comment: string;
@@ -101,7 +104,8 @@ export interface InboxFilters {
   formCode?: string;
   status?: string;
   priority?: Priority;
-  assignee?: 'me' | 'unassigned' | '';
+  /** `reports` = what the people I manage hold. `unassigned` is everything nobody holds for an admin, and my team's queue for anyone else. */
+  assignee?: 'me' | 'unassigned' | 'reports' | '';
   /** Only records with an approval waiting on me. */
   waiting?: boolean;
   overdue?: boolean;
@@ -138,6 +142,8 @@ export interface RecordDetail {
   contactEmail: string;
   people: Record<string, Person>;
   next: WorkflowStatus[];
+  /** Nobody holds it yet: the screen offers "Take it". */
+  canTake?: boolean;
 }
 
 const KEY = ['form-platform', 'records'] as const;
@@ -227,7 +233,8 @@ export function useRecordSignatures(id: string | undefined) {
 
 type RecordAction =
   | { kind: 'status'; to: string; note?: string }
-  | { kind: 'assign'; userId: string }
+  | { kind: 'assign'; userId: string; note?: string }
+  | { kind: 'take' }
   | { kind: 'comment'; message: string }
   | { kind: 'decide'; runId: string; decision: 'APPROVED' | 'REJECTED'; comment?: string }
   | { kind: 'act'; key: string; comment?: string }
@@ -254,7 +261,9 @@ export function useRecordAction(id: string | undefined) {
         action.kind === 'status'
           ? { to: action.to, note: action.note }
           : action.kind === 'assign'
-            ? { userId: action.userId }
+            ? { userId: action.userId, note: action.note }
+            : action.kind === 'take'
+              ? {}
             : action.kind === 'comment'
               ? { message: action.message }
               : action.kind === 'act'
@@ -416,7 +425,7 @@ export function queryToFilters(q: Record<string, string | boolean>): InboxFilter
     formCode: typeof q.formCode === 'string' ? q.formCode : undefined,
     status: typeof q.status === 'string' ? q.status : undefined,
     priority: typeof q.priority === 'string' ? (q.priority as Priority) : undefined,
-    assignee: q.assignee === 'me' || q.assignee === 'unassigned' ? q.assignee : '',
+    assignee: q.assignee === 'me' || q.assignee === 'unassigned' || q.assignee === 'reports' ? q.assignee : '',
     waiting: q.waiting === 'me' || q.waiting === true,
     overdue: q.overdue === 'true' || q.overdue === true,
     open: q.open === 'true' || q.open === true,

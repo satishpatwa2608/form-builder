@@ -113,6 +113,8 @@ test('the assignee sees the item with its answers, takes it, and cannot resolve 
   await expect(d).toContainText('Investigation');
   await d.getByRole('button', { name: 'Cancel' }).click();
 
+  // What staff record about the work has its own tab.
+  await d.getByRole('tab', { name: 'Work details' }).click();
   await d.getByLabel(/^Root cause/).fill('Stitching fault in batch 14');
   await d.getByRole('button', { name: 'Save' }).click();
   await expect(d).toContainText('Stitching fault in batch 14');
@@ -147,8 +149,8 @@ test('the manager rejects once, the assignee tries again, and approval closes th
   await expect(d).toContainText('Replacement sent.');
   await d.getByLabel('Approval comment').fill('Offer a refund too.');
   await d.getByRole('button', { name: 'Reject' }).click();
-  // Decided: the item leaves the manager's list.
-  await expect(d).toBeHidden();
+  // Decided: there is nothing left to answer. The record stays open, because a manager sees what their people hold.
+  await expect(d.getByRole('button', { name: 'Reject' })).toHaveCount(0);
 
   // Back with the assignee, still under investigation, with the manager's reason on record.
   const record = await call<{ record: { status: string }; approvals: { decision?: string; comment?: string }[] }>(200, `/records/${recordId}`, { token: worker.token });
@@ -166,9 +168,9 @@ test('the manager rejects once, the assignee tries again, and approval closes th
   await expect(wd).toContainText(/approval/i);
   await wes.context().close();
 
+  // The manager still has the record open; a fresh look shows the second request waiting.
   await page.reload();
-  await page.getByText('Waiting for my approval').click();
-  await page.getByText('CMP-000001').first().click();
+  await expect(drawer(page)).toContainText('Refund issued as well.');
   await drawer(page).getByRole('button', { name: 'Approve' }).click();
   await expect.poll(async () => (await call<{ record: { status: string } }>(200, `/records/${recordId}`, { token: org.token })).record.status).toBe('CLOSED');
 

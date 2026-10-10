@@ -269,6 +269,8 @@ const actionSchema = z.union([
     title: z.string().max(120),
     instructions: z.string().max(2000).optional(),
     dueInHours: z.number().positive().max(8760).optional(),
+    need: z.enum(['ANY', 'ALL']).optional(),
+    whenLate: z.enum(['REMIND', 'MANAGER', 'REJECT']).optional(),
   }),
   z.object({
     ...stepMeta,
@@ -324,7 +326,7 @@ export const workflowSchema = z.object({
         to: z.string(),
         requireFields: z.array(z.string()).max(30).optional(),
         requireComment: z.boolean().optional(),
-        approval: z.object({ to: recipients, onReject: z.string().optional(), if: conditionSchema.optional() }).optional(),
+        approval: z.object({ to: recipients, onReject: z.string().optional(), if: conditionSchema.optional(), need: z.enum(['ANY', 'ALL']).optional(), dueInHours: z.number().positive().max(8760).optional(), whenLate: z.enum(['REMIND', 'MANAGER', 'REJECT']).optional() }).optional(),
       }),
     )
     .max(30)

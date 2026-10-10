@@ -193,9 +193,10 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
       case 'APPROVAL':
         return (
           <>
-            <Setting label="Approvers" hint="Any one of them decides. The flow waits here until they approve or reject in the Inbox.">
+            <Setting label="Approvers" hint="The flow waits here until they approve or reject in the Inbox. Anyone away is replaced by the colleague they named.">
               {() => <RecipientsEditor form={form} people={people} usersOnly value={action.to} onChange={(to) => onChange({ ...action, to })} />}
             </Setting>
+            <ApprovalRules value={action} onChange={(rules) => onChange({ ...action, ...rules })} />
             <TextSetting label="What to approve" value={action.title} onChange={(title) => onChange({ ...action, title })} />
             <TextSetting
               label="Instructions"
@@ -203,7 +204,6 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
               value={action.instructions}
               onChange={(instructions) => onChange({ ...action, instructions: instructions || undefined })}
             />
-            <NumberSetting label="Due in (hours)" min={1} value={action.dueInHours} onChange={(dueInHours) => onChange({ ...action, dueInHours })} />
             <p className="fb-muted">
               Branch on the answer: give later steps "Run only if… {'→'} decision is Approved / Rejected". The approver's comment is{' '}
               <span className="fb-code">{'{{$steps.<key>.comment}}'}</span>.
@@ -310,4 +310,45 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
   };
 
   return <div className="fb-settings" style={{ gap: 10 }}>{body()}</div>;
+}
+
+export interface ApprovalRuleValues {
+  need?: 'ANY' | 'ALL';
+  dueInHours?: number;
+  whenLate?: 'REMIND' | 'MANAGER' | 'REJECT';
+}
+
+/**
+ * How an approval is settled and what happens when nobody answers: the same three choices on an approval step
+ * and on an action that needs approval.
+ */
+export function ApprovalRules({ value, onChange }: { value: ApprovalRuleValues; onChange: (rules: ApprovalRuleValues) => void }) {
+  return (
+    <>
+      <SelectSetting
+        label="Who must approve"
+        value={value.need ?? 'ANY'}
+        options={[
+          { label: 'Any one of them', value: 'ANY' },
+          { label: 'Every one of them', value: 'ALL' },
+        ]}
+        hint={value.need === 'ALL' ? 'It goes ahead once all have approved. One rejection refuses it.' : 'The first answer decides.'}
+        onChange={(need) => onChange({ need: need === 'ALL' ? 'ALL' : undefined })}
+      />
+      <NumberSetting label="Time to answer (hours)" min={1} value={value.dueInHours} onChange={(dueInHours) => onChange({ dueInHours, whenLate: dueInHours ? value.whenLate : undefined })} />
+      {!!value.dueInHours && (
+        <SelectSetting
+          label="If nobody answers in time"
+          value={value.whenLate ?? 'REMIND'}
+          options={[
+            { label: 'Remind them', value: 'REMIND' },
+            { label: 'Ask their manager instead', value: 'MANAGER' },
+            { label: 'Treat it as rejected', value: 'REJECT' },
+          ]}
+          hint={value.whenLate === 'MANAGER' ? 'Each person who has not answered gives way to their manager (set on the Members page).' : undefined}
+          onChange={(whenLate) => onChange({ whenLate: whenLate === 'REMIND' ? undefined : (whenLate as 'MANAGER' | 'REJECT') })}
+        />
+      )}
+    </>
+  );
 }

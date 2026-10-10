@@ -22,6 +22,13 @@ const memberBody = z
     managerId: z.string().regex(/^[A-Za-z0-9-]{0,64}$/).optional(),
   })
   .refine((b) => b.role || b.status || b.department !== undefined || b.managerId !== undefined, 'Nothing to change');
+/** Away: `from` left out means from now; `until` left out means until they say they are back. `off` ends it. */
+const awayBody = z.object({
+  off: z.boolean().optional(),
+  from: z.string().datetime().optional(),
+  until: z.string().datetime().optional(),
+  toUserId: z.string().regex(/^[A-Za-z0-9-]{0,64}$/).optional(),
+});
 const inviteBody = z.object({ email: z.string().trim().email().max(254), role: z.enum(ORG_ROLES) });
 const acceptBody = z.object({ token: z.string().min(10).max(200), name: z.string().trim().min(1).max(100).optional(), password });
 
@@ -43,6 +50,23 @@ export class OrgsController {
   @Post('orgs')
   create(@Auth() auth: AuthContext, @Body(new ZodBody(createOrgBody)) body: z.infer<typeof createOrgBody>) {
     return this.orgs.create(auth, body.name, body.plan);
+  }
+
+  /** Anyone may say they are away and who gets their new work; an administrator can set it for someone who forgot. */
+  @Get('away')
+  away(@Auth() auth: AuthContext) {
+    return this.orgs.away(auth, auth.userId);
+  }
+
+  @Patch('away')
+  setAway(@Auth() auth: AuthContext, @Body(new ZodBody(awayBody)) body: z.infer<typeof awayBody>) {
+    return this.orgs.setAway(auth, auth.userId, body);
+  }
+
+  @Patch('members/:userId/away')
+  @RequirePermission('members.manage')
+  setMemberAway(@Auth() auth: AuthContext, @Param('userId') id: string, @Body(new ZodBody(awayBody)) body: z.infer<typeof awayBody>) {
+    return this.orgs.setAway(auth, idParam(id), body);
   }
 
   @Get('members')

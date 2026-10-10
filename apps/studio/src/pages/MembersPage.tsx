@@ -4,6 +4,7 @@ import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useAction, useInvitations, useMembers } from '../lib/queries';
 import { ORG_ROLES, ROLE_HINT, ROLE_LABEL, type Member, type OrgRole } from '../lib/types';
+import { awayLine } from '../components/AwayCard';
 import { Alert, Avatar, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 
 export default function MembersPage() {
@@ -80,7 +81,12 @@ export default function MembersPage() {
                           <Avatar name={m.name} />
                           <div>
                             <strong>
-                              {m.name} {self && <Badge>You</Badge>}
+                              {m.name} {self && <Badge>You</Badge>}{' '}
+                              {m.away?.now && (
+                                <span title={awayLine(m.away, members.data?.find((x) => x.userId === m.away!.toUserId)?.name)}>
+                                  <Badge tone="warn">Away</Badge>
+                                </span>
+                              )}
                             </strong>
                             <span>{m.email}</span>
                           </div>

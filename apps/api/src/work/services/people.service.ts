@@ -13,6 +13,11 @@ export interface Person {
   department?: string;
 }
 
+/** Away now: a start that has passed, and an end (if any) that has not. */
+export function isAway(m: { awayFrom?: Date | null; awayUntil?: Date | null }, now = new Date()): boolean {
+  return !!m.awayFrom && m.awayFrom <= now && (!m.awayUntil || m.awayUntil > now);
+}
+
 /** Who's who for work items, from memberships (role, department, manager) and users (name, email). */
 @Injectable()
 export class PeopleService {
@@ -48,6 +53,38 @@ export class PeopleService {
     if (!userId) return '';
     const m = await this.memberships.findOne({ orgId, userId, status: 'ACTIVE' }).select('managerId').lean();
     return m?.managerId ?? '';
+  }
+
+  /**
+   * Who gets what was meant for `userId` right now: themselves, or, while they are away, the person they named
+   * (and so on along the chain). A chain that comes back round, or ends at someone who cannot work records,
+   * leaves the work with the person it was meant for, so nothing is ever handed to no one.
+   */
+  async standIn(orgId: string, userId: string, now = new Date()): Promise<{ userId: string; awayFor: string[] }> {
+    const seen: string[] = [];
+    let current = userId;
+    for (let hop = 0; current && hop < 10; hop++) {
+      const m = await this.memberships.findOne({ orgId, userId: current, status: 'ACTIVE' }).select('role awayFrom awayUntil awayTo').lean();
+      if (!m || !isAllowed(m.role, [], 'record.work')) return hop ? { userId, awayFor: [] } : { userId: current, awayFor: [] };
+      if (!isAway(m, now) || !m.awayTo) return { userId: current, awayFor: seen };
+      seen.push(current);
+      if (seen.includes(m.awayTo)) return { userId, awayFor: [] };
+      current = m.awayTo;
+    }
+    return { userId, awayFor: [] };
+  }
+
+  /** Each of these people, or whoever stands in for them while they are away; no one twice. */
+  async present(orgId: string, userIds: string[], now = new Date()): Promise<string[]> {
+    const out: string[] = [];
+    for (const id of userIds) out.push((await this.standIn(orgId, id, now)).userId);
+    return [...new Set(out.filter(Boolean))];
+  }
+
+  /** The people whose manager this is. */
+  async reportsOf(orgId: string, managerId: string): Promise<string[]> {
+    if (!managerId) return [];
+    return (await this.memberships.find({ orgId, managerId, status: 'ACTIVE' }).select('userId').limit(500).lean()).map((m) => m.userId);
   }
 
   async department(orgId: string, userId: string): Promise<string | undefined> {

@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { Copy, Download, ShieldCheck, ShieldOff } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { AwayCard } from '../components/AwayCard';
 import { Alert, Badge, Button, Card, PageHead, PasswordStrength, SelectField, TextField, useSubmit } from '../components/ui';
 
 function TwoFactorCard() {
@@ -222,6 +223,7 @@ export default function AccountPage() {
         <TwoFactorCard />
         {!needsTwoFactor && (
           <>
+            <AwayCard />
             <PasswordCard />
             {me.operator ? (
               <Card title="Customers" subtitle="You run this installation: add customers and set their plans on the Customers page.">

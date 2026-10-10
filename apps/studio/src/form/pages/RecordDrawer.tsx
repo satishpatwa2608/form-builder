@@ -117,7 +117,7 @@ function describe(
         .map((c) => `${c.label}: ${fieldValue(c.from)} → ${fieldValue(c.to)}`)
         .join("\n");
     case "ASSIGNED":
-      return `Assigned to ${who(e.data.to)}`;
+      return `Assigned to ${who(e.data.to)}${e.data.insteadOf ? ` (${who(e.data.insteadOf)} is away)` : ""}${e.message && e.message !== "Assigned by the form's rule" ? ` - "${e.message}"` : ""}`;
     case "SLA":
       return e.data.kind === "RESPONSE"
         ? "First response time missed"
@@ -131,6 +131,16 @@ function describe(
     case "REOPENED":
       return `Reopened (${String(e.data.count ?? 1)}) into ${status(e.data.to)}${e.message ? ` - "${e.message}"` : ""}`;
     case "APPROVAL":
+      if (e.data.phase === "approved-by-one")
+        return `${String(e.data.title ?? "Approval")}: approved, still waiting for ${((e.data.waitingFor as string[]) ?? []).map(who).join(", ")}${e.message ? ` - "${e.message}"` : ""}`;
+      if (e.data.phase === "late")
+        return `${String(e.data.title ?? "Approval")}: no answer in time - ${
+          e.data.did === "REJECT"
+            ? "treated as rejected"
+            : e.data.did === "MANAGER"
+              ? `passed to ${((e.data.approvers as string[]) ?? []).map(who).join(", ")}`
+              : `reminded ${((e.data.approvers as string[]) ?? []).map(who).join(", ")}`
+        }`;
       return e.data.phase === "decided"
         ? `${String(e.data.actionLabel)}: ${e.data.decision === "APPROVED" ? "approved" : "rejected"}${e.message ? ` - "${e.message}"` : ""}`
         : `${String(e.data.actionLabel)}: approval requested from ${((e.data.approvers as string[]) ?? []).map(who).join(", ")}${e.message ? ` - "${e.message}"` : ""}`;
@@ -281,7 +291,12 @@ function ApprovalCard({
       {a.status === "WAITING" ? (
         <>
           <span className="fb-muted">
-            Waiting for {a.approvers.map(name).join(", ")}
+            Waiting for{" "}
+            {a.approvers
+              .filter((id) => !(a.approved ?? []).includes(id))
+              .map(name)
+              .join(a.need === "ALL" ? " and " : ", ")}
+            {a.need === "ALL" && ` · everyone must approve (${(a.approved ?? []).length} of ${a.approvers.length} so far)`}
             {a.dueAt && (
               <span className={overdue ? "fb-overdue" : undefined}>
                 {" "}
@@ -341,6 +356,43 @@ function ApprovalCard({
 }
 
 /** One record: answers, what can be done with it, and everything that happened to it. */
+/** Giving the record to a colleague with a few words on why: they read the note in their notification and on the timeline. */
+function HandOver({ people, busy, onHandOver }: { people: Person[]; busy: boolean; onHandOver: (userId: string, note: string) => Promise<unknown> }) {
+  const [open, setOpen] = useState(false);
+  const [to, setTo] = useState("");
+  const [note, setNote] = useState("");
+  if (!open)
+    return (
+      <Button type="button" variant="link" size="sm" className="fb-handover__open" onClick={() => setOpen(true)}>
+        Hand over with a note
+      </Button>
+    );
+  return (
+    <div className="fb-handover" role="group" aria-label="Hand over">
+      <ChoiceSelect<string> ariaLabel="Hand over to" value={to} placeholder="Choose a colleague" disabled={busy} options={people.map((p) => ({ label: p.name || p.email, value: p.uuid }))} onChange={setTo} />
+      <Textarea className={VISIBLE_BORDER} rows={2} maxLength={2000} value={note} aria-label="Note for them" placeholder="What they need to know" onChange={(e) => setNote(e.target.value)} />
+      <div className="fb-handover__buttons">
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy || !to}
+          onClick={async () => {
+            await onHandOver(to, note.trim());
+            setOpen(false);
+            setTo("");
+            setNote("");
+          }}
+        >
+          Hand over
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
   const { data, isLoading } = useRecord(recordId);
   const { data: people = [] } = usePeople(!!recordId, data?.record.formCode);
@@ -608,6 +660,16 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
                         userId ? "Assigned" : "Unassigned",
                       )
                     }
+                  />
+                  {data.canTake && (
+                    <Button type="button" size="sm" className="fb-handover__take" disabled={act.isPending} onClick={() => void run({ kind: "take" }, "It's yours")}>
+                      Take it
+                    </Button>
+                  )}
+                  <HandOver
+                    people={people.filter((p) => p.uuid !== record.assigneeId)}
+                    busy={act.isPending}
+                    onHandOver={(userId, note) => run({ kind: "assign", userId, note }, "Handed over")}
                   />
                 </div>
               </section>

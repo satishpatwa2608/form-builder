@@ -3,6 +3,7 @@ import { Button } from '@ui/button';
 import { Checkbox } from '@ui/checkbox';
 import type { FormDefinition, Priority, WorkflowAction, WorkflowConfig } from '../../types';
 import type { Person } from '../../adapters/workflow';
+import { ApprovalRules } from './ActionEditor';
 import { RecipientsEditor } from './RecipientsEditor';
 import { isValueField } from '../../engine';
 import { VISIBLE_BORDER } from '../../runtime/styles';
@@ -153,6 +154,7 @@ export function ActionsEditor({ form, wf, onChange, people = [] }: Props) {
               <Setting label="Approvers">
                 {() => <RecipientsEditor form={form} people={people} usersOnly value={a.approval!.to} onChange={(to) => setAction(i, { approval: { ...a.approval!, to } })} />}
               </Setting>
+              <ApprovalRules value={a.approval} onChange={(rules) => setAction(i, { approval: { ...a.approval!, ...rules } })} />
               <SwitchSetting
                 label="Only when…"
                 checked={!!a.approval.if}

@@ -60,10 +60,20 @@ export interface WorkflowAction {
   approval?: {
     to: RecipientRef[];
     onReject?: string;
+    /** ALL = every approver must approve (one rejection still refuses). Left out: the first answer decides. */
+    need?: ApprovalNeed;
+    /** How long the approvers have; when it runs out, `whenLate` happens. */
+    dueInHours?: number;
+    whenLate?: ApprovalWhenLate;
     /** Only needs approval when this holds (e.g. $work.compensationAmount >= 50000); otherwise it just moves. */
     if?: Condition;
   };
 }
+
+/** Whose answer settles an approval: the first one, or everyone's. */
+export type ApprovalNeed = 'ANY' | 'ALL';
+/** What happens when an approval's time runs out: remind the approvers, also ask their managers, or refuse it. */
+export type ApprovalWhenLate = 'REMIND' | 'MANAGER' | 'REJECT';
 
 /** Response / resolution targets in hours (working hours when the calendar is WORKING). */
 export interface SlaTargets {
@@ -186,9 +196,10 @@ export type AutomationAction = StepMeta &
   | { type: 'NOTIFY'; to: RecipientRef[]; message: string }
   /**
    * Pause the flow until one of `to` approves or rejects (AEM participant
-   * step). Output: { decision: 'APPROVED' | 'REJECTED', decidedBy, comment }.
+   * step), or all of them when `need` is ALL. When `dueInHours` runs out, `whenLate` happens (left out: the
+   * approvers are reminded). Output: { decision: 'APPROVED' | 'REJECTED', decidedBy, comment }.
    */
-  | { type: 'APPROVAL'; to: RecipientRef[]; title: string; instructions?: string; dueInHours?: number }
+  | { type: 'APPROVAL'; to: RecipientRef[]; title: string; instructions?: string; dueInHours?: number; need?: ApprovalNeed; whenLate?: ApprovalWhenLate }
   /** A task in the Tasks module: the first recipient is accountable, the rest responsible. */
   | { type: 'CREATE_TASK'; title: string; description?: string; to: RecipientRef[]; dueInHours?: number }
   /**

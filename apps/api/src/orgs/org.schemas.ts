@@ -137,6 +137,13 @@ export class Membership {
   @Prop({ type: String, default: '' }) department: string;
   /** Optional: who "the assignee's manager" is for approvals and escalations. */
   @Prop({ type: String, default: '' }) managerId: string;
+  /**
+   * Away (out of office): between these times, new work and approvals meant for this person go to `awayTo`.
+   * No `awayUntil` means until they say they are back. What they already hold stays with them.
+   */
+  @Prop({ type: Date, default: null }) awayFrom: Date | null;
+  @Prop({ type: Date, default: null }) awayUntil: Date | null;
+  @Prop({ type: String, default: '' }) awayTo: string;
 }
 export type MembershipDocument = HydratedDocument<Membership>;
 export const MembershipSchema = SchemaFactory.createForClass(Membership);

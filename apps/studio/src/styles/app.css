@@ -975,3 +975,10 @@
   background: var(--fb-surface);
   box-shadow: 0 12px 40px rgb(15 23 42 / 0.22);
 }
+
+/* Away: three small boxes side by side, one under another on a phone. */
+.st-away {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}

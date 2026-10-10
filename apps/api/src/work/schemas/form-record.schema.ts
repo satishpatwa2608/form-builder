@@ -83,6 +83,12 @@ export class FlowApproval {
   approvers: string[];
   requestedAt: Date;
   dueAt: Date | null;
+  /** ALL = everyone in `approvers` must approve; `approved` are the ones who have. */
+  need?: 'ANY' | 'ALL';
+  approved?: string[];
+  whenLate?: 'REMIND' | 'MANAGER' | 'REJECT';
+  /** Set once, when the time ran out and `whenLate` was done. */
+  lateAt?: Date | null;
   decision: 'APPROVED' | 'REJECTED' | null;
   decidedBy: string;
   comment: string;

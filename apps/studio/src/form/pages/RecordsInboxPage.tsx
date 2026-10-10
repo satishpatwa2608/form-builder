@@ -68,7 +68,7 @@ function usePreference<T extends string>(
 const LAYOUTS = ["table", "cards"] as const;
 const isTheme = (v: string | undefined): v is InboxTheme =>
   INBOX_THEMES.some((t) => t.key === v);
-type Assignee = "me" | "waiting" | "unassigned" | typeof ALL;
+type Assignee = "me" | "waiting" | "unassigned" | "reports" | typeof ALL;
 
 /**
  * Submissions of forms that track records, across every such form: filter,
@@ -227,9 +227,8 @@ export default function RecordsInboxPage({
                 options={[
                   { label: "Assigned to me", value: "me" },
                   { label: "Waiting for my approval", value: "waiting" },
-                  ...(admin
-                    ? [{ label: "Unassigned", value: "unassigned" as const }]
-                    : []),
+                  { label: admin ? "Unassigned" : "My team's queue", value: "unassigned" as const },
+                  { label: "Held by my team", value: "reports" as const },
                   { label: "Everyone", value: ALL },
                 ]}
                 onChange={(v) =>
@@ -327,7 +326,11 @@ export default function RecordsInboxPage({
             emptyText={
               filters.waiting
                 ? "Nothing is waiting for your approval."
-                : filters.assignee === "me"
+                : filters.assignee === "reports"
+                  ? "Nobody you manage holds any open work. (Managers are set on the Members page.)"
+                  : filters.assignee === "unassigned" && !admin
+                    ? "Nothing is waiting in your team's queue."
+                    : filters.assignee === "me"
                   ? "Nothing assigned to you."
                   : "No records."
             }
