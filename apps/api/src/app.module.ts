@@ -107,6 +107,10 @@ import { SignaturePublicController, SignaturesController } from './signatures/si
 import { FragmentRow, FragmentSchema } from './fragments/fragment.schema';
 import { FragmentsService } from './fragments/fragments.service';
 import { FragmentsController } from './fragments/fragments.controller';
+import { SharedList, SharedListSchema } from './lists/list.schema';
+import { ListsService } from './lists/lists.service';
+import { ListsController } from './lists/lists.controller';
+import { EmailTemplateRow, EmailTemplateSchema, EmailTemplatesController, EmailTemplatesService } from './email-templates/email-templates';
 import { ExtensionRow, ExtensionSchema } from './extensions/extension.schema';
 import { ExtensionsService } from './extensions/extensions.service';
 import { ExtensionsController } from './extensions/extensions.controller';
@@ -192,6 +196,8 @@ export class AppModule {
           { name: SharedWorkflowRow.name, schema: SharedWorkflowSchema },
           { name: ExtensionRow.name, schema: ExtensionSchema },
           { name: FragmentRow.name, schema: FragmentSchema },
+          { name: SharedList.name, schema: SharedListSchema },
+          { name: EmailTemplateRow.name, schema: EmailTemplateSchema },
           { name: SignatureRequest.name, schema: SignatureRequestSchema },
           { name: DocumentBatch.name, schema: DocumentBatchSchema },
           { name: FormComment.name, schema: FormCommentSchema },
@@ -229,6 +235,8 @@ export class AppModule {
         ExtensionRepoController,
         ExtensionBuildController,
         FragmentsController,
+        ListsController,
+        EmailTemplatesController,
         SignaturePublicController,
         PortalController,
         OrgMailController,
@@ -296,6 +304,8 @@ export class AppModule {
         WorkflowsService,
         ExtensionsService,
         FragmentsService,
+        ListsService,
+        EmailTemplatesService,
         SignaturesService,
         PortalService,
         OrgMailService,

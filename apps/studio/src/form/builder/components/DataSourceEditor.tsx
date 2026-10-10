@@ -121,7 +121,7 @@ export function DataSourceEditor({ field, others, onChange }: DataSourceEditorPr
         value={ds.type}
         options={[
           { label: 'A list I type here', value: 'STATIC' },
-          { label: 'An API', value: 'API' },
+          { label: 'A shared list, or my systems', value: 'API' },
         ]}
         onChange={(type) =>
           onChange(
@@ -137,27 +137,42 @@ export function DataSourceEditor({ field, others, onChange }: DataSourceEditorPr
       ) : (
         <>
           <SelectSetting
-            label="Data source"
+            label="Which one"
             value={chosen?.key}
-            placeholder={sources.length ? 'Pick a data source…' : 'No data sources yet'}
-            options={sources.map((s) => ({ label: `${s.name}${s.code ? ' (from the system)' : ''}`, value: s.key }))}
+            placeholder={sources.length ? 'Pick a list or a data source…' : 'Nothing to pick from yet'}
+            options={sources.map((s) => ({ label: s.list ? `List: ${s.name}` : `${s.name}${s.code ? ' (from the system)' : ''}`, value: s.key }))}
             onChange={(key) => {
               const s = sources.find((x) => x.key === key);
               setApi({
                 url: key,
                 valueField: s?.valueField || api.valueField,
                 labelField: s?.labelField || api.labelField,
-                params: s?.params?.length ? { ...Object.fromEntries(s.params.map((p) => [p, ''])), ...api.params } : api.params,
+                // A list has its own settings: nothing of another source's is carried over.
+                params: s?.list ? undefined : s?.params?.length ? { ...Object.fromEntries(s.params.map((p) => [p, ''])), ...api.params } : api.params,
               });
             }}
             hint={
-              chosen?.code
+              chosen?.list
+                ? `${chosen.description ? `${chosen.description}. ` : ''}Kept under Lists in the menu: change it there and this dropdown follows.`
+                : chosen?.code
                 ? `${chosen.description ?? ''}${chosen.access === 'PUBLIC' ? '' : ' Signed-in users only - use it on sign-in-only forms.'}`
                 : sources.length
                   ? undefined
-                  : 'An admin can add datasets (or use Load samples on the Forms list); developers add system sources with @FormDataProvider.'
+                  : 'An administrator can add a list under Lists in the menu, or connect one of your systems under Connectors.'
             }
           />
+          {chosen?.list && chosen.dependsOnName && (
+            <SelectSetting
+              label={`Offer the items for the ${chosen.dependsOnName} chosen in`}
+              value={refs[0]}
+              placeholder="Pick the field…"
+              options={others.filter((o) => o.type === 'DROPDOWN' || o.type === 'RADIO').map((o) => ({ label: o.label || o.name, value: o.name }))}
+              onChange={(name) => setApi({ params: { parent: `{{${name}}}` } })}
+              hint={refs[0] ? 'The options change when that field changes.' : `This list depends on ${chosen.dependsOnName}: say which field of this form holds it, or every item is offered.`}
+            />
+          )}
+          {!chosen?.list && (
+            <>
           <TextSetting label="URL" value={api.url} placeholder="/api/sections" onChange={(url) => setApi({ url })} />
           <div className="fb-row">
             <TextSetting label="Value property" value={api.valueField} onChange={(valueField) => setApi({ valueField })} />
@@ -172,6 +187,8 @@ export function DataSourceEditor({ field, others, onChange }: DataSourceEditorPr
             </span>
           </div>
           <TestCall api={api} others={others} />
+            </>
+          )}
         </>
       )}
     </div>

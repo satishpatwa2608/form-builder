@@ -2,7 +2,8 @@ import { useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui/tabs";
 import { Textarea } from "@ui/textarea";
 import type { FormDefinition, Priority, WorkflowStatus } from "../types";
 import { PRIORITIES } from "../types";
@@ -381,33 +382,34 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
     : [];
   const overdue = !!record?.dueAt && new Date(record.dueAt) < new Date();
 
+  const hasWorkFields = !!def?.workflow?.enabled && !!def.workflow.workFields?.length;
   return (
-    <Sheet open={!!recordId} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent
-        side="right"
-        style={{
-          width: "min(640px, 100vw)",
-          maxWidth: "100vw",
-          overflowY: "auto",
-          padding: 24,
-        }}
-      >
-        <SheetTitle>
+    <Dialog open={!!recordId} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="fb-record__dialog">
+        <DialogTitle>
           {record
             ? [record.ref, def?.name ?? record.formCode]
                 .filter(Boolean)
                 .join(" · ")
             : "Record"}
-        </SheetTitle>
-        <SheetDescription>
+        </DialogTitle>
+        <DialogDescription>
           {record
             ? `Raised ${format(new Date(record.createdAt), "dd MMM yyyy, HH:mm")} from ${SOURCE_LABEL[record.source] ?? record.channel}`
             : " "}
-        </SheetDescription>
+        </DialogDescription>
 
         {isLoading && <p className="fb-muted">Loading…</p>}
         {data && def && record && wf && (
-          <div className="fb-settings" style={{ gap: 20, marginTop: 16 }}>
+          <div className="fb-record">
+            <Tabs defaultValue="answers" className="fb-record__main">
+              <TabsList>
+                <TabsTrigger value="answers">Answers</TabsTrigger>
+                {hasWorkFields && <TabsTrigger value="work">Work details</TabsTrigger>}
+                <TabsTrigger value="history">History</TabsTrigger>
+              </TabsList>
+              {/* Every tab stays in the page (only one is shown), so nothing typed in one is lost by looking at another. */}
+              <TabsContent value="answers" forceMount className="fb-record__tab fb-settings">
             {data.approvals.length > 0 && (
               <section
                 className="fb-settings"
@@ -438,6 +440,76 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
 
             <SignaturesSection recordId={recordId} reference={record.ref} />
 
+            <section aria-label="Answers">
+              <div className="fb-panel__title">Answers</div>
+              <dl className="fb-answers">
+                {fields.map((f) => (
+                  <div key={f.id} style={{ display: "contents" }}>
+                    <dt>{f.label || f.name}</dt>
+                    <dd>
+                      {f.type === "SIGNATURE" && isSignature(values[f.name]) ? (
+                        // Checked to be a PNG data URL, so it is safe as an image source.
+                        <img src={values[f.name] as string} alt={`${f.label || f.name}, signed`} style={{ maxWidth: 240, border: "1px solid var(--border)", borderRadius: 6, background: "#fff" }} />
+                      ) : f.type === "REPEAT" ? (
+                        <RowsTable def={def} repeat={f} rows={rowsOf(values[f.name])} />
+                      ) : f.type === "FILE" ? (
+                        displayAnswer(values[f.name])
+                      ) : (
+                        answerText(def, f.name, values[f.name])
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+
+              </TabsContent>
+              {hasWorkFields && (
+                <TabsContent value="work" forceMount className="fb-record__tab fb-settings">
+            {!!def.workflow?.enabled && !!def.workflow.workFields?.length && (
+              <section>
+                <WorkFieldsSection
+                  key={`${record.uuid}:${JSON.stringify(record.work ?? {})}`}
+                  definition={def}
+                  work={record.work ?? {}}
+                  readOnly={findStatus(wf, record.status)?.category === "DONE"}
+                  onSave={async (values) => {
+                    await perform({ kind: "work", values });
+                    toast.success("Saved");
+                  }}
+                />
+              </section>
+            )}
+
+                </TabsContent>
+              )}
+              <TabsContent value="history" forceMount className="fb-record__tab fb-settings">
+            <section aria-label="Timeline">
+              <div className="fb-panel__title">Timeline</div>
+              <ol className="fb-timeline">
+                {groupRuns(data.events)
+                  .reverse()
+                  .map((item) =>
+                    item.kind === "run" ? (
+                      <RunItem
+                        key={item.runId}
+                        events={item.events}
+                        def={def}
+                      />
+                    ) : (
+                      <EventItem
+                        key={item.event.uuid}
+                        event={item.event}
+                        def={def}
+                        people={data.people}
+                      />
+                    ),
+                  )}
+              </ol>
+            </section>
+              </TabsContent>
+            </Tabs>
+            <aside className="fb-record__side fb-settings" aria-label="Status and actions">
             {def.workflow?.enabled && (
               <section
                 className="fb-settings"
@@ -541,45 +613,6 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
               </section>
             )}
 
-            {!!def.workflow?.enabled && !!def.workflow.workFields?.length && (
-              <section aria-label="Work details">
-                <div className="fb-panel__title">Work details</div>
-                <WorkFieldsSection
-                  key={`${record.uuid}:${JSON.stringify(record.work ?? {})}`}
-                  definition={def}
-                  work={record.work ?? {}}
-                  readOnly={findStatus(wf, record.status)?.category === "DONE"}
-                  onSave={async (values) => {
-                    await perform({ kind: "work", values });
-                    toast.success("Saved");
-                  }}
-                />
-              </section>
-            )}
-
-            <section aria-label="Answers">
-              <div className="fb-panel__title">Answers</div>
-              <dl className="fb-answers">
-                {fields.map((f) => (
-                  <div key={f.id} style={{ display: "contents" }}>
-                    <dt>{f.label || f.name}</dt>
-                    <dd>
-                      {f.type === "SIGNATURE" && isSignature(values[f.name]) ? (
-                        // Checked to be a PNG data URL, so it is safe as an image source.
-                        <img src={values[f.name] as string} alt={`${f.label || f.name}, signed`} style={{ maxWidth: 240, border: "1px solid var(--border)", borderRadius: 6, background: "#fff" }} />
-                      ) : f.type === "REPEAT" ? (
-                        <RowsTable def={def} repeat={f} rows={rowsOf(values[f.name])} />
-                      ) : f.type === "FILE" ? (
-                        displayAnswer(values[f.name])
-                      ) : (
-                        answerText(def, f.name, values[f.name])
-                      )}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-
             <section
               className="fb-settings"
               style={{ gap: 8 }}
@@ -613,32 +646,10 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
               </Button>
             </section>
 
-            <section aria-label="Timeline">
-              <div className="fb-panel__title">Timeline</div>
-              <ol className="fb-timeline">
-                {groupRuns(data.events)
-                  .reverse()
-                  .map((item) =>
-                    item.kind === "run" ? (
-                      <RunItem
-                        key={item.runId}
-                        events={item.events}
-                        def={def}
-                      />
-                    ) : (
-                      <EventItem
-                        key={item.event.uuid}
-                        event={item.event}
-                        def={def}
-                        people={data.people}
-                      />
-                    ),
-                  )}
-              </ol>
-            </section>
+            </aside>
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,3 +1,5 @@
+import { MultiSelect } from '@ui/multiselect';
+import { useSavedEmails, type SavedEmail } from '../../adapters/email-templates';
 import { FLOW_SERVICE_INFO, FLOW_SERVICES, guessSource, isFlowAddress } from '../../engine';
 import { answerFields } from './workflow-edits';
 
@@ -19,6 +21,107 @@ interface ActionEditorProps {
 }
 
 /** What one step does - the type-specific settings in the flow's side panel. */
+type AssignAction = Extract<AutomationAction, { type: 'ASSIGN' }>;
+const WAYS: { label: string; value: NonNullable<AssignAction['by']> }[] = [
+  { label: 'A person I choose now', value: 'PERSON' },
+  { label: 'It depends on an answer', value: 'ANSWER' },
+  { label: 'The next person in a team, in turn', value: 'TURN' },
+  { label: 'The manager of whoever has it', value: 'MANAGER' },
+  { label: 'The person an answer or an earlier step names', value: 'EMAIL' },
+];
+
+/** Who an Assign step gives the record to: someone chosen now, or worked out when the step runs. */
+function AssignSettings({ form, people, action, onChange }: { form: FormDefinition; people: Person[]; action: AssignAction; onChange: (action: AutomationAction) => void }) {
+  const by = action.by ?? 'PERSON';
+  const set = (change: Partial<AssignAction>) => onChange({ ...action, ...change });
+  const choices = form.fields.filter((f) => (f.type === 'DROPDOWN' || f.type === 'RADIO') && f.dataSource?.type === 'STATIC');
+  const deciding = choices.find((f) => f.name === action.field);
+  const emails = form.fields.filter((f) => f.type === 'EMAIL');
+  const fromField = /^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$/.exec(action.from ?? '')?.[1];
+  return (
+    <>
+      <SelectSetting
+        label="Who gets it"
+        value={by}
+        options={WAYS}
+        onChange={(next) => {
+          // Only what this way of choosing uses is kept.
+          const { by: _by, field: _f, map: _m, userIds: _u, from: _e, ...rest } = action;
+          onChange({ ...rest, userId: next === 'PERSON' || next === 'ANSWER' ? action.userId : '', ...(next === 'PERSON' ? {} : { by: next }) });
+        }}
+      />
+      {by === 'PERSON' && <Setting label="Assign to">{() => <PersonSelect people={people} value={action.userId} onChange={(userId) => set({ userId })} />}</Setting>}
+      {by === 'ANSWER' && (
+        <>
+          <SelectSetting
+            label="Which answer decides"
+            value={deciding?.name}
+            placeholder={choices.length ? 'Pick a dropdown or a choice…' : 'This form has no dropdown or choice field'}
+            options={choices.map((f) => ({ label: f.label || f.name, value: f.name }))}
+            onChange={(field) => set({ field, map: {} })}
+          />
+          {deciding?.dataSource?.options?.map((o) => (
+            <Setting key={o.value} label={`${o.label} goes to`}>
+              {() => (
+                <PersonSelect
+                  people={people}
+                  value={action.map?.[o.value] ?? ''}
+                  placeholder="The person for any other answer"
+                  onChange={(userId) => {
+                    const { [o.value]: _was, ...others } = action.map ?? {};
+                    set({ map: userId ? { ...others, [o.value]: userId } : others });
+                  }}
+                />
+              )}
+            </Setting>
+          ))}
+          {deciding && <Setting label="Any other answer goes to">{() => <PersonSelect people={people} value={action.userId} placeholder="No one" onChange={(userId) => set({ userId })} />}</Setting>}
+        </>
+      )}
+      {by === 'TURN' && (
+        <Setting label="The team" hint="Each new record goes to the next of them, round and round.">
+          {() => <MultiSelect options={people.map((p) => ({ label: p.name, value: p.uuid }))} value={action.userIds ?? []} onChange={(userIds) => set({ userIds })} placeholder="Add people…" maxVisibleTags={6} />}
+        </Setting>
+      )}
+      {by === 'MANAGER' && <p className="fb-setting__hint">The record goes to the manager of the person it is with when this step runs (set on Members). With nobody, or no manager, the step fails and says so.</p>}
+      {by === 'EMAIL' && (
+        <>
+          <SelectSetting
+            label="Whose email it is"
+            value={fromField && emails.some((f) => f.name === fromField) ? fromField : action.from ? 'OTHER' : undefined}
+            placeholder="Pick where the email comes from…"
+            options={[...emails.map((f) => ({ label: `The answer to "${f.label || f.name}"`, value: f.name })), { label: 'What an earlier step returned', value: 'OTHER' }]}
+            onChange={(v) => set({ from: v === 'OTHER' ? '{{$steps.}}' : `{{${v}}}` })}
+            hint="The record goes to the member with that email address. If there is no such member, the step fails and says so."
+          />
+          {action.from !== undefined && !(fromField && emails.some((f) => f.name === fromField)) && (
+            <TextSetting label="From the step" value={action.from} placeholder="{{$steps.lookup.ownerEmail}}" hint="For example a Custom API step that looks the owner up in your own system: {{$steps.<step>.<what it returned>}}." onChange={(from) => set({ from })} />
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/** Fills an email step from one of the organisation's saved emails (Email templates in the menu). The words are copied. */
+function SavedEmailPick({ onPick }: { onPick: (mail: SavedEmail) => void }) {
+  const { data: saved = [] } = useSavedEmails();
+  if (!saved.length) return null;
+  return (
+    <SelectSetting
+      label="Start from a saved email"
+      value={undefined}
+      placeholder="Pick one to fill in the subject and message…"
+      options={saved.map((m) => ({ label: m.name, value: m.id }))}
+      onChange={(id) => {
+        const mail = saved.find((m) => m.id === id);
+        if (mail) onPick(mail);
+      }}
+      hint="From Email templates in the menu. You can change the words afterwards."
+    />
+  );
+}
+
 export function ActionEditor({ form, action, people, customWorkflows, onChange }: ActionEditorProps) {
   const statuses = form.workflow?.statuses ?? [];
 
@@ -28,6 +131,7 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
         return (
           <>
             <Setting label="To">{() => <RecipientsEditor form={form} people={people} value={action.to} onChange={(to) => onChange({ ...action, to })} />}</Setting>
+            <SavedEmailPick onPick={(mail) => onChange({ ...action, subject: mail.subject, body: mail.body })} />
             <TextSetting label="Subject" value={action.subject} onChange={(subject) => onChange({ ...action, subject })} />
             <TextSetting label="Message" multiline value={action.body} hint="Plain text. Insert data from the list below, e.g. {{name}}" onChange={(b) => onChange({ ...action, body: b })} />
             <SwitchSetting
@@ -108,7 +212,7 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
         );
       case 'ASSIGN':
         return (
-          <Setting label="Assign to">{() => <PersonSelect people={people} value={action.userId} onChange={(userId) => onChange({ ...action, userId })} />}</Setting>
+          <AssignSettings form={form} people={people} action={action} onChange={onChange} />
         );
       case 'SET_STATUS':
         return (

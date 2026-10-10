@@ -279,7 +279,16 @@ const actionSchema = z.union([
     order: z.enum(['IN_ORDER', 'PARALLEL']).optional(),
     expiresInDays: z.number().int().min(1).max(90).optional(),
   }),
-  z.object({ ...stepMeta, type: z.literal('ASSIGN'), userId: z.string().max(64) }),
+  z.object({
+    ...stepMeta,
+    type: z.literal('ASSIGN'),
+    userId: z.string().max(64),
+    by: z.enum(['PERSON', 'ANSWER', 'TURN', 'MANAGER', 'EMAIL']).optional(),
+    field: z.string().max(100).optional(),
+    map: z.record(z.string().max(100), z.string().min(1).max(64)).optional(),
+    userIds: z.array(z.string().min(1).max(64)).max(50).optional(),
+    from: z.string().max(200).optional(),
+  }),
   z.object({ ...stepMeta, type: z.literal('SET_STATUS'), status: z.string().max(40) }),
   z.object({ ...stepMeta, type: z.literal('WEBHOOK'), url: z.string().max(500) }),
   z.object({ ...stepMeta, type: z.literal('FLOW'), service: z.enum(FLOW_SERVICES), url: z.string().max(2000) }),
@@ -498,7 +507,14 @@ function checkWorkflow(def: FormDefinition, ctx: z.RefinementCtx) {
       if (action.type === 'EMAIL' && (!action.subject.trim() || !action.body.trim())) missing('the email needs a subject and a message');
       if (action.type === 'NOTIFY' && !action.message.trim()) missing('the notification needs a message');
       if (action.type === 'CREATE_TASK' && !action.title.trim()) missing('the task needs a title');
-      if (action.type === 'ASSIGN' && wf?.enabled && !action.userId) missing('choose who to assign');
+      if (action.type === 'ASSIGN' && wf?.enabled) {
+        const by = action.by ?? 'PERSON';
+        if (by === 'PERSON' && !action.userId) missing('choose who to assign');
+        if (by === 'ANSWER' && (!action.field || !fields.has(action.field))) missing('choose the answer that decides who gets it');
+        if (by === 'ANSWER' && !Object.keys(action.map ?? {}).length && !action.userId) missing('say who gets it for each answer');
+        if (by === 'TURN' && !action.userIds?.length) missing('choose the people who take it in turn');
+        if (by === 'EMAIL' && !action.from?.trim()) missing('say where the person\'s email comes from');
+      }
       if (action.type === 'WEBHOOK' && !/^https:\/\/[^\s/]+\.[^\s]+$/.test(action.url)) missing('webhooks need a full https URL');
       if (action.type === 'FLOW' && !isFlowAddress(action.service, action.url)) {
         missing(action.url.trim() ? `that is not a ${FLOW_SERVICE_INFO[action.service].label} address` : `paste the ${FLOW_SERVICE_INFO[action.service].label} flow's address`);

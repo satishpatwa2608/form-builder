@@ -27,6 +27,8 @@ const WorkingTimeRoute = lazy(() => work().then((m) => ({ default: m.WorkingTime
 const WebhooksRoute = lazy(() => work().then((m) => ({ default: m.WebhooksRoute })));
 const WorkflowsRoute = lazy(() => work().then((m) => ({ default: m.WorkflowsRoute })));
 const FragmentsRoute = lazy(() => work().then((m) => ({ default: m.FragmentsRoute })));
+const ListsRoute = lazy(() => work().then((m) => ({ default: m.ListsRoute })));
+const EmailTemplatesRoute = lazy(() => work().then((m) => ({ default: m.EmailTemplatesRoute })));
 const ExtensionsRoute = lazy(() => work().then((m) => ({ default: m.ExtensionsRoute })));
 const SubmissionsRoute = lazy(() => work().then((m) => ({ default: m.SubmissionsRoute })));
 const lazyPage = (el: JSX.Element) => <Suspense fallback={<p className="st-empty">Loading…</p>}>{el}</Suspense>;
@@ -53,6 +55,8 @@ export default function App() {
         <Route index element={<OverviewPage />} />
         <Route path="forms" element={<FormsPage />} />
         <Route path="fragments" element={lazyPage(<FragmentsRoute />)} />
+        <Route path="lists" element={lazyPage(<ListsRoute />)} />
+        <Route path="email-templates" element={lazyPage(<EmailTemplatesRoute />)} />
         <Route path="workflows" element={lazyPage(<WorkflowsRoute />)} />
         <Route path="connectors" element={<ConnectorsPage />} />
         <Route path="members" element={<MembersPage />} />

@@ -6,6 +6,7 @@ import { Input } from '@ui/input';
 import { Textarea } from '@ui/textarea';
 import type { EmailTemplate } from '../../types';
 import { fieldErrorsOf, messageOf } from '../../adapters/backend';
+import { useSavedEmails } from '../../adapters/email-templates';
 import { ChoiceSelect } from '../../builder/components/settings';
 import { VISIBLE_BORDER } from '../../runtime/styles';
 
@@ -19,12 +20,17 @@ interface EmailComposerProps {
 }
 
 const NONE = '__none__';
+/** A saved email from the library, not one of the form's own: its key is not one the form knows. */
+const LIBRARY = 'library:';
 
 /**
  * Email the requester from the item: pick a template or write one; {{tokens}}
  * are filled on the server. Outbound only - replies reach the sender's mailbox.
  */
-export function EmailComposer({ to, templates, requestInfoLabel, busy, onSend }: EmailComposerProps) {
+export function EmailComposer({ to, templates: own, requestInfoLabel, busy, onSend }: EmailComposerProps) {
+  // The form's own templates first, then the organisation's saved emails.
+  const { data: saved = [] } = useSavedEmails();
+  const templates = [...own, ...saved.filter((m) => !own.some((t) => t.name === m.name)).map((m) => ({ key: `${LIBRARY}${m.id}`, name: m.name, subject: m.subject, body: m.body }))];
   const [open, setOpen] = useState(false);
   const [templateKey, setTemplateKey] = useState<string>();
   const [subject, setSubject] = useState('');
@@ -53,7 +59,7 @@ export function EmailComposer({ to, templates, requestInfoLabel, busy, onSend }:
   const send = async () => {
     setError('');
     try {
-      await onSend({ subject, body, templateKey, requestInfo: requestInfo || undefined });
+      await onSend({ subject, body, templateKey: templateKey?.startsWith(LIBRARY) ? undefined : templateKey, requestInfo: requestInfo || undefined });
       setOpen(false);
       setSubject('');
       setBody('');

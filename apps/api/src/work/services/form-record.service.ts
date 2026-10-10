@@ -267,6 +267,27 @@ export class FormRecordService {
     return userId && (await this.findPeople(orgId, [userId])).length ? userId : '';
   }
 
+  /**
+   * Who an Assign step gives the record to, worked out as the step runs. Someone who is not (or no longer) a
+   * member who works records is nobody: the step then says so instead of handing the record to no one.
+   */
+  async whoFor(orgId: string, formCode: string, step: { userId: string; by?: string; field?: string; map?: Record<string, string>; userIds?: string[] }, values: FormValues, assigneeId: string, email: string): Promise<string> {
+    let userId = '';
+    const by = step.by ?? 'PERSON';
+    if (by === 'PERSON') userId = step.userId;
+    if (by === 'ANSWER') userId = step.map?.[String(values[step.field ?? ''] ?? '')] ?? step.userId;
+    if (by === 'MANAGER') userId = assigneeId ? await this.managerOf(orgId, assigneeId) : '';
+    if (by === 'TURN' && step.userIds?.length) {
+      const c = await this.counters.findOneAndUpdate({ orgId, formCode }, { $inc: { roundRobin: 1 } }, { upsert: true, new: true });
+      userId = step.userIds[(c.roundRobin - 1) % step.userIds.length]!;
+    }
+    if (by === 'EMAIL' && email.trim()) {
+      const wanted = email.trim().toLowerCase();
+      userId = (await this.findPeople(orgId)).find((p) => p.email?.toLowerCase() === wanted)?.uuid ?? '';
+    }
+    return userId && (await this.findPeople(orgId, [userId])).length ? userId : '';
+  }
+
   // ---------------------------------------------------------------- people
 
   /** Members who can work records - the only people records can be assigned to (a team narrows it). */

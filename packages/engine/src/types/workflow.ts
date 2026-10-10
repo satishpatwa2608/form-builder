@@ -198,7 +198,13 @@ export type AutomationAction = StepMeta &
    * { status: 'SIGNED' | 'DECLINED' | 'EXPIRED', signedAt }.
    */
   | { type: 'SIGN'; to: RecipientRef[]; title: string; message?: string; order?: 'IN_ORDER' | 'PARALLEL'; expiresInDays?: number }
-  | { type: 'ASSIGN'; userId: string }
+  /**
+   * Gives the record to someone. `by` says how the person is found when the step runs (left out: the person
+   * named in `userId`): by an answer (`field` and `map`, with `userId` for any other answer), the next of
+   * `userIds` in turn, the manager of whoever has it now, or the member whose email `from` works out to
+   * (an answer, or what an earlier step returned: `{{$steps.lookup.ownerEmail}}`).
+   */
+  | { type: 'ASSIGN'; userId: string; by?: 'PERSON' | 'ANSWER' | 'TURN' | 'MANAGER' | 'EMAIL'; field?: string; map?: Record<string, string>; userIds?: string[]; from?: string }
   | { type: 'SET_STATUS'; status: string }
   /** POST the record as JSON to an allow-listed https URL (FORM_WEBHOOK_ALLOWLIST). */
   | { type: 'WEBHOOK'; url: string }

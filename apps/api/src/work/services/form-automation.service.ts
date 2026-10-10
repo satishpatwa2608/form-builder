@@ -638,9 +638,13 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         // Tasks were Sangam's Tasks app; Form Builder refuses this step at publish.
         throw new Error('Task steps are not available in Form Builder');
 
-      case 'ASSIGN':
-        await this.records.assign(orgId, record.uuid, action.userId, '');
-        return 'assigned';
+      case 'ASSIGN': {
+        const userId = await this.records.whoFor(orgId, definition.code, action, (record.payload ?? {}) as FormValues, record.assigneeId, renderTemplate(action.from ?? '', tctx, false));
+        // Nobody found (an answer with no one against it, an email that is not a member's): say so, and leave it where it is.
+        if (!userId) throw new Error('there is no one to give it to');
+        await this.records.assign(orgId, record.uuid, userId, '');
+        return { summary: 'assigned', data: { assignee: userId } };
+      }
 
       case 'SET_STATUS':
         if (record.status === action.status) return 'already in that status';

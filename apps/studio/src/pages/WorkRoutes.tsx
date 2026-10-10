@@ -8,6 +8,8 @@ import WebhooksPage from '../form/pages/WebhooksPage';
 import WorkflowsPage from '../form/pages/WorkflowsPage';
 import ExtensionsPage from '../form/pages/ExtensionsPage';
 import FragmentsPage from '../form/pages/FragmentsPage';
+import ListsPage from '../form/pages/ListsPage';
+import EmailTemplatesPage from '../form/pages/EmailTemplatesPage';
 import SubmissionsPage from '../form/pages/SubmissionsPage';
 import '../form/styles/form-builder.css';
 import '../form/styles/work-inbox.css';
@@ -58,6 +60,14 @@ export function WorkflowsRoute() {
 
 export function FragmentsRoute() {
   return <FragmentsPage />;
+}
+
+export function ListsRoute() {
+  return <ListsPage />;
+}
+
+export function EmailTemplatesRoute() {
+  return <EmailTemplatesPage />;
 }
 
 export function ExtensionsRoute() {

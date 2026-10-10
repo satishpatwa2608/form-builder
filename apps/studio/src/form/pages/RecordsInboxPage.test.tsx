@@ -335,7 +335,7 @@ describe('Records inbox', () => {
     // The API answers null when the change took the item away (e.g. reassigned): the drawer closes.
     await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
     const drawer = await screen.findByRole('dialog');
-    await user.click(within(drawer).getByRole('button', { name: 'Investigating' }));
+    await user.click(await within(drawer).findByRole('button', { name: 'Investigating' }));
     await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     auth.modules = ['FormPlatformAdminModule'];
     api.theme = 'classic';
