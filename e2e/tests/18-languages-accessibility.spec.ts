@@ -66,7 +66,7 @@ test('a designer adds languages, translates on screen, and hands the rest to a t
     .replace('field.purpose.label,Label,Purpose,,', 'field.purpose.label,Label,Purpose,,الغرض');
   const path = join(tmpdir(), `fb-e2e-${Date.now()}-translations.csv`);
   writeFileSync(path, filled);
-  await dialog.getByLabel('Translations file (.csv)').setInputFiles(path);
+  await dialog.getByLabel('Translations file (.csv or .xlf)').setInputFiles(path);
   await expect(page.getByText('5 translations read.')).toBeVisible();
   await expect(dialog.getByRole('button', { name: /^العربية · 3 of 5/ })).toBeVisible();
   await page.keyboard.press('Escape');
