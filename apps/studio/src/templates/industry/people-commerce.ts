@@ -896,7 +896,7 @@ const diagnostics = k.make(
     k.section('visit', 'Where and when', [
       k.radio('where', 'Sample collection', [['HOME', 'At home'], ['CENTRE', 'At a centre']], k.req),
       k.dropdown('centre', 'Centre', ['Main laboratory', 'City centre', 'East side', 'West side'], { ...k.half, ...k.showIf(k.is('where', 'CENTRE')), requiredWhen: k.is('where', 'CENTRE') }),
-      k.section('homeVisit', 'Home collection', k.address('collection', 'Address')),
+      k.section('homeVisit', 'Home collection', k.address('collection', '')),
       k.date('collectionDate', 'Date', { ...k.req, ...k.half }),
       k.time('collectionTime', 'Time', { ...k.req, ...k.half, helpText: 'For fasting tests choose a morning time, before breakfast.' }),
       k.note('fasting', '<p><strong>Fasting is needed.</strong> Eat or drink nothing but water for 10 to 12 hours before the sample is taken.</p>'),
@@ -983,8 +983,7 @@ const scholarship = k.make(
       k.multi('activities', 'What you do besides study', ['Sports', 'Music or arts', 'Volunteering', 'Student council', 'Part-time work', 'Caring for family']),
     ]),
     k.section('finish', 'Bank, documents and declaration', [
-      k.text('accountNo', 'Your bank account number', { ...k.req, ...k.half, ...k.pattern('^[0-9]{9,18}$', 'An account number is 9 to 18 digits') }),
-      k.text('ifsc', 'IFSC', { ...k.req, ...k.half, ...k.IFSC }),
+      ...k.bank('payout', 'Your bank account'),
       k.file('markSheet', 'Mark sheet of the last exam', k.req),
       k.file('incomeCertificate', 'Family income certificate', k.req),
       k.file('feeReceipt', 'Fee demand or receipt', k.req),

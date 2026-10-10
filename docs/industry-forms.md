@@ -58,6 +58,53 @@ extension. No two have the same workflow or service times: some count working
 hours, some run round the clock, some pause while waiting for the applicant,
 and three have no overall SLA at all.
 
+## Where to see each feature at work
+
+Open the form named, in the builder, to see how the feature is set up.
+
+| Feature | Where it is used | Look at |
+|---|---|---|
+| **Steps with a last look before sending** | Every form | Form settings → Layout |
+| **Fragments** (a section kept once in the library, used by many forms) | *Address* in 22 forms; *Bank account* in the health claim, farm subsidy, scholarship and joining form | Administration → Fragments; on Bank account opening the same fragment is used twice (`permanent_…`, `mailing_…`) |
+| **Calculations** | Loan application (instalment), Car insurance (insured value, premium), Vehicle registration (tax and fees) | Rules |
+| **Calculations inside each row, and totals across rows** | New electricity connection (load from appliances), Shipment booking (volumetric weight), Diagnostic test booking (each person's bill), Scholarship (family income) | The repeating section and Rules |
+| **A list that depends on another** | Car insurance (model by make), Job application (role by department), Warranty claim (fault by product), Telecom (plan by service) | Rules: "… for …" |
+| **Refusing an answer with a message** | Money transfer (limits by route), Visa (passport validity), Driving licence (age by class) | Rules |
+| **Showing, requiring and locking fields by rule** | Health proposal, Motor claim, Transfer of vehicle ownership | Rules |
+| **A button that fills fields** | Hospital registration ("They live at the patient's address") | Events |
+| **Repeating sections** | Health proposal (family), University application (qualifications, tests, jobs, referees), Card dispute (transactions) | The section's settings |
+| **Tabs and accordions** | Hospital registration, School admission, Health claim, University application | The container's settings |
+| **Signature and consent** | Almost every form | The last step |
+| **Values the system fills in** (channel, date, a value from the link) | Car insurance, Job application, Rental application | Hidden fields in the first step |
+| **Filled from the signed-in person, and locked** | Employee joining form, Expense claim, System access request | The field → Fill from signed-in user |
+| **CAPTCHA** | Two-wheeler insurance, Trade licence | Form settings |
+| **Confirm with a code** | Switched off by default; the Bank account form says where to switch it on | Email or Phone field → Confirm with a code |
+| **Taking a payment** | Named in the setup notes of University application, Trade licence, Vehicle registration, New connection, Visa, Conference, Shipment, Diagnostics | Form settings → Take a payment |
+| **Workflow: statuses and buttons** | Every form, each different | Workflow → Process |
+| **Fields the team fills in** | Health claim (admissible amount), Loan (credit score), Visa (visa number) | Workflow → Process → Work fields |
+| **A button that needs fields or a comment first** | Loan: Sanction needs the score, amount and rate | Workflow → Process → Actions |
+| **A manager's approval on a button** | Expense claim (always); Loan sanction, Money transfer and Health claim (above an amount); System access (twice) | Workflow → Process → Actions → Approval |
+| **An approval as a step** | Dealer application (head of sales) | Workflow → Automations |
+| **Priority from the answers** | Citizen complaint (danger), Loan (amount), Power complaint (fallen wire) | Workflow → Process → Priority |
+| **Service times** in working hours or round the clock, by priority, paused while waiting | Health claim, Motor claim, Power complaint, Visa | Workflow → Process → SLA |
+| **Escalation** | Power complaint, Workplace incident | Workflow → Process → Escalation |
+| **Reopening** | Citizen complaint, Card dispute, Warranty claim | Workflow → Process |
+| **Email when something happens** | Loan, Visa, Trade licence, New connection, Job application | Workflow → Automations |
+| **Sending a document for signature** | Loan (sanction letter), Rental (lease), Job application (offer) | Workflow → Automations |
+| **Alarms before and after a service time is missed** | Loan, Health claim, Citizen complaint, Motor claim, Workplace incident | Workflow → Automations |
+| **A step when the team fills in a field** | Loan (the credit score is recorded) | Workflow → Automations |
+| **Ready-made emails for the team** | Loan, Health claim, Citizen complaint | Workflow → Process → Email templates |
+| **A PDF of each response** | Every form | Form settings |
+| **Listed on the requests portal** | Trade licence, Certificates, Citizen complaint | Form settings |
+| **Signed-in people only** | Employee joining form, Expense claim, System access request | Form settings → Who can open it |
+
+Not shown, because each needs something of the organisation's own: a **shared
+workflow** used by several forms, **connectors** (lists and look-ups from your
+systems, and sending responses to them), your **extension's** steps and
+checks, **webhooks** and automation tools, **translations**, your **styles**,
+and a team that alone sees a form's records. **Tasks** are not available in
+Form Builder at all: where a form needs someone to act, it notifies them.
+
 ## How they are checked
 
 - Each is created, published and served through the API as a customer would

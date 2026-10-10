@@ -439,8 +439,7 @@ const subsidy = k.make(
       k.yesNo('hadBefore', 'Have you had a subsidy for this in the last three years?', k.req),
     ]),
     k.section('bank', 'Bank account and documents', [
-      k.text('accountNo', 'Account number', { ...k.req, ...k.half, ...k.pattern('^[0-9]{9,18}$', 'An account number is 9 to 18 digits') }),
-      k.text('ifsc', 'IFSC', { ...k.req, ...k.half, ...k.IFSC }),
+      ...k.bank('payout', 'Bank account for the subsidy'),
       k.file('landRecord', 'Land record (7/12 extract)', k.req),
       k.file('quotation', 'Quotation from the supplier', k.req),
       k.file('passbook', 'First page of the bank passbook', k.req),

@@ -8,7 +8,7 @@ import { Archive, Code2, Download, ExternalLink, FilePlus2, FolderInput, GitBran
 import { api, errorMessage } from '../lib/api';
 import { useAction, useFolders, useForms } from '../lib/queries';
 import type { Folder, FormStatus, FormSummary } from '../lib/types';
-import { codeFromName, FORM_TEMPLATES, INDUSTRIES, prepareTemplate } from '../templates';
+import { codeFromName, FORM_TEMPLATES, INDUSTRIES, linkTemplateFragments, prepareTemplate } from '../templates';
 import { Alert, Badge, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 
 const STATUS: Record<FormStatus, { label: string; tone?: 'success' | 'warn' | 'accent' }> = {
@@ -97,7 +97,12 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
       existing: async () => (await api<{ id: string }[]>('/styles')).map((s) => s.id),
       add: (style) => api(`/styles/${style.id}`, { method: 'PUT', body: style }),
     });
-    await api('/forms', { method: 'POST', body: { folderId, definition: { ...definition, name: name.trim(), code: shownCode } } });
+    // Sections that are copies of library fragments (Address, Bank account) are linked to the library's own.
+    const withFragments = await linkTemplateFragments(definition, {
+      existing: () => api<{ id: string; name: string }[]>('/fragments'),
+      add: (fragment) => api<{ id: string }>('/fragments', { method: 'POST', body: fragment }),
+    });
+    await api('/forms', { method: 'POST', body: { folderId, definition: { ...withFragments.definition, name: name.trim(), code: shownCode } } });
     onDone(
       `"${name.trim()}" was created as a draft.${tpl.setup?.length ? ` Before publishing: ${tpl.setup.join(' ')}` : ''}${
         leftOut.length ? ` It was created without the style ${leftOut.map((n) => `"${n}"`).join(', ')}: only an admin can add styles to the library.` : ''

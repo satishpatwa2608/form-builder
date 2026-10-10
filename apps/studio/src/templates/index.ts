@@ -3,6 +3,7 @@ import plantIssueReport from './plant-issue-report.json';
 import supplierRegistration from './supplier-registration.json';
 import { FORM_TEMPLATES as PROCESS_TEMPLATES } from '../form/builder/templates';
 import { INDUSTRY_TEMPLATES } from './industry';
+import { TEMPLATE_FRAGMENTS } from './industry/kit';
 
 /** Starting points for "New form" until the visual builder (and its process templates) is ported. */
 export interface FormTemplate {
@@ -105,3 +106,41 @@ export async function prepareTemplate(
 
 /** The industries that have ready-made forms, in the order they are offered. */
 export const INDUSTRIES = [...new Set(FORM_TEMPLATES.map((t) => t.industry).filter((i): i is string => !!i))];
+
+interface FragmentLibrary {
+  existing: () => Promise<{ id: string; name: string }[]>;
+  add: (fragment: { name: string; description?: string; fields: unknown[] }) => Promise<{ id: string }>;
+}
+
+/**
+ * A template's sections can be copies of library fragments ("Address", "Bank account"). Before the form is
+ * created each fragment it uses is found in the organisation's library by name, or added to it, and the form's
+ * sections are pointed at the library's own. Where adding is refused (only admins manage the library) the
+ * section is left as it is and the server keeps it as a section of the form's own: nothing is lost but the link.
+ *
+ * Returns the definition to create and the names of the fragments now linked.
+ */
+export async function linkTemplateFragments(definition: Record<string, unknown>, library: FragmentLibrary): Promise<{ definition: Record<string, unknown>; linked: string[] }> {
+  const fields = (definition.fields ?? []) as { type?: string; props?: { fragment?: { id?: string; prefix?: string } } }[];
+  const used = [...new Set(fields.map((f) => f.props?.fragment?.id).filter((id): id is string => !!id))];
+  const ours = TEMPLATE_FRAGMENTS.filter((t) => used.includes(t.id));
+  if (!ours.length) return { definition, linked: [] };
+  const real = new Map<string, string>();
+  const linked: string[] = [];
+  let have: { id: string; name: string }[] = [];
+  try {
+    have = await library.existing();
+  } catch {
+    return { definition, linked };
+  }
+  for (const t of ours) {
+    try {
+      const found = have.find((f) => f.name === t.name) ?? (await library.add({ name: t.name, description: t.description, fields: t.fields }));
+      real.set(t.id, found.id);
+      linked.push(t.name);
+    } catch {
+      /* left as a section of the form's own */
+    }
+  }
+  return { definition: { ...definition, fields: fields.map((f) => (f.props?.fragment?.id && real.has(f.props.fragment.id) ? { ...f, props: { ...f.props, fragment: { ...f.props.fragment, id: real.get(f.props.fragment.id)! } } } : f)) }, linked };
+}

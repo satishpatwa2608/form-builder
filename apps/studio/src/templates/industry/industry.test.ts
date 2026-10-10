@@ -33,6 +33,33 @@ describe('industry templates at work', () => {
     expect(all.filter((t) => !used.has(t as FormField['type']))).toEqual([]);
   });
 
+  it('the address is one library fragment used across the forms, and the forms that pay people share the bank account', () => {
+    const uses = (id: string) => INDUSTRY_TEMPLATES.filter((t) => (t.definition.fields as FormField[]).some((f) => (f.props?.fragment as { id?: string } | undefined)?.id === id)).length;
+    expect(uses('tpl-address')).toBeGreaterThanOrEqual(20);
+    expect(uses('tpl-bank-account')).toBe(4);
+    // Used twice on one form, each use has its own names.
+    const account = (INDUSTRY_TEMPLATES.find((t) => t.key === 'bank-account')!.definition.fields as FormField[]).map((f) => f.name);
+    expect(account).toEqual(expect.arrayContaining(['permanent_city', 'mailing_city']));
+  });
+
+  it('between them they show what can happen after a form is sent: every kind of step that needs no outside address, on every kind of occasion', () => {
+    const automations = INDUSTRY_TEMPLATES.flatMap((t) => (t.definition.automations ?? []) as { when: string; actions: { type: string }[] }[]);
+    expect([...new Set(automations.map((a) => a.when))].sort()).toEqual(['FIELD_UPDATED', 'SLA_APPROACHING', 'SLA_BREACHED', 'STATUS_CHANGED', 'SUBMITTED']);
+    expect([...new Set(automations.flatMap((a) => a.actions.map((s) => s.type)))].sort()).toEqual(['APPROVAL', 'EMAIL', 'NOTIFY', 'SIGN']);
+    const actions = INDUSTRY_TEMPLATES.flatMap((t) => ((t.definition.workflow as { actions?: { key: string; approval?: { if?: unknown } }[] })?.actions ?? []).map((a) => ({ form: t.key, ...a })));
+    // A manager's approval on a button: always for some, only above an amount for others.
+    expect(actions.filter((a) => a.approval).map((a) => `${a.form}:${a.key}${a.approval!.if ? ' (conditional)' : ''}`).sort()).toEqual([
+      'bank-fund-transfer:send (conditional)',
+      'bank-loan:sanction (conditional)',
+      'hr-expense-claim:approve',
+      'ins-health-claim:approve (conditional)',
+      'it-access-request:manager',
+      'it-access-request:owner',
+    ]);
+    const templates = INDUSTRY_TEMPLATES.filter((t) => ((t.definition.workflow as { emailTemplates?: unknown[] })?.emailTemplates ?? []).length);
+    expect(templates.map((t) => t.key).sort()).toEqual(['bank-loan', 'gov-grievance', 'ins-health-claim']);
+  });
+
   it('every one is laid out in steps, with a last look before sending, and has several', () => {
     for (const t of INDUSTRY_TEMPLATES) {
       // A last look before sending, except on the one-minute report where it would only slow the person down.

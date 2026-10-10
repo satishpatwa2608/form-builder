@@ -135,7 +135,7 @@ const hospital: IndustryTemplate = {
       k.refuse('hsp_dob', 'dob > today()', 'dob', 'The date of birth cannot be in the future'),
       k.refuse('hsp_slot', '!isEmpty(preferredSlot) && preferredSlot < now()', 'preferredSlot', 'Choose a time that is still to come'),
     ],
-    events: [{ id: 'hsp_copy', name: 'Copy the patient\'s address', on: { type: 'CLICK', field: 'sameAddress' }, do: [{ type: 'SET_VALUE', target: 'emergencyAddress', value: 'concat(patientAddress, ", ", patientCity, " ", patientPin)' }] }],
+    events: [{ id: 'hsp_copy', name: 'Copy the patient\'s address', on: { type: 'CLICK', field: 'sameAddress' }, do: [{ type: 'SET_VALUE', target: 'emergencyAddress', value: 'concat(patient_address, ", ", patient_city, " ", patient_pin)' }] }],
     workflow: {
       enabled: true,
       refPrefix: 'REG',

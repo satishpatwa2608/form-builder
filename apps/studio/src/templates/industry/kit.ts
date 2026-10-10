@@ -2,6 +2,8 @@
  * A small vocabulary for writing long forms as a tree (steps holding fields, columns, tabs, repeating sections)
  * and turning that tree into the flat field list a form definition holds. Only used by the industry templates.
  */
+import { fragmentCopy, type FormField, type Fragment } from '@fb/engine';
+
 export type Node = { type: string; name: string; label?: string; children?: Node[]; columns?: Node[][]; weights?: number[]; [key: string]: unknown };
 type Extra = Record<string, unknown>;
 type Opt = string | [value: string, label: string];
@@ -87,6 +89,14 @@ export function flatten(prefix: string, given: Node[], parentId?: string, column
     const { children, columns: cols, weights, ...rest } = node;
     const id = `${prefix}_${node.name}`;
     const props = cols ? { ...(rest.props as object | undefined), columns: weights ?? cols.map(() => 1) } : rest.props;
+    const use = rest.fragment as { id: string; prefix: string } | undefined;
+    if (use) {
+      // A section that is a copy of a library fragment: its fields are the fragment's, named for this use of it.
+      const { fragment: _use, ...sectionNode } = rest;
+      const sectionField = { id, ...sectionNode, props: { fragment: use }, ...(parentId ? { parentId, ...(column ? { column } : {}) } : {}) } as unknown as FormField;
+      out.push(sectionField as unknown as Record<string, unknown>, ...(fragmentCopy(sectionField, TEMPLATE_FRAGMENTS.find((f) => f.id === use.id)!) as unknown as Record<string, unknown>[]));
+      continue;
+    }
     out.push({ id, ...rest, ...(props ? { props } : {}), ...(parentId ? { parentId, ...(column ? { column } : {}) } : {}) });
     if (children) out.push(...flatten(prefix, children, id));
     cols?.forEach((items, i) => out.push(...flatten(prefix, items, id, i)));
@@ -118,13 +128,41 @@ export const PAN = pattern('^[A-Za-z]{5}[0-9]{4}[A-Za-z]$', 'A PAN is 5 letters,
 export const PIN = pattern('^[1-9][0-9]{5}$', 'A PIN code is 6 digits');
 export const IFSC = pattern('^[A-Za-z]{4}0[A-Za-z0-9]{6}$', 'An IFSC is 11 characters, for example HDFC0001234');
 
-/** The address block almost every form asks for, with its own field names. */
-export const address = (p: string, label = 'Address') => [
-  area(`${p}Address`, label, { ...req, validation: { maxLength: 300 } }),
-  text(`${p}City`, 'City', { ...req, ...third }),
-  dropdown(`${p}State`, 'State', STATES, { ...req, ...third }),
-  text(`${p}Pin`, 'PIN code', { ...req, ...third, ...PIN }),
+/**
+ * Sections kept once in the organisation's library and used by many forms. A form holds a copy, named for
+ * where it is used (`owner_city`, `delivery_city`); change the fragment in the library and every form takes
+ * the change at its next publish. "New form" adds them to the library the first time one is needed.
+ */
+export const TEMPLATE_FRAGMENTS: Fragment[] = [
+  {
+    id: 'tpl-address',
+    name: 'Address',
+    description: 'A postal address: lines, city, state and PIN code.',
+    fields: [
+      { id: 'adr_line', type: 'TEXTAREA', name: 'address', label: 'House, street and area', required: true, validation: { maxLength: 300 } },
+      { id: 'adr_city', type: 'TEXT', name: 'city', label: 'City', required: true, width: 'third' },
+      { id: 'adr_state', type: 'DROPDOWN', name: 'state', label: 'State', required: true, width: 'third', dataSource: opts(...STATES) },
+      { id: 'adr_pin', type: 'TEXT', name: 'pin', label: 'PIN code', required: true, width: 'third', validation: { pattern: '^[1-9][0-9]{5}$', messages: { pattern: 'A PIN code is 6 digits' } } },
+    ] as FormField[],
+  },
+  {
+    id: 'tpl-bank-account',
+    name: 'Bank account',
+    description: 'An account to pay money into: holder, number, IFSC and bank.',
+    fields: [
+      { id: 'bnk_holder', type: 'TEXT', name: 'accountHolder', label: 'Account holder', required: true, width: 'half' },
+      { id: 'bnk_number', type: 'TEXT', name: 'accountNo', label: 'Account number', required: true, width: 'half', validation: { pattern: '^[0-9]{9,18}$', messages: { pattern: 'An account number is 9 to 18 digits' } } },
+      { id: 'bnk_ifsc', type: 'TEXT', name: 'ifsc', label: 'IFSC', required: true, width: 'half', validation: { pattern: '^[A-Za-z]{4}0[A-Za-z0-9]{6}$', messages: { pattern: 'An IFSC is 11 characters, for example HDFC0001234' } } },
+      { id: 'bnk_bank', type: 'TEXT', name: 'bankName', label: 'Bank and branch', required: true, width: 'half' },
+    ] as FormField[],
+  },
 ];
+const fragmentSection = (id: string, prefix: string, label: string): Node[] => [{ type: 'SECTION', name: `${prefix}Block`, label, fragment: { id, prefix } }];
+
+/** The Address fragment, under the heading given; its fields are `<prefix>_address`, `_city`, `_state` and `_pin`. */
+export const address = (p: string, label = 'Address') => fragmentSection('tpl-address', p, label);
+/** The Bank account fragment: `<prefix>_accountHolder`, `_accountNo`, `_ifsc` and `_bankName`. */
+export const bank = (p: string, label = 'Bank account') => fragmentSection('tpl-bank-account', p, label);
 
 /** Statuses, in the order work moves through them; the last two are the ways it ends. */
 export const confirmation = (id: string, emailField: string, subject: string, body: string) => ({

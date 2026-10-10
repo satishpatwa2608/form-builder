@@ -277,7 +277,7 @@ const accountTransfer = k.make(
     ]),
     k.section('address', 'Address', [
       k.yesNo('addressChanged', 'Has your address changed?', k.req),
-      k.section('movedTo', 'New address', [...k.address('new', 'New address'), k.file('addressProof', 'Proof of the new address')]),
+      k.section('movedTo', 'New address', [...k.address('new', ''), k.file('addressProof', 'Proof of the new address')]),
     ]),
     k.section('instructions', 'What should happen to', [
       k.radio('chequeBook', 'Unused cheques', [['KEEP', 'I will keep using them'], ['REPLACE', 'Cancel them and send a new cheque book']], { ...k.req, defaultValue: 'KEEP' }),

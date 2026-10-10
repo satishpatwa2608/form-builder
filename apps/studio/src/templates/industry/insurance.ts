@@ -422,10 +422,7 @@ const claim: IndustryTemplate = {
         k.num('advancePaid', 'Already paid to the hospital by the insurer, if any (₹)', { ...k.half, validation: { min: 0 }, defaultValue: 0 }),
       ]),
       k.section('payment', 'Where to pay', [
-        k.text('accountName', 'Account holder', { ...k.req, ...k.half }),
-        k.text('accountNo', 'Account number', { ...k.req, ...k.half, ...k.pattern('^[0-9]{9,18}$', 'An account number is 9 to 18 digits') }),
-        k.text('ifsc', 'IFSC', { ...k.req, ...k.third, ...k.IFSC }),
-        k.text('bankName', 'Bank and branch', { ...k.req, ...k.third }),
+        ...k.bank('payout', 'Account to pay the claim into'),
         k.radio('accountType', 'Account type', ['Savings', 'Current'], { ...k.req, ...k.third }),
         k.file('cheque', 'A cancelled cheque or the first page of the passbook', k.req),
       ]),

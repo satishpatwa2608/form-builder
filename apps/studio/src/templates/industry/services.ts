@@ -45,9 +45,9 @@ const account: IndustryTemplate = {
         k.phone('mobile', 'Mobile number', { ...k.req, ...k.half }),
       ]),
       k.section('addresses', 'Addresses', [
-        k.section('permanent', 'Permanent address', k.address('permanent', 'Address, as on your address proof')),
+        ...k.address('permanent', 'Permanent address, as on your address proof'),
         k.check('sameAddress', 'Letters should go to the same address', { defaultValue: true }),
-        k.section('mailing', 'Address for letters', k.address('mailing')),
+        k.section('mailing', 'Address for letters', k.address('mailing', '')),
         k.radio('residence', 'You live there as', ['Owner', 'Tenant', 'With family', 'Company provided'], k.half),
         k.stepper('yearsThere', 'Years at this address', 0, 80, k.half),
       ]),
@@ -464,8 +464,7 @@ const joining: IndustryTemplate = {
         k.url('linkedin', 'LinkedIn profile', k.half),
       ]),
       k.section('pay', 'Bank and tax', [
-        k.text('accountNo', 'Salary account number', { ...k.req, ...k.half, ...k.pattern('^[0-9]{9,18}$', 'An account number is 9 to 18 digits') }),
-        k.text('ifsc', 'IFSC', { ...k.req, ...k.half, ...k.IFSC }),
+        ...k.bank('payout', 'Salary account'),
         k.text('pan', 'PAN', { ...k.req, ...k.half, ...k.PAN }),
         k.text('uan', 'Provident fund number (UAN), if you have one', { ...k.half, ...k.pattern('^[0-9]{12}$', 'A UAN is 12 digits') }),
         k.radio('taxRegime', 'Income tax regime', [['NEW', 'New regime'], ['OLD', 'Old regime, with deductions']], { ...k.req, defaultValue: 'NEW' }),
