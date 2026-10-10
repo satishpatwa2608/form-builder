@@ -14,8 +14,6 @@ import { EventsEditor } from './EventsEditor';
 import { VISIBLE_BORDER } from '../../runtime/styles';
 import { errorText } from '../../runtime/styles';
 import {
-  ACTION_LABEL,
-  ACTION_TYPES,
   actionOf,
   conditionMode,
   newRule,
@@ -23,7 +21,11 @@ import {
   ruleProblems,
   targetsFor,
   withConditionMode,
-  type ActionType,
+  ACTION_CHOICES,
+  CLEAR,
+  CLEAR_FORMULA,
+  isClear,
+  type ActionChoice,
   type ConditionMode,
 } from './rule-edits';
 
@@ -46,11 +48,15 @@ function ActionRow({ action, fields, names, onChange, onRemove }: ActionRowProps
     <div className="fb-settings fb-panel" style={{ gap: 8, padding: 10 }}>
       <div className="flex items-center gap-2">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <ChoiceSelect<ActionType>
+          <ChoiceSelect<ActionChoice>
             ariaLabel="Action"
-            value={action.type}
-            options={ACTION_TYPES.map((t) => ({ label: ACTION_LABEL[t], value: t }))}
-            onChange={(type) => onChange(actionOf(type, fields, action.target))}
+            value={isClear(action) ? CLEAR : action.type}
+            options={ACTION_CHOICES}
+            onChange={(choice) => {
+              if (choice !== CLEAR) return onChange(actionOf(choice, fields, action.target));
+              const made = actionOf('SET_VALUE', fields, action.target);
+              onChange(made.type === 'SET_VALUE' ? { ...made, value: CLEAR_FORMULA } : made);
+            }}
           />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -68,7 +74,8 @@ function ActionRow({ action, fields, names, onChange, onRemove }: ActionRowProps
           </button>
         )}
       </div>
-      {action.type === 'SET_VALUE' && (
+      {isClear(action) && <p className="fb-setting__hint">Emptied for as long as this rule holds; the person can answer again once it no longer does.</p>}
+      {action.type === 'SET_VALUE' && !isClear(action) && (
         <FormulaInput label="Formula" value={action.value} names={names} placeholder="quantity * unitPrice" onChange={(value) => onChange({ ...action, value })} />
       )}
       {action.type === 'ERROR' && (

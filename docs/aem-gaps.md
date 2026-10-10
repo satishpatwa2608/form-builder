@@ -82,7 +82,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | AEM capability | Where | Form Builder |
 |---|---|---|
 | Show, hide, enable, set a value, validate, otherwise | Rule editor | Built |
-| Clear a value; add or remove a row; set focus; display formats | Rule editor | **Missing** |
+| Clear a value; add or remove a row; set focus; display formats | Rule editor | **Part.** Built (10 Oct): "Clear the answer to" in the rules dialog. Adding or removing rows from a rule, setting focus and display formats are still missing |
 | Save, submit or reset the form from a rule | Rule editor | **Missing** |
 | Functions written by the customer for rules | Rule editor | Not for us in the builder: authoring stays dropdowns and plain words. Extensions cover checks |
 | Answers save themselves as people go | Drafts and portal | Built (10 Oct): the form setting "Save answers as people go"; kept every 30 seconds and found again on the same device, with "Start again". Off unless the form's owner turns it on |

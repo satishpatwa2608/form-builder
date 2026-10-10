@@ -18,6 +18,19 @@ export const ACTION_LABEL: Record<ActionType, string> = {
 
 export const ACTION_TYPES = Object.keys(ACTION_LABEL) as ActionType[];
 
+/**
+ * "Clear the answer to" is offered as its own choice, because nobody should have to know that an empty answer
+ * is written `null`. It is kept as a set-value whose formula is exactly that, so the engine needs nothing new.
+ */
+export const CLEAR = 'CLEAR';
+export const CLEAR_FORMULA = 'null';
+export type ActionChoice = ActionType | typeof CLEAR;
+export const ACTION_CHOICES: { value: ActionChoice; label: string }[] = [
+  ...ACTION_TYPES.map((t) => ({ value: t as ActionChoice, label: ACTION_LABEL[t] })),
+  { value: CLEAR, label: 'Clear the answer to' },
+];
+export const isClear = (a: RuleAction) => a.type === 'SET_VALUE' && a.value.trim() === CLEAR_FORMULA;
+
 const CALCULABLE: ReadonlySet<FormField['type']> = new Set([
   'TEXT',
   'TEXTAREA',

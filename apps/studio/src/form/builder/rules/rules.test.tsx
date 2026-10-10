@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { FormDefinition, FormRule } from '../../types';
-import { validateFormDefinition } from '../../engine';
+import { computeFormState, validateFormDefinition } from '../../engine';
 import { publishIssues } from '../publish-issues';
 import { RulesDialog } from './RulesDialog';
 import { actionOf, conditionMode, newRule, ruleProblems, targetsFor, withConditionMode } from './rule-edits';
@@ -135,6 +135,25 @@ describe('RulesDialog', () => {
     expect(within(card).queryByRole('alert')).not.toBeInTheDocument();
     // "Always" has nothing to fall back to.
     expect(within(card).queryByRole('group', { name: 'Otherwise' })).not.toBeInTheDocument();
+  });
+
+  it('"Clear the answer to" needs no formula, publishes, and really empties the answer while the rule holds', async () => {
+    const spy = vi.fn();
+    const user = userEvent.setup();
+    render(<Harness initial={form()} spy={spy} />);
+    await user.click(screen.getByRole('button', { name: /Add rule/ }));
+    const card = screen.getByRole('region', { name: 'Rule 1' });
+    await choose(user, card, 'When', 'Always');
+    await choose(user, card, 'Action', 'Clear the answer to');
+    await choose(user, card, 'Field', 'Approver');
+    // Nothing to type: the choice says it all.
+    expect(within(card).queryByLabelText('Formula')).not.toBeInTheDocument();
+    expect(within(card).getByText(/Emptied for as long as this rule holds/)).toBeInTheDocument();
+    expect(within(card).getByRole('combobox', { name: 'Action' })).toHaveTextContent('Clear the answer to');
+    const made = spy.mock.calls.at(-1)![0] as FormDefinition;
+    expect(made.rules![0]!.then).toEqual([{ type: 'SET_VALUE', target: 'approver', value: 'null' }]);
+    expect(validateFormDefinition(made).success).toBe(true);
+    expect(computeFormState(made, { approver: 'Asha', quantity: 2 }).values).toMatchObject({ approver: '', quantity: 2 });
   });
 
   it('builds a formula condition with then and otherwise actions', async () => {
