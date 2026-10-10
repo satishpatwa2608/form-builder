@@ -134,3 +134,53 @@ export const confirmation = (id: string, emailField: string, subject: string, bo
   when: 'SUBMITTED',
   actions: [{ type: 'EMAIL', to: [{ kind: 'FIELD', field: emailField }], subject, body }],
 });
+
+// ── Shorthand for writing many forms the same way ──────────────────────────
+
+/** A status of the workflow: its key, what people call it, where it stands, and (if any) the hours it may take. */
+export const st = (key: string, label: string, category: 'OPEN' | 'IN_PROGRESS' | 'DONE', slaHours?: number) => ({ key, label, category, ...(slaHours ? { slaHours } : {}) });
+/** A button on a record: what it is called, the statuses it is offered in, and where it moves the record. */
+export const act = (key: string, label: string, from: string[], to: string, more: Record<string, unknown> = {}) => ({ key, label, from, to, ...more });
+export const flow = (refPrefix: string, statuses: ReturnType<typeof st>[], actions: ReturnType<typeof act>[], more: Record<string, unknown> = {}) => ({
+  enabled: true,
+  refPrefix,
+  statuses,
+  assignment: { type: 'NONE' },
+  priority: { default: 'MEDIUM' },
+  actions,
+  ...more,
+});
+/** The three things almost every form asks of the person: who they are and how to reach them. */
+export const contact = (nameLabel = 'Full name') => [text('fullName', nameLabel, req), email('email', 'Email', { ...req, ...half }), phone('mobile', 'Mobile number', { ...req, ...half })];
+/** The last things on a form: what the person declares, and their signature. */
+export const declare = (terms: string, signer = 'Your signature') => [consent('declaration', 'Declaration', terms), sign('signature', signer, req)];
+
+/** A form in steps, with a last look before sending, save-and-return and a PDF of each response. */
+export function make(
+  key: string,
+  industry: string,
+  name: string,
+  description: string,
+  setup: string[],
+  tree: Node[],
+  more: Record<string, unknown> = {},
+): IndustryTemplate {
+  const { intro, ...rest } = more as { intro?: string };
+  return {
+    key,
+    industry,
+    name,
+    description,
+    setup,
+    definition: {
+      access: 'PUBLIC',
+      description: intro ?? description,
+      layout: { mode: 'steps', review: true },
+      saveForLater: true,
+      document: { keep: true, title: name },
+      submission: { method: 'POST', endpointId: 'default-submit' },
+      fields: flatten(key.replace(/[^a-z0-9]/g, ''), tree),
+      ...rest,
+    },
+  };
+}

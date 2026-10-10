@@ -1,6 +1,6 @@
 # Ready-made forms by industry
 
-Eleven long, multi-step forms that come with the builder: **New form → Show
+Forty long, multi-step forms that come with the builder: **New form → Show
 starting points for → an industry**. Each becomes an ordinary draft; everything
 in it can be changed. They exist for two reasons: to give customers a real
 starting point, and to exercise the builder with the kind of forms large
@@ -22,6 +22,36 @@ vocabulary (`kit.ts`) rather than as raw JSON.
 | Banking | Loan application | 5 | The real monthly instalment; present loans totalled; share of income with a warning; 80% of property value enforced |
 | Government | Trade licence application | 5 | Fee from area, trade and years; late fee on renewal; fire certificate required by rule; listed on the requests portal |
 | Human resources | Employee joining form | 5 | Signed-in only, filled from the person's account; education and jobs as rows; three policies to accept |
+
+## The second batch
+
+Twenty-nine more, written the same way, to cover the industries where forms carry
+real processes:
+
+| Industry | Forms |
+|---|---|
+| Government | Vehicle registration (car or two-wheeler) · Transfer of vehicle ownership · Driving licence · Birth, death or marriage certificate · Citizen complaint |
+| Agriculture | Farm subsidy application |
+| Energy and utilities | New electricity connection · Rooftop solar (net metering) · Transfer of an electricity connection · Power supply or meter complaint |
+| Banking | Account transfer to another branch · Money transfer (NEFT, RTGS, abroad) · Credit card application · Disputed card transaction |
+| Insurance | Motor insurance claim |
+| Hiring and HR | Job application · Expense claim |
+| Information technology | System access request |
+| Manufacturing and safety | Workplace incident report |
+| Real estate | Rental application |
+| Telecom | New mobile or broadband connection (with number porting) |
+| Travel and immigration | Visa application |
+| Events and hospitality | Conference registration |
+| Retail and consumer goods | Warranty claim · Dealer or distributor application |
+| Logistics | Shipment booking |
+| Healthcare | Diagnostic test booking |
+| Education | Scholarship application |
+| Non-profit | Volunteer registration |
+
+What these added to the picture: calculations inside each row and totals across
+rows carry a great deal (the electrical load from a list of appliances, the
+volumetric weight of each parcel, each patient's bill, a family's income for
+each person), and every one of them worked without a change to the engine.
 
 Between them they use every kind of field except the one drawn by an
 extension. No two have the same workflow or service times: some count working

@@ -36,7 +36,7 @@ describe('Industry templates: created, published and served (e2e)', () => {
     const served = await h.api().get(`/public/forms/${code}?org=${orgId}`).set(t.definition.access === 'AUTHENTICATED' ? h.bearer(owner) : {});
     expect(served.status).toBe(200);
     const def = served.body.definition ?? served.body;
-    expect(def.layout).toEqual({ mode: 'steps', review: true });
+    expect(def.layout).toEqual(t.definition.layout);
     expect(def.fields.length).toBe(t.definition.fields.length);
     // What happens after sending is the organisation's business, not the public's.
     expect(def.workflow).toBeUndefined();
