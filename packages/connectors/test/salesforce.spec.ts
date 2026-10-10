@@ -67,7 +67,7 @@ describe('Salesforce connector (against a stand-in)', () => {
             ],
           });
         }
-        if (url === `${data}/sobjects/Lead/describe`) return json(200, { fields: [{ name: 'Id', type: 'id' }, { name: 'LastName', type: 'string' }, { name: 'Email', type: 'email', nillable: true }, { name: 'AnnualRevenue', type: 'currency', nillable: true }, { name: 'IsConverted', type: 'boolean' }] });
+        if (url === `${data}/sobjects/Lead/describe`) return json(200, { fields: [{ name: 'Id', type: 'id' }, { name: 'LastName', type: 'string' }, { name: 'Email', type: 'email', nillable: true }, { name: 'AnnualRevenue', type: 'currency', nillable: true }, { name: 'IsConverted', type: 'boolean' }, { name: 'Company', type: 'string', nillable: false, createable: true, length: 255 }, { name: 'Status', type: 'picklist', nillable: false, createable: true, defaultedOnCreate: true, length: 40 }, { name: 'NumberOfEmployees', type: 'int', nillable: true, digits: 8 }, { name: 'Score__c', type: 'double', nillable: true, precision: 5, scale: 2 }] });
         if (url === `${data}/sobjects/Enquiry__c/describe`) return json(200, { fields: [{ name: 'Id', type: 'id' }, { name: 'About__c', type: 'textarea', nillable: true }] });
         if (req.method === 'GET' && url.startsWith(`${data}/query?q=`)) {
           const q = url.slice(`${data}/query?q=`.length);
@@ -100,6 +100,11 @@ describe('Salesforce connector (against a stand-in)', () => {
       { name: 'Email', type: 'string', nullable: true },
       { name: 'AnnualRevenue', type: 'number', nullable: true },
       { name: 'IsConverted', type: 'boolean' },
+      // What Salesforce insists on comes along: must be given, how long, and the room a number has.
+      { name: 'Company', type: 'string', nullable: false, maxLength: 255 },
+      { name: 'Status', type: 'string', nullable: false, hasDefault: true, maxLength: 40 },
+      { name: 'NumberOfEmployees', type: 'number', nullable: true, min: -99999999, max: 99999999 },
+      { name: 'Score__c', type: 'number', nullable: true, min: -999.99, max: 999.99 },
     ]);
     expect(state.tokens).toBe(1);
   });

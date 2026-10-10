@@ -57,7 +57,7 @@ describe.skipIf(!live)('SQL Server connector (real database)', () => {
     expect(found.fields).toEqual([
       { name: 'id', type: 'number', nullable: false },
       { name: 'status', type: 'string', nullable: true, maxLength: 50 },
-      { name: 'total', type: 'number', nullable: true },
+      { name: 'total', type: 'number', nullable: true, min: -99999999.99, max: 99999999.99 },
       expect.objectContaining({ name: 'secret', type: 'string', nullable: true }),
     ]);
 
@@ -84,8 +84,12 @@ const METADATA = `<?xml version="1.0" encoding="utf-8"?>
       <EntityType Name="account">
         <Key><PropertyRef Name="accountid"/></Key>
         <Property Name="accountid" Type="Edm.Guid" Nullable="false"/>
-        <Property Name="name" Type="Edm.String"/>
-        <Property Name="revenue" Type="Edm.Decimal"/>
+        <Property Name="name" Type="Edm.String" MaxLength="160">
+          <Annotation Term="Org.OData.Validation.V1.Pattern" String="^[A-Z].*$"/>
+        </Property>
+        <Property Name="revenue" Type="Edm.Decimal" Precision="9" Scale="2">
+          <Annotation Term="Org.OData.Validation.V1.Minimum" Decimal="0"/>
+        </Property>
         <Property Name="active" Type="Edm.Boolean"/>
         <Property Name="createdon" Type="Edm.DateTimeOffset"/>
         <Property Name="odd name!" Type="Edm.String"/>
@@ -116,8 +120,9 @@ describe('OData: what a service says about itself', () => {
       keyField: 'accountid',
       fields: [
         { name: 'accountid', type: 'string' },
-        { name: 'name', type: 'string', nullable: true },
-        { name: 'revenue', type: 'number', nullable: true },
+        // What the service says each accepts: the longest text, a pattern, the room and the lowest a number has.
+        { name: 'name', type: 'string', nullable: true, maxLength: 160, pattern: '^[A-Z].*$' },
+        { name: 'revenue', type: 'number', nullable: true, min: 0, max: 9999999.99 },
         { name: 'active', type: 'boolean', nullable: true },
         { name: 'createdon', type: 'date', nullable: true },
       ],

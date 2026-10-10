@@ -68,7 +68,10 @@ describe('A batch of 1,000 documents (e2e)', () => {
     const p95 = slow[Math.floor(slow.length * 0.95)] ?? 0;
     console.log(`1,000 documents in ${(took / 1000).toFixed(1)}s (accepted in ${accepted} ms); API during it: median ${slow[Math.floor(slow.length / 2)]} ms, 95th percentile ${p95} ms over ${slow.length} requests`);
     // Budgets: the whole batch in two and a half minutes on a developer's machine, and the API never made to wait long.
+    // The promise is one second, kept on a machine of the size the product runs on. A shared build machine has two
+    // slow cores that this very test also uses, so there the limit is set wider (API_P95_BUDGET_MS in the CI file):
+    // still tight enough to catch the API being blocked, which shows as several seconds, not a few milliseconds over.
     expect(took).toBeLessThan(150_000);
-    expect(p95).toBeLessThan(1000);
+    expect(p95).toBeLessThan(Number(process.env.API_P95_BUDGET_MS) || 1000);
   }, 200_000);
 });

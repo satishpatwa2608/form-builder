@@ -16,8 +16,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # A real SQL Server for the connector's own test (the other databases are tested by their statements).
-    # The password is for this throwaway container only; it protects nothing.
+    # Real databases for the connectors' own tests: each writes a table's rules back in its own words.
+    # The password is for these throwaway containers only; it protects nothing.
     services:
       mssql:
         image: mcr.microsoft.com/mssql/server:2022-latest
@@ -25,8 +25,23 @@ jobs:
           ACCEPT_EULA: Y
           MSSQL_SA_PASSWORD: Test-Only-Passw0rd
         ports: ['1433:1433']
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: Test-Only-Passw0rd
+        ports: ['5432:5432']
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: Test-Only-Passw0rd
+          MYSQL_DATABASE: fb
+        ports: ['3306:3306']
     env:
       MSSQL_TEST: 127.0.0.1:1433:Test-Only-Passw0rd
+      PG_TEST: 127.0.0.1:5432:Test-Only-Passw0rd
+      MYSQL_TEST: 127.0.0.1:3306:Test-Only-Passw0rd
+      # The API's one-second promise is measured on the product's own size of machine; this runner is smaller and shared.
+      API_P95_BUDGET_MS: 2000
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

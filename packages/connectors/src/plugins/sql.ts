@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ConnectorError } from '../registry';
 import type { ConnectorContext, ConnectorPlugin, ConnectorType, Entity, EntityField, OperationRequest } from '../types';
 import { ConnectionPool } from './pool';
+import { limitsFromCheck, limitsFromType } from './source-limits';
 import { assertIdentifier, assertPublicHost, elapsed, filtersFrom, now, rowFrom, type Primitive } from './shared';
 
 type Dialect = 'postgres' | 'mysql' | 'mssql';
@@ -136,6 +137,9 @@ const TYPE: Record<string, EntityField['type']> = {
   bit: 'boolean', money: 'number', smallmoney: 'number', datetime2: 'date', smalldatetime: 'date', datetimeoffset: 'date',
 };
 
+/** Types that hold whole numbers only. */
+const WHOLE = new Set(['integer', 'bigint', 'smallint', 'int', 'tinyint', 'mediumint']);
+
 function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql' | 'mssql'>, label: string): ConnectorPlugin {
   const d: Dialect = type;
   return {
@@ -160,30 +164,63 @@ function sqlPlugin(type: Extract<ConnectorType, 'postgres' | 'mysql' | 'mssql'>,
 
     async discover(ctx): Promise<Entity[]> {
       const schema = String(ctx.connector.settings.schema ?? (d === 'postgres' ? 'public' : d === 'mssql' ? 'dbo' : ctx.connector.settings.database));
+      const db = await connect(d, ctx);
       const rows = (
-        await (
-          await connect(d, ctx)
-        ).query(
-          `SELECT table_name AS t, column_name AS c, data_type AS dt, is_nullable AS n, character_maximum_length AS ml, column_default AS df FROM information_schema.columns WHERE table_schema = ${param(d, 1)} ORDER BY table_name, ordinal_position`,
+        await db.query(
+          `SELECT table_name AS t, column_name AS c, data_type AS dt, is_nullable AS n, character_maximum_length AS ml, column_default AS df, numeric_precision AS np, numeric_scale AS ns FROM information_schema.columns WHERE table_schema = ${param(d, 1)} ORDER BY table_name, ordinal_position`,
           [schema],
           10_000,
         )
       ).rows;
       const tables = new Map<string, EntityField[]>();
+      const whole = new Map<string, Set<string>>();
       for (const r of rows) {
         const t = String(r.t ?? r.T ?? r.TABLE_NAME);
         if (!tables.has(t)) tables.set(t, []);
-        // What the table itself insists on: a column that may not be empty, and the longest text it takes.
+        // What the table itself insists on: a column that may not be empty, the longest text it takes, and the
+        // numbers its type has room for.
         const nullable = String(r.n ?? r.N ?? r.IS_NULLABLE ?? 'YES').toUpperCase() !== 'NO';
         const length = Number(r.ml ?? r.ML ?? r.CHARACTER_MAXIMUM_LENGTH);
         const fallback = r.df ?? r.DF ?? r.COLUMN_DEFAULT;
+        const dataType = String(r.dt ?? r.DT ?? r.DATA_TYPE).toLowerCase();
+        const name = String(r.c ?? r.C ?? r.COLUMN_NAME);
+        const places = Number(r.ns ?? r.NS ?? r.NUMERIC_SCALE);
+        if (WHOLE.has(dataType) || ((dataType === 'numeric' || dataType === 'decimal') && places === 0)) whole.set(t, (whole.get(t) ?? new Set()).add(name));
         tables.get(t)!.push({
-          name: String(r.c ?? r.C ?? r.COLUMN_NAME),
-          type: TYPE[String(r.dt ?? r.DT ?? r.DATA_TYPE).toLowerCase()] ?? 'string',
+          name,
+          type: TYPE[dataType] ?? 'string',
           nullable,
           ...(Number.isFinite(length) && length > 0 && length <= 100_000 ? { maxLength: length } : {}),
           ...(fallback !== null && fallback !== undefined && fallback !== '' ? { hasDefault: true } : {}),
+          ...limitsFromType(dataType, Number(r.np ?? r.NP ?? r.NUMERIC_PRECISION), places, d),
         });
+      }
+      // The table's own rules (CHECK constraints): a range, a shortest length, a pattern. A database that will not
+      // show them (an old version, a login without the right) simply gives none.
+      const checks = await db
+        .query(
+          `SELECT tc.table_name AS t, cc.check_clause AS cl FROM information_schema.table_constraints tc JOIN information_schema.check_constraints cc ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name WHERE tc.table_schema = ${param(d, 1)} AND tc.constraint_type = 'CHECK'`,
+          [schema],
+          10_000,
+        )
+        .then((r) => r.rows, () => []);
+      for (const r of checks) {
+        const fields = tables.get(String(r.t ?? r.T ?? r.TABLE_NAME));
+        const clause = r.cl ?? r.CL ?? r.CHECK_CLAUSE;
+        if (!fields || typeof clause !== 'string' || clause.length > 2000) continue;
+        const table = String(r.t ?? r.T ?? r.TABLE_NAME);
+        const found = limitsFromCheck(clause, fields.map((f) => ({ name: f.name, whole: whole.get(table)?.has(f.name) })), d);
+        const field = found && fields.find((f) => f.name === found.column);
+        if (!found || !field) continue;
+        const { min, max, minLength, maxLength, pattern } = found.limits;
+        // Where the type and a rule both say something, the tighter of the two holds.
+        if (min !== undefined && field.type === 'number') field.min = Math.max(field.min ?? -Infinity, min);
+        if (max !== undefined && field.type === 'number') field.max = Math.min(field.max ?? Infinity, max);
+        if (field.type === 'string') {
+          if (minLength !== undefined) field.minLength = Math.max(field.minLength ?? 0, minLength);
+          if (maxLength !== undefined) field.maxLength = Math.min(field.maxLength ?? Infinity, maxLength);
+          if (pattern !== undefined && field.pattern === undefined) field.pattern = pattern;
+        }
       }
       return [...tables.entries()].slice(0, 300).map(([key, fields]) => ({ key, label: key, fields }));
     },

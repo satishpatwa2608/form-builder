@@ -128,12 +128,12 @@ export const salesforcePlugin: ConnectorPlugin = {
       const described = await Promise.all(
         wanted.slice(i, i + 6).map(async (o) => {
           const r = await safeFetch(ctx, `${s.base}/services/data/${API_VERSION}/sobjects/${o.name}/describe`, { headers });
-          const fields = r.status === 200 ? (((r.json as { fields?: { name: string; type: string; nillable?: boolean }[] }).fields ?? []) as { name: string; type: string; nillable?: boolean }[]) : [];
+          const fields = r.status === 200 ? ((r.json as { fields?: DescribedField[] }).fields ?? []) : [];
           return {
             key: o.name,
             label: o.label || o.name,
             keyField: 'Id',
-            fields: fields.filter((f) => /^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(f.name)).map((f) => ({ name: f.name, type: TYPES[f.type] ?? ('unknown' as const), ...(f.nillable ? { nullable: true } : {}) })),
+            fields: fields.filter((f) => /^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(f.name)).map((f) => ({ name: f.name, type: TYPES[f.type] ?? ('unknown' as const), ...(f.nillable ? { nullable: true } : f.nillable === false && f.createable ? { nullable: false } : {}), ...limitsOf(f) })),
           };
         }),
       );
@@ -187,3 +187,38 @@ export const salesforcePlugin: ConnectorPlugin = {
     }
   },
 };
+
+interface DescribedField {
+  name: string;
+  type: string;
+  /** Said outright as false, on a field a person may set, it must be given. */
+  nillable?: boolean;
+  createable?: boolean;
+  /** Salesforce fills it in when a record is made without it. */
+  defaultedOnCreate?: boolean;
+  /** Longest text. */
+  length?: number;
+  /** Digits in all, and those after the point. */
+  precision?: number;
+  scale?: number;
+  /** Digits of a whole number. */
+  digits?: number;
+}
+
+/** What Salesforce says a field accepts: the longest text and the room a number has. */
+function limitsOf(f: DescribedField): Pick<EntityField, 'maxLength' | 'min' | 'max' | 'hasDefault'> {
+  const out: Pick<EntityField, 'maxLength' | 'min' | 'max' | 'hasDefault'> = {};
+  const kind = TYPES[f.type];
+  if (f.defaultedOnCreate) out.hasDefault = true;
+  if (kind === 'string' && typeof f.length === 'number' && f.length > 0 && f.length <= 100_000) out.maxLength = f.length;
+  if (kind === 'number') {
+    const whole = f.type === 'int' ? f.digits : undefined;
+    const digits = whole ?? f.precision;
+    const places = whole ? 0 : (f.scale ?? 0);
+    if (typeof digits === 'number' && digits > 0 && digits <= 15 && places >= 0 && places < digits) {
+      out.max = Number((10 ** (digits - places) - 10 ** -places).toFixed(places));
+      out.min = -out.max;
+    }
+  }
+  return out;
+}

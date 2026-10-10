@@ -1,6 +1,6 @@
 import { useAuth } from '../lib/auth';
 import { copyEmbedCode, copyPublicFormLink, publicFormUrl } from '../form/links';
-import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, fieldsFromPdfFields, type ImportedFields } from '@fb/engine';
+import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, fieldsFromPdfFields, type ImportedFields, type SourceField } from '@fb/engine';
 import { FormVersions } from '../components/FormVersions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -287,7 +287,7 @@ function importSummary(r: ImportResult) {
 }
 
 /** What a connector kept about a table's field: its kind and the limits the table itself sets. */
-type TableField = { name: string; type?: string; nullable?: boolean; maxLength?: number; hasDefault?: boolean };
+type TableField = SourceField;
 
 export default function FormsPage() {
   const { me } = useAuth();

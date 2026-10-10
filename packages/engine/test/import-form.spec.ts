@@ -194,6 +194,27 @@ describe('a form from a table a connector exposes', () => {
     expect(fieldsFromEntity({ fields: [] }).notes).toEqual(['This table exposes no fields.']);
   });
 
+  it('the ranges, shortest length and pattern a table holds to come along too, each on the kind of field it fits', () => {
+    const { fields } = fieldsFromEntity({
+      fields: [
+        { name: 'qty', type: 'number', min: 1, max: 100 },
+        { name: 'code', type: 'string', maxLength: 10, minLength: 3, pattern: '^[A-Z]{3}$' },
+        { name: 'contact_email', type: 'string', pattern: '^.+$', minLength: 5 },
+        // Limits that make no sense are left out, not passed on to trip the form up.
+        { name: 'broken', type: 'string', pattern: '([', minLength: 9000 },
+        { name: 'upside', type: 'number', min: 10, max: 1 },
+        { name: 'title', type: 'string', min: 1, max: 5 },
+      ],
+    });
+    const by = Object.fromEntries(fields.map((f) => [f.name, f]));
+    expect(by.qty!.validation).toEqual({ min: 1, max: 100 });
+    expect(by.code!.validation).toEqual({ maxLength: 10, minLength: 3, pattern: '^[A-Z]{3}$' });
+    expect(by.contact_email).toMatchObject({ type: 'EMAIL', validation: { minLength: 5 } });
+    expect(by.broken!.validation).toBeUndefined();
+    expect(by.upside!.validation).toEqual({ min: 10 });
+    expect(by.title!.validation).toBeUndefined();
+  });
+
   it('what the table insists on comes along: must be filled, and the longest text it takes', () => {
     const { fields } = fieldsFromEntity({
       fields: [

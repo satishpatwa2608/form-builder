@@ -90,9 +90,9 @@ export function parseMetadata(xml: string): (Entity & { keyField?: string })[] {
         const type = set.EntityType ? types.get(set.EntityType) : undefined;
         // Only names we could put in an address safely.
         if (!set.Name || !type || !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(set.Name)) continue;
-        const fields = list(type.Property as { Name?: string; Type?: string; Nullable?: string } | { Name?: string; Type?: string; Nullable?: string }[] | undefined)
+        const fields = list(type.Property as Property | Property[] | undefined)
           .filter((p) => p.Name && /^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(p.Name))
-          .map((p) => ({ name: p.Name!, type: EDM[p.Type ?? ''] ?? ('unknown' as const), ...(p.Nullable === 'false' ? {} : { nullable: true }) }));
+          .map((p) => ({ name: p.Name!, type: EDM[p.Type ?? ''] ?? ('unknown' as const), ...(p.Nullable === 'false' ? {} : { nullable: true }), ...limitsOf(p) }));
         const keys = list(type.Key?.PropertyRef as { Name?: string } | { Name?: string }[] | undefined).map((k) => k.Name);
         out.push({ key: set.Name, label: set.Name, fields, ...(keys.length === 1 && keys[0] ? { keyField: keys[0] } : {}) });
       }
@@ -173,3 +173,55 @@ export const odataPlugin: ConnectorPlugin = {
     }
   },
 };
+
+interface Property {
+  Name?: string;
+  Type?: string;
+  Nullable?: string;
+  MaxLength?: string;
+  Precision?: string;
+  Scale?: string;
+  Annotation?: Note | Note[];
+}
+/** A remark a service makes about a property; the validation ones say what it accepts. */
+interface Note {
+  Term?: string;
+  Int?: string;
+  Decimal?: string;
+  Float?: string;
+  String?: string;
+}
+
+/**
+ * What a service says a property accepts: the longest text, the room a decimal has, and the standard validation
+ * remarks (Org.OData.Validation.V1 Minimum, Maximum and Pattern).
+ */
+function limitsOf(p: Property): Pick<EntityField, 'maxLength' | 'min' | 'max' | 'pattern'> {
+  const out: Pick<EntityField, 'maxLength' | 'min' | 'max' | 'pattern'> = {};
+  const kind = EDM[p.Type ?? ''];
+  const longest = Number(p.MaxLength);
+  if (kind === 'string' && Number.isInteger(longest) && longest > 0 && longest <= 100_000) out.maxLength = longest;
+  const digits = Number(p.Precision);
+  if (p.Type === 'Edm.Decimal' && Number.isInteger(digits) && digits > 0 && digits <= 15) {
+    const places = Number.isInteger(Number(p.Scale)) && Number(p.Scale) > 0 ? Number(p.Scale) : 0;
+    if (places < digits) {
+      out.max = Number((10 ** (digits - places) - 10 ** -places).toFixed(places));
+      out.min = -out.max;
+    }
+  }
+  for (const note of list(p.Annotation)) {
+    const term = (note.Term ?? '').split('.').pop();
+    const number = Number(note.Decimal ?? note.Int ?? note.Float);
+    if (term === 'Minimum' && kind === 'number' && Number.isFinite(number)) out.min = Math.max(out.min ?? -Infinity, number);
+    if (term === 'Maximum' && kind === 'number' && Number.isFinite(number)) out.max = Math.min(out.max ?? Infinity, number);
+    if (term === 'Pattern' && kind === 'string' && note.String && note.String.length <= 200) {
+      try {
+        new RegExp(note.String);
+        out.pattern = note.String;
+      } catch {
+        // Not a pattern a browser can run: left out.
+      }
+    }
+  }
+  return out;
+}

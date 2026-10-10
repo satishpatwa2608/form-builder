@@ -31,6 +31,13 @@ export interface EntityField {
   maxLength?: number;
   /** The source fills it in itself when nothing is given (a default, a counter), so nobody has to. */
   hasDefault?: boolean;
+  /** The lowest and highest number the source takes, when it says (a rule on the column, or the room its type has). */
+  min?: number;
+  max?: number;
+  /** The shortest text the source takes, when it says. */
+  minLength?: number;
+  /** What the text must look like, as a regular expression, when the source says. */
+  pattern?: string;
 }
 
 /** Something a connector exposes: a collection, table, view, REST resource or S3 prefix. */
