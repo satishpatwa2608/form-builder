@@ -478,6 +478,23 @@ function GeneralTab({ field, form, onChange, onFormChange, onSetColumns, canMana
       {!hidden && !NO_HELP.has(field.type) && (
         <TextSetting label="Help text" multiline value={field.helpText} onChange={(helpText) => onChange({ helpText: helpText || undefined })} />
       )}
+      {field.type === 'TEXT' && (
+        <SelectSetting
+          label="Letters"
+          value={typeof field.props?.letters === 'string' ? (field.props.letters as string) : 'typed'}
+          options={[
+            { label: 'As typed', value: 'typed' },
+            { label: 'CAPITALS', value: 'upper' },
+            { label: 'small letters', value: 'lower' },
+            { label: 'First Letter Of Each Word', value: 'title' },
+          ]}
+          hint="Put right as the person leaves the box, and kept that way. CAPITALS suits an ID or vehicle number; the last suits a name."
+          onChange={(letters) => {
+            const { letters: _was, ...rest } = field.props ?? {};
+            onChange({ props: letters === 'typed' ? (Object.keys(rest).length ? rest : undefined) : { ...rest, letters } });
+          }}
+        />
+      )}
       {isValueField(field) && !SENSITIVE_NOT_FOR.has(field.type) && (
         <SwitchSetting
           label="Sensitive"

@@ -54,3 +54,20 @@ export function rowsText(children: Pick<FormField, 'name' | 'label' | 'dataSourc
     })
     .join('\n');
 }
+
+/** How a text answer's letters are kept, whatever way they were typed. */
+export type Letters = 'upper' | 'lower' | 'title';
+
+/**
+ * A text answer with its letters as the question asks for them: CAPITALS (a PAN, a vehicle number), small
+ * letters, or The First Letter Of Each Word (a name). Anything that is not text, and a question that asks for
+ * nothing, is left exactly as it is.
+ */
+export function withLetters(field: { type: string; props?: Record<string, unknown> }, value: unknown): unknown {
+  const how = field.props?.letters;
+  if (field.type !== 'TEXT' || typeof value !== 'string' || !value) return value;
+  if (how === 'upper') return value.toLocaleUpperCase();
+  if (how === 'lower') return value.toLocaleLowerCase();
+  if (how === 'title') return value.toLocaleLowerCase().replace(/(^|[\s\-'’.])(\p{L})/gu, (_, gap: string, letter: string) => gap + letter.toLocaleUpperCase());
+  return value;
+}

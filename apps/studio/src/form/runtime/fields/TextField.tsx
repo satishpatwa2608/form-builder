@@ -2,7 +2,7 @@ import { useFormContext } from 'react-hook-form';
 import { FormControl, FormField } from '@ui/form';
 import { Input } from '@ui/input';
 import type { FieldType } from '../../types';
-import { needsCode } from '../../engine';
+import { needsCode, withLetters } from '../../engine';
 import { CodeConfirm } from './CodeConfirm';
 import { FieldShell } from './FieldShell';
 import type { FieldComponentProps } from './types';
@@ -40,7 +40,12 @@ export function TextField({ field, required }: FieldComponentProps) {
               name={rhf.name}
               value={(rhf.value as string | undefined) ?? ''}
               onChange={rhf.onChange}
-              onBlur={rhf.onBlur}
+              onBlur={() => {
+                // Leaving the box puts the letters as the question asks for them (CAPITALS, a name's capitals).
+                const shown = withLetters(field, rhf.value);
+                if (shown !== rhf.value) rhf.onChange(shown);
+                rhf.onBlur();
+              }}
               placeholder={field.placeholder}
               disabled={field.disabled}
               autoComplete={AUTOCOMPLETE[field.type]}

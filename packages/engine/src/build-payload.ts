@@ -1,3 +1,4 @@
+import { withLetters } from './answer-text';
 import type { FormDefinition, FormValues, SystemContext } from './types';
 import { isRepeat, isValueField } from './field-kinds';
 import { formShape, rowKey, rowsOf } from './repeat';
@@ -32,12 +33,13 @@ export function buildPayload(
       const children = shape.repeats.find((r) => r.field === field)?.valueChildren ?? [];
       value = rowsOf(value).map((row, i) =>
         Object.fromEntries(
-          children.filter((c) => states.get(rowKey(field.name, i, c.name))?.visible && filled(row[c.name])).map((c) => [c.name, row[c.name]]),
+          children.filter((c) => states.get(rowKey(field.name, i, c.name))?.visible && filled(row[c.name])).map((c) => [c.name, withLetters(c, row[c.name])]),
         ),
       );
     }
     if (!filled(value)) continue;
-    payload[mapping[field.name] ?? field.name] = value;
+    // Stored with its letters as the question asks, however it was typed or sent.
+    payload[mapping[field.name] ?? field.name] = withLetters(field, value);
   }
   return payload;
 }

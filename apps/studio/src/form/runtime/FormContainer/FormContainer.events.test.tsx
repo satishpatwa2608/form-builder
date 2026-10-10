@@ -214,6 +214,15 @@ describe('FormContainer — form events', () => {
     expect(await screen.findByText('Thanks, all done.')).toBeInTheDocument();
   });
 
+  it('a text box that asks for CAPITALS puts them right as the person leaves it', async () => {
+    const shout = flat.map((f) => (f.name === 'fullName' ? { ...f, props: { letters: 'upper' } } : f));
+    const { user } = renderForm(form([], { fields: shout }));
+    await user.type(screen.getByLabelText(/^Full name/), 'abcde1234f');
+    expect(value(/^Full name/)).toBe('abcde1234f');
+    await user.tab();
+    expect(value(/^Full name/)).toBe('ABCDE1234F');
+  });
+
   it('a button opens another step', async () => {
     const steps: FormField[] = [
       { id: 's1', type: 'SECTION', name: 'about', label: 'About you' },

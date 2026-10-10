@@ -83,7 +83,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | AEM capability | Where | Form Builder |
 |---|---|---|
 | Show, hide, enable, set a value, validate, otherwise | Rule editor | Built |
-| Clear a value; add or remove a row; set focus; display formats | Rule editor | **Part.** Built (10 Oct): "Clear the answer to" in the rules dialog. Rows can follow an answer (a repeating section's setting, "As many as the answer to..."; the browser does this, the server does not insist on the count). Setting focus and display formats are still missing |
+| Clear a value; add or remove a row; set focus; display formats | Rule editor | **Part.** Built (10 Oct): "Clear the answer to" in the rules dialog. Rows can follow an answer (a repeating section's setting, "As many as the answer to..."; the browser does this, the server does not insist on the count). The cursor can be put in a question from an event. A text question can keep its letters as CAPITALS, small letters or a name's capitals ("Letters" in its settings); patterns such as a phone number's spacing are not there |
 | Save, submit or reset the form from a rule | Rule editor | **Part.** Built (10 Oct): a button can "Send the form" or "Start the form again", and a button, a changed answer or the form opening can "Put the cursor in" a question. Saving a draft from a rule is not there |
 | Functions written by the customer for rules | Rule editor | Not for us in the builder: authoring stays dropdowns and plain words. Extensions cover checks |
 | Answers save themselves as people go | Drafts and portal | Built (10 Oct): the form setting "Save answers as people go"; kept every 30 seconds and found again on the same device, with "Start again". Off unless the form's owner turns it on |

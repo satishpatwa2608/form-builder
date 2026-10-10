@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDefaultValues, buildPayload, resolveSystemValue, systemContextFor } from '../src';
+import { buildDefaultValues, buildPayload, resolveSystemValue, systemContextFor, withLetters } from '../src';
 import { fixtureDefinitions } from './fixtures';
 import type { FormDefinition, FormField } from '../src/types';
 
@@ -69,5 +69,28 @@ describe('buildPayload', () => {
     const payload = buildPayload(mapped, values);
     expect(payload.customerName).toBe('Asha');
     expect(payload).not.toHaveProperty('name');
+  });
+});
+
+describe('letters of a text answer', () => {
+  it('are stored as the question asks, however they were typed, in rows too; other kinds of answer are left alone', () => {
+    const def = {
+      ...(basic as FormDefinition),
+      fields: [
+        { id: 'p', type: 'TEXT', name: 'pan', label: 'PAN', props: { letters: 'upper' } },
+        { id: 'n', type: 'TEXT', name: 'fullName', label: 'Name', props: { letters: 'title' } },
+        { id: 'e', type: 'EMAIL', name: 'mail', label: 'Email', props: { letters: 'upper' } },
+        { id: 'r', type: 'REPEAT', name: 'cars', label: 'Cars' },
+        { id: 'v', type: 'TEXT', name: 'plate', label: 'Plate', parentId: 'r', props: { letters: 'upper' } },
+        { id: 'c', type: 'TEXT', name: 'code', label: 'Code', props: { letters: 'lower' } },
+        { id: 'x', type: 'TEXT', name: 'free', label: 'Free' },
+      ],
+      rules: [],
+      events: [],
+    } as FormDefinition;
+    const payload = buildPayload(def, { pan: 'abcde1234f', fullName: "aSHA o'brien-rAO", mail: 'Asha@Acme.test', cars: [{ plate: 'mh12ab1234' }], code: 'ABC', free: 'As Typed' });
+    expect(payload).toEqual({ pan: 'ABCDE1234F', fullName: "Asha O'Brien-Rao", mail: 'Asha@Acme.test', cars: [{ plate: 'MH12AB1234' }], code: 'abc', free: 'As Typed' });
+    expect(withLetters({ type: 'TEXT', props: { letters: 'title' } }, 'देवनागरी नाम')).toBe('देवनागरी नाम');
+    expect(withLetters({ type: 'TEXT', props: { letters: 'upper' } }, 42)).toBe(42);
   });
 });

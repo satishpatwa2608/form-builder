@@ -123,4 +123,16 @@ describe('repeating section settings', () => {
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['People add and remove rows']);
     expect(screen.getByText(/add a number question outside this section first/)).toBeInTheDocument();
   });
+
+  it('a text question can keep its letters as CAPITALS, small, or a name\'s capitals; "As typed" takes the choice away', async () => {
+    const spy = vi.fn();
+    const user = userEvent.setup();
+    render(<Panel fieldId="c" spy={spy} />);
+    await user.click(screen.getByRole('combobox', { name: 'Letters' }));
+    await user.click(await screen.findByRole('option', { name: 'CAPITALS' }));
+    expect(last(spy).props).toEqual({ letters: 'upper' });
+    await user.click(screen.getByRole('combobox', { name: 'Letters' }));
+    await user.click(await screen.findByRole('option', { name: 'As typed' }));
+    expect(last(spy).props).toBeUndefined();
+  });
 });
