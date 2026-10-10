@@ -46,8 +46,8 @@ function PipelineKey({ status }: { status: DeployStatus }) {
     <div className="space-y-2" aria-label="Deploy from your pipeline">
       <div className="fb-panel__title">3. Or deploy on every commit (optional)</div>
       <p className="fb-muted">
-        A pipeline such as GitHub Actions can push and deploy by itself. Give it a deploy key: it can push to your image space and deploy your extension, and nothing else. The starter kit has the
-        workflow ready; it needs this key as the secret <code>FB_DEPLOY_KEY</code>
+        A pipeline such as GitHub Actions can push and deploy by itself. Give it a deploy key: it can push to your image space and deploy your extension, and nothing else. The starter kit has a
+        workflow to copy (pipeline-examples); it needs this key as the secret <code>FB_DEPLOY_KEY</code>
         {status.api && (
           <>
             {' '}

@@ -1,3 +1,6 @@
+# Only for teams that build the image themselves. If you linked this repository in Form Builder (Extensions >
+# Deploy from your repository), you do not need this file. To use it, copy it to .github/workflows/deploy.yml.
+#
 # Builds this repository as a version of your extension and deploys it to Form Builder, on every commit to main.
 # It needs two things from your repository's settings (Settings > Secrets and variables > Actions):
 #   secret   FB_DEPLOY_KEY   the deploy key from Form Builder's Extensions page ("Make a deploy key")

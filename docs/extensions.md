@@ -172,7 +172,7 @@ repository, add the read-only key it shows, choose the branch, and press
 **Deploy now** or tick **Deploy on every commit**. Nothing to install.
 
 If you build the image yourselves and want that on every commit, make a **deploy key** on the same page and
-give it to your pipeline: the starter kit's `.github/workflows/deploy.yml` does
+give it to your pipeline: the starter kit's `pipeline-examples/github-actions-deploy.yml` does
 the rest (see [extension-deploy-guide.md](extension-deploy-guide.md)).
 
 Only your organisation's administrators can do this, each request is in your

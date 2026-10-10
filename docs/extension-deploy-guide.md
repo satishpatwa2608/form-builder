@@ -192,8 +192,10 @@ choose the version, Deploy.
 
 **Can our pipeline deploy on every commit?**
 Yes. On the Extensions page, under **Or deploy on every commit**, press **Make
-a deploy key**. The starter kit already has a GitHub Actions workflow
-(`.github/workflows/deploy.yml`). In your repository on GitHub, under
+a deploy key**. This is for teams that build the image themselves; if you
+linked your repository, ticking **Deploy on every commit** is all you need.
+The starter kit has a GitHub Actions workflow to copy
+(`pipeline-examples/github-actions-deploy.yml` → `.github/workflows/deploy.yml`). In your repository on GitHub, under
 **Settings → Secrets and variables → Actions**, add:
 
 - the secret `FB_DEPLOY_KEY`: the key (it is shown once),
