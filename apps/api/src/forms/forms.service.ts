@@ -33,6 +33,8 @@ export interface FormSummary {
   publishedVersion: number | null;
   /** A version is live and open to anyone with its link: it has an address to hand out. */
   publicLink: boolean;
+  /** The live version opens filled from a record a link is made for: the name of what identifies the record. */
+  recordLink?: string;
   updatedAt: Date;
   permissions: Permission[];
   /** Set on a draft that will publish itself. */
@@ -163,17 +165,21 @@ export class FormsService implements OnModuleInit {
     const rows = await this.forms
       .find({ ...this.live(auth.orgId), ...(folderId ? { folderId } : {}) })
       .sort({ code: 1, version: -1 })
-      .select('id code name folderId version status updatedAt publishAt scheduleError review definition.access')
+      .select('id code name folderId version status updatedAt publishAt scheduleError review definition.access definition.openWith.by definition.openWith.param')
       .lean();
     const latest = new Map<string, (typeof rows)[number]>();
     const published = new Map<string, number>();
     // Codes whose live version anyone with the link may fill in.
     const open = new Set<string>();
+    // Codes whose live version opens filled from a record a link is made for, with what identifies the record.
+    const recordLinks = new Map<string, string>();
     for (const r of rows) {
       if (!latest.has(r.code)) latest.set(r.code, r);
       if (r.status === 'PUBLISHED' && !published.has(r.code)) {
         published.set(r.code, r.version);
         if ((r.definition as { access?: string } | undefined)?.access === 'PUBLIC') open.add(r.code);
+        const opens = (r.definition as { openWith?: { by?: string; param?: string } } | undefined)?.openWith;
+        if (opens?.by === 'LINK') recordLinks.set(r.code, opens.param ?? '');
       }
     }
     const grants = await this.grants.find({ orgId: auth.orgId, userId: auth.userId }).lean();
@@ -184,7 +190,7 @@ export class FormsService implements OnModuleInit {
       const ref: ResourceRef = { type: 'form', id: r.code, folderPath: paths.get(r.folderId) };
       const perms = (['form.view', 'form.edit', 'form.publish'] as Permission[]).filter((p) => isAllowed(auth.role, grants, p, ref));
       if (!perms.includes('form.view')) continue;
-      out.push({ id: r.id, code: r.code, name: r.name, folderId: r.folderId, version: r.version, status: r.status, publishedVersion: published.get(r.code) ?? null, publicLink: open.has(r.code), updatedAt: r.updatedAt, publishAt: r.publishAt ?? null, scheduleError: r.scheduleError ?? '', review: (r.status === 'DRAFT' ? ((r.review as { status?: string } | null)?.status ?? 'NONE') : 'NONE'), permissions: perms });
+      out.push({ id: r.id, code: r.code, name: r.name, folderId: r.folderId, version: r.version, status: r.status, publishedVersion: published.get(r.code) ?? null, publicLink: open.has(r.code), ...(recordLinks.has(r.code) ? { recordLink: recordLinks.get(r.code) } : {}), updatedAt: r.updatedAt, publishAt: r.publishAt ?? null, scheduleError: r.scheduleError ?? '', review: (r.status === 'DRAFT' ? ((r.review as { status?: string } | null)?.status ?? 'NONE') : 'NONE'), permissions: perms });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }

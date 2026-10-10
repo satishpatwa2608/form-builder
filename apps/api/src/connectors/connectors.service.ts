@@ -55,6 +55,8 @@ export interface ConnectorSource {
   params: string[];
   valueField?: string;
   labelField?: string;
+  /** Lists of related rows that come along with a row of this one, with the fields of each of their rows. */
+  related?: { name: string; fields: string[] }[];
 }
 
 /** A write the builder can add as an automation step ("Run a custom API"). */
@@ -68,6 +70,9 @@ export interface ConnectorAction {
 }
 
 const LIMITS = { timeoutMs: 15_000, maxRows: 1000 };
+/** Related rows are fetched for a look-up's few rows, and each list of them is kept short. */
+const RELATED_FOR_AT_MOST = 5;
+const RELATED_LIMITS = { timeoutMs: 10_000, maxRows: 100 };
 /** Copying files takes longer than a query. */
 const UPLOAD_LIMITS = { timeoutMs: 30_000, maxRows: 1000 };
 /** How much of what a respondent uploaded is copied with one response. A gateway's messages are far smaller. */
@@ -305,6 +310,18 @@ export class ConnectorsService implements OnModuleDestroy {
       const bad = e.operations.filter((op) => !supported.includes(op));
       if (bad.length) throw new BadRequestException(`${c.name} can't ${bad.join(', ')}`);
       for (const f of [e.keyField, e.valueField, e.labelField].filter(Boolean)) if (!e.fields.includes(f)) throw new BadRequestException(`"${f}" must be one of the exposed fields of ${e.key}`);
+      // Related rows: from a table that is exposed for reading, matched on fields that are exposed on both sides.
+      const names = new Set<string>();
+      for (const r of e.related ?? []) {
+        if (e.fields.includes(r.name) || names.has(r.name)) throw new BadRequestException(`"${r.name}" is already a name on ${e.label}: give the related rows another`);
+        names.add(r.name);
+        if (!e.fields.includes(r.equals)) throw new BadRequestException(`"${r.equals}" must be one of the exposed fields of ${e.label}`);
+        const m = SOURCE_KEY.exec(r.source);
+        // The table may be one being saved in this same request, or one on another of the organisation's connectors.
+        const other = m && m[1] === c.ref ? entities.find((x) => x.key === m[2]) : m ? (await this.byRef(auth.orgId, m[1]!))?.entities.find((x) => x.key === m[2]) : undefined;
+        if (!other || !other.operations.includes('list')) throw new BadRequestException(`The rows related to ${e.label} must come from a table that forms may list`);
+        if (!other.fields.includes(r.field)) throw new BadRequestException(`"${r.field}" must be one of the exposed fields of ${other.label}`);
+      }
     }
     const before = c.entities.map((e) => `${e.key}:${e.operations.join('+')}`);
     c.set({ entities });
@@ -361,12 +378,22 @@ export class ConnectorsService implements OnModuleDestroy {
   /** Dropdown / prefill sources the caller may bind (connector.use). */
   async sources(auth: AuthContext): Promise<ConnectorSource[]> {
     const views = await this.list(auth);
+    const all = new Map<string, string[]>(views.flatMap((v) => v.entities.map((e): [string, string[]] => [`/connectors/${v.ref}/${e.key}`, e.fields])));
     return views
       .filter((v) => v.permissions.use)
       .flatMap((v) =>
         v.entities
           .filter((e) => e.operations.includes('list'))
-          .map((e) => ({ key: `/connectors/${v.ref}/${e.key}`, name: `${v.name} · ${e.label}`, connectorId: v.id, params: e.fields, valueField: e.valueField || undefined, labelField: e.labelField || undefined })),
+          .map((e) => ({
+            key: `/connectors/${v.ref}/${e.key}`,
+            name: `${v.name} · ${e.label}`,
+            connectorId: v.id,
+            params: e.fields,
+            valueField: e.valueField || undefined,
+            labelField: e.labelField || undefined,
+            // The lists that come along with a row, and what each of their rows holds, so the builder can offer them.
+            ...(e.related?.length ? { related: e.related.map((r) => ({ name: r.name, fields: all.get(r.source) ?? [] })) } : {}),
+          })),
       );
   }
 
@@ -378,7 +405,23 @@ export class ConnectorsService implements OnModuleDestroy {
     if (!c || !entity) throw new NotFoundException(`No data source is available at ${key.slice(0, 100)}`);
     // Empty filters mean "any" (a parent dropdown not chosen yet).
     const filters = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined));
-    return (await this.run(c, entity, 'list', filters, actor)).rows;
+    const rows = (await this.run(c, entity, 'list', filters, actor)).rows;
+    // Related rows come along when a few rows were found (a look-up), never with a long list (a dropdown's options).
+    if (!entity.related?.length || !rows.length || rows.length > RELATED_FOR_AT_MOST) return rows;
+    return Promise.all(
+      rows.map(async (row) => {
+        const out: Record<string, unknown> = { ...row };
+        for (const r of entity.related) {
+          const m = SOURCE_KEY.exec(r.source);
+          const from = m ? (m[1] === c.ref ? c : await this.byRef(orgId, m[1]!)) : null;
+          const other = from?.entities.find((e) => e.key === m![2]);
+          const value = row[r.equals];
+          // Nothing to match on, or the other table is no longer exposed: an empty list, not a failed look-up.
+          out[r.name] = !from || !other || !other.operations.includes('list') || value === null || value === undefined || value === '' || typeof value === 'object' ? [] : (await this.run(from, other, 'list', { [r.field]: value }, actor, RELATED_LIMITS)).rows;
+        }
+        return out;
+      }),
+    );
   }
 
   /** The signed-in preview in the builder: only sources the caller may use. */

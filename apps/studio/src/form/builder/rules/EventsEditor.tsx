@@ -61,11 +61,17 @@ function Pairs({ label, left, right, value, onChange }: { label: string; left: s
  * section, then say which property of a row goes into which of its questions.
  */
 function RowsFromLookup({ action, fields, onChange }: { action: Extract<FormEventAction, { type: 'FETCH' }>; fields: FormField[]; onChange: (action: FormEventAction) => void }) {
+  const { data: sources = [] } = useDataSources();
   const repeats = fields.filter((f) => f.type === 'REPEAT');
   if (!repeats.length && !action.rows) return null;
   const section = repeats.find((f) => f.name === action.rows?.into);
   const questions = section ? fields.filter((f) => f.parentId === section.id && isValueField(f)) : [];
   const NONE = '__none__';
+  const OWN = '__own__';
+  // Lists the source brings along with the row it finds (a customer's orders), set up on the connector.
+  const related = sources.find((x) => x.key === action.source.url.split('?')[0])?.related ?? [];
+  const list = related.find((r) => r.name === action.rows?.from);
+  const known = action.rows?.from ? (list?.fields ?? []) : (sources.find((x) => x.key === action.source.url.split('?')[0])?.params ?? []);
   return (
     <div className="fb-settings" style={{ gap: 6 }} role="group" aria-label="Fill rows">
       <span className="fb-setting__label">Also fill the rows of</span>
@@ -78,7 +84,24 @@ function RowsFromLookup({ action, fields, onChange }: { action: Extract<FormEven
           onChange(into === NONE ? rest : { ...rest, rows: { into, set: {} } });
         }}
       />
-      {section && <span className="fb-setting__hint">One row for each row that comes back. Say which property goes into which question.</span>}
+      {section && (related.length > 0 || action.rows?.from) && (
+        <ChoiceSelect
+          ariaLabel="Where the rows come from"
+          value={action.rows?.from ?? OWN}
+          options={[
+            { label: 'The rows the look-up returns', value: OWN },
+            ...related.map((r) => ({ label: `The "${r.name}" that belong to the row it finds`, value: r.name })),
+            ...(action.rows?.from && !list ? [{ label: `"${action.rows.from}" of the row it finds`, value: action.rows.from }] : []),
+          ]}
+          onChange={(from) => onChange({ ...action, rows: { into: section.name, set: {}, ...(from === OWN ? {} : { from }) } })}
+        />
+      )}
+      {section && (
+        <span className="fb-setting__hint">
+          {action.rows?.from ? `One row for each of the "${action.rows.from}".` : 'One row for each row that comes back.'} Say which property goes into which question.
+          {known.length > 0 ? ` A row holds: ${known.slice(0, 30).join(', ')}.` : ''}
+        </span>
+      )}
       {section &&
         questions.map((q) => (
           <div key={q.name} className="flex items-center gap-2">
@@ -95,7 +118,7 @@ function RowsFromLookup({ action, fields, onChange }: { action: Extract<FormEven
                 const set = { ...(action.rows?.set ?? {}) };
                 if (e.target.value) set[q.name] = e.target.value;
                 else delete set[q.name];
-                onChange({ ...action, rows: { into: section.name, set } });
+                onChange({ ...action, rows: { ...action.rows, into: section.name, set } });
               }}
             />
           </div>

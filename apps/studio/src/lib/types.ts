@@ -111,6 +111,8 @@ export interface FormSummary {
   publishedVersion: number | null;
   /** A version is live and open to anyone with its link. */
   publicLink?: boolean;
+  /** The live version opens filled from a record a link is made for: the name of what identifies the record. */
+  recordLink?: string;
   updatedAt: string;
   permissions: Permission[];
   publishAt?: string | null;

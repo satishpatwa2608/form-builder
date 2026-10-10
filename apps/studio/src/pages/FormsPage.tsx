@@ -1,10 +1,11 @@
 import { useAuth } from '../lib/auth';
 import { copyEmbedCode, copyPublicFormLink, publicFormUrl } from '../form/links';
+import { MakeRecordLink } from '../form/builder/components/OpenWithSetting';
 import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, fieldsFromPdfFields, type ImportedFields, type SourceField } from '@fb/engine';
 import { FormVersions } from '../components/FormVersions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Archive, Code2, Download, ExternalLink, FilePlus2, FolderInput, GitBranchPlus, History, Inbox, Link2, Rocket, Trash2, Upload, X } from 'lucide-react';
+import { Archive, Code2, Download, ExternalLink, FileKey2, FilePlus2, FolderInput, GitBranchPlus, History, Inbox, Link2, Rocket, Trash2, Upload, X } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAction, useFolders, useForms } from '../lib/queries';
 import type { Folder, FormStatus, FormSummary } from '../lib/types';
@@ -297,6 +298,7 @@ export default function FormsPage() {
   const [creating, setCreating] = useState(false);
   // By form code, not version id: restoring or publishing gives the form a new latest version, and the panel should stay open.
   const [openVersions, setOpenVersions] = useState<string>();
+  const [linkFor, setLinkFor] = useState<string>();
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string }>();
   const feedback = (text: string) => ({ onSuccess: () => setMessage({ tone: 'success', text }), onError: (e: Error) => setMessage({ tone: 'error', text: errorMessage(e) }) });
   const act = useAction((a: { id: string; path: string }) => api(`/forms/${a.id}/${a.path}`, { method: 'POST' }), [['forms'], ['form-versions']]);
@@ -434,6 +436,11 @@ export default function FormsPage() {
                               <FormVersions form={f} canEdit={edit} />
                             </div>
                           )}
+                          {linkFor === f.code && f.recordLink !== undefined && (
+                            <div style={{ marginTop: 8, maxWidth: 520 }}>
+                              <MakeRecordLink form={{ id: f.id, orgId: me?.org.id ?? '', code: f.code }} what={f.recordLink} />
+                            </div>
+                          )}
                         </td>
                         <td className="st-muted st-col-wide">{folderLabel(all, f.folderId)}</td>
                         <td>
@@ -469,6 +476,11 @@ export default function FormsPage() {
                                 <a className="st-btn st-btn--ghost st-btn--sm" href={publicFormUrl(me?.org.id ?? '', f.code)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${f.name} as people see it`} title="Open the form as people see it">
                                   <ExternalLink size={14} />
                                 </a>
+                                {f.recordLink !== undefined && (
+                                  <Button variant="ghost" size="sm" aria-label={`Link for a record, for ${f.name}`} aria-expanded={linkFor === f.code} title="Make a link that opens this form filled from one record" onClick={() => setLinkFor(linkFor === f.code ? undefined : f.code)}>
+                                    <FileKey2 size={14} /> Link for a record
+                                  </Button>
+                                )}
                                 {/* Putting it on a website is for forms anyone may fill in. */}
                                 {f.publicLink && (
                                   <Button variant="ghost" size="sm" aria-label={`Copy the embed code for ${f.name}`} title="Copy a line of HTML that puts this form on your own website" onClick={() => void copyEmbedCode(me?.org.id ?? '', f.code)}>

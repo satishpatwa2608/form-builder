@@ -115,6 +115,11 @@ export interface FetchSource {
 export interface FetchRows {
   into: string;
   set: Record<string, string>;
+  /**
+   * Where the rows are: left out, they are the rows the look-up itself returns; named, they are a list held by
+   * the first row (the related rows a source brings along: a customer's `orders`).
+   */
+  from?: string;
 }
 
 export type FormEventAction =

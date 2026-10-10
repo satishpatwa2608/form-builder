@@ -18,6 +18,8 @@ interface ExposedEntity {
   valueField: string;
   labelField: string;
   about?: SourceField[];
+  /** Rows of other tables that belong to a row of this one, brought along with a look-up. */
+  related?: { name: string; source: string; field: string; equals: string }[];
 }
 interface ConnectorView {
   id: string;
@@ -369,6 +371,12 @@ function ExposeEditor({ c, onSaved }: { c: ConnectorView; onSaved: (msg: string)
       return next;
     });
   const patch = (key: string, p: Partial<ExposedEntity>) => setDraft((d) => ({ ...d, [key]: { ...d[key]!, ...p } }));
+  // Tables whose rows can belong to a row of another: this connector's as they are being set here, and those already saved on the others.
+  const others = (qc.getQueryData<ConnectorView[]>(['connectors']) ?? []).filter((x) => x.id !== c.id);
+  const tables = [
+    ...Object.values(draft).map((e) => ({ source: `/connectors/${c.ref}/${e.key}`, label: e.label, fields: e.fields, listed: e.operations.includes('list') })),
+    ...others.flatMap((x) => x.entities.map((e) => ({ source: `/connectors/${x.ref}/${e.key}`, label: `${x.name} · ${e.label}`, fields: e.fields, listed: e.operations.includes('list') }))),
+  ].filter((t) => t.listed);
 
   return (
     <div className="st-stack">
@@ -436,6 +444,7 @@ function ExposeEditor({ c, onSaved }: { c: ConnectorView; onSaved: (msg: string)
                       </select>
                     ))}
                   </div>
+                  <RelatedRows entity={d} tables={tables.filter((t) => t.source !== `/connectors/${c.ref}/${d.key}`)} onChange={(related) => patch(e.key, { related })} />
                 </div>
               )}
             </div>
@@ -448,6 +457,79 @@ function ExposeEditor({ c, onSaved }: { c: ConnectorView; onSaved: (msg: string)
           Save what's exposed
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * "A customer has many orders": rows of another table that belong to a row of this one. When a form looks a row
+ * up, they come along under the name given here, and can fill a repeating section.
+ */
+function RelatedRows({ entity, tables, onChange }: { entity: ExposedEntity; tables: { source: string; label: string; fields: string[] }[]; onChange: (related: NonNullable<ExposedEntity['related']>) => void }) {
+  const related = entity.related ?? [];
+  const set = (i: number, p: Partial<NonNullable<ExposedEntity['related']>[number]>) => onChange(related.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  const start = () => {
+    const first = tables[0];
+    if (!first) return;
+    // The likeliest match: a field of the other table with the same name as one of this table's.
+    const shared = first.fields.find((f) => entity.fields.includes(f));
+    onChange([...related, { name: first.source.split('/').pop()!.replace(/[^A-Za-z0-9_]/g, '_').replace(/^[^A-Za-z_]+/, '') || 'rows', source: first.source, field: shared ?? first.fields[0] ?? '', equals: shared ?? entity.keyField ?? entity.fields[0] ?? '' }]);
+  };
+  return (
+    <div className="st-stack" style={{ gap: 6 }} role="group" aria-label={`Rows related to ${entity.key}`}>
+      <span className="st-muted" style={{ fontSize: 12 }}>
+        Related rows{related.length ? '' : ': none. Add them when rows of another table belong to a row of this one (a customer\'s orders), so one look-up brings both.'}
+      </span>
+      {related.map((r, i) => {
+        const table = tables.find((t) => t.source === r.source);
+        return (
+          <div key={i} className="st-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 13 }}>The rows of</span>
+            <select className="st-select" style={{ width: 220, height: 32 }} aria-label={`Related table ${i + 1} of ${entity.key}`} value={r.source} onChange={(ev) => set(i, { source: ev.target.value, field: tables.find((t) => t.source === ev.target.value)?.fields[0] ?? '' })}>
+              {!table && <option value={r.source}>No longer exposed</option>}
+              {tables.map((t) => (
+                <option key={t.source} value={t.source}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <span style={{ fontSize: 13 }}>whose</span>
+            <select className="st-select" style={{ width: 160, height: 32 }} aria-label={`Their field, related table ${i + 1} of ${entity.key}`} value={r.field} onChange={(ev) => set(i, { field: ev.target.value })}>
+              {(table?.fields ?? [r.field]).map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <span style={{ fontSize: 13 }}>is this row's</span>
+            <select className="st-select" style={{ width: 160, height: 32 }} aria-label={`This table's field, related table ${i + 1} of ${entity.key}`} value={r.equals} onChange={(ev) => set(i, { equals: ev.target.value })}>
+              {entity.fields.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <span style={{ fontSize: 13 }}>, called</span>
+            <input
+              className="st-input"
+              style={{ width: 140, height: 32 }}
+              aria-label={`Name of related rows ${i + 1} of ${entity.key}`}
+              value={r.name}
+              onChange={(ev) => set(i, { name: ev.target.value.replace(/[^A-Za-z0-9_]/g, '').replace(/^[^A-Za-z_]+/, '').slice(0, 40) })}
+            />
+            <Button variant="ghost" size="sm" aria-label={`Remove related rows ${i + 1} of ${entity.key}`} onClick={() => onChange(related.filter((_, j) => j !== i))}>
+              <X size={14} />
+            </Button>
+          </div>
+        );
+      })}
+      {tables.length > 0 && related.length < 5 && (
+        <div>
+          <Button size="sm" variant="ghost" onClick={start}>
+            <Plus size={14} /> Add related rows
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -98,7 +98,7 @@ const eventActionSchema: z.ZodType<FormEventAction> = z.union([
     type: z.literal('FETCH'),
     source: fetchSourceSchema,
     set: z.record(z.string(), z.string().min(1).max(100)),
-    rows: z.object({ into: z.string().min(1), set: z.record(z.string(), z.string().min(1).max(100)) }).optional(),
+    rows: z.object({ into: z.string().min(1), set: z.record(z.string(), z.string().min(1).max(100)), from: z.string().min(1).max(100).optional() }).optional(),
   }),
   z.object({ type: z.literal('SHOW_MESSAGE'), message: z.string().min(1).max(500) }),
   z.object({ type: z.literal('REDIRECT'), url: z.string().min(1).max(500) }),
@@ -884,6 +884,36 @@ const EVENT_ACTIONS: Record<string, ReadonlySet<FormEventAction['type']>> = {
   SUBMIT_ERROR: new Set(['SHOW_MESSAGE']),
 };
 
+/** A form that opens filled from a record: the record must be findable, and what it fills must be questions of this form. */
+function checkOpenWith(def: FormDefinition, ctx: z.RefinementCtx) {
+  const open = def.openWith;
+  if (!open) return;
+  const issue = (message: string) => ctx.addIssue({ code: 'custom', path: ['openWith'], message: `Opens with a record: ${message}` });
+  const byName = new Map(def.fields.map((f) => [f.name, f]));
+  if (!open.source.trim()) issue('choose where the record is');
+  if (!open.param) issue('choose the field the record is found by');
+  if (open.by !== 'LINK' && def.access !== 'AUTHENTICATED') issue('finding the record by the person who is signed in needs a form that asks people to sign in');
+  if (open.only && open.by !== 'LINK') issue('"only from a link" goes with a link made for each record');
+  if (!Object.keys(open.set).length && !open.rows?.length) issue('choose at least one question to fill in');
+  for (const name of Object.keys(open.set)) {
+    const target = byName.get(name);
+    if (!target) issue(`"${name}" is not a question of this form`);
+    else if (!isValueField(target) || target.type === 'FILE' || target.type === 'SIGNATURE' || target.type === 'CAPTCHA' || isRepeat(target)) issue(`"${target.label || name}" cannot be filled from a record`);
+  }
+  for (const rows of open.rows ?? []) {
+    const section = byName.get(rows.into);
+    const repeat = section && isRepeat(section) ? formShape(def.fields).repeats.find((r) => r.field.id === section.id) : undefined;
+    if (!repeat) issue(`"${rows.into}" is not a repeating section`);
+    else {
+      if (!rows.from) issue(`say which of the record's lists fills "${section!.label || section!.name}"`);
+      if (!Object.keys(rows.set).length) issue(`choose at least one question of "${section!.label || section!.name}" to fill in`);
+      for (const name of Object.keys(rows.set)) if (!repeat.valueChildren.some((c) => c.name === name)) issue(`"${name}" is not a question of "${section!.label || section!.name}"`);
+    }
+  }
+  const filled = new Set([...Object.keys(open.set), ...(open.rows ?? []).map((r) => r.into)]);
+  for (const name of open.lock ?? []) if (!filled.has(name)) issue(`"${name}" is kept as the record says, but the record does not fill it`);
+}
+
 function checkEvents(def: FormDefinition, ctx: z.RefinementCtx) {
   const byName = new Map(def.fields.map((f) => [f.name, f]));
   const names = new Set(byName.keys());
@@ -995,6 +1025,17 @@ const formDefinitionShapeObject = z.object({
   timeZone: z.string().max(64).optional(),
   saveForLater: z.boolean().optional(),
   saveAsYouGo: z.boolean().optional(),
+  openWith: z
+    .object({
+      source: z.string().min(1).max(200),
+      param: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,62}$/).or(z.literal('')),
+      by: z.enum(['LINK', 'USER_EMAIL', 'EMPLOYEE_ID']),
+      set: z.record(z.string().max(100), z.string().min(1).max(100)),
+      rows: z.array(z.object({ into: z.string().min(1), set: z.record(z.string(), z.string().min(1).max(100)), from: z.string().min(1).max(100).optional() })).max(5).optional(),
+      lock: z.array(z.string().max(100)).max(100).optional(),
+      only: z.boolean().optional(),
+    })
+    .optional(),
   startedFrom: z.object({ table: z.string().max(200), name: z.string().max(200), leftOut: z.array(z.string().max(100)).max(500).optional() }).optional(),
   listOnPortal: z.boolean().optional(),
   languages: z.object({ default: languageCode, others: z.array(languageCode).max(20) }).optional(),
@@ -1079,6 +1120,7 @@ export const formDefinitionSchema: z.ZodType<FormDefinition> = formDefinitionSha
   checkFields(def.fields, ctx);
   checkRules(def, ctx);
   checkEvents(def, ctx);
+  checkOpenWith(def, ctx);
   for (const key of ['opensAt', 'closesAt'] as const) {
     if (def[key] !== undefined && Number.isNaN(Date.parse(def[key]!))) ctx.addIssue({ code: 'custom', path: [key], message: 'Not a date and time' });
   }

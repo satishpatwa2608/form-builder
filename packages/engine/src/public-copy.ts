@@ -14,5 +14,7 @@ export type PublicFormDefinition = Omit<FormDefinition, (typeof SERVER_ONLY)[num
 export function publicCopy(def: FormDefinition): PublicFormDefinition {
   const copy: Record<string, unknown> = { ...def };
   for (const key of SERVER_ONLY) delete copy[key];
+  // Where a form's opening answers come from stays on the server; the page only learns that there are some to ask for.
+  if (def.openWith) copy.openWith = { by: def.openWith.by, ...(def.openWith.only ? { only: true } : {}) };
   return copy as unknown as PublicFormDefinition;
 }

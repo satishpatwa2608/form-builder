@@ -11,6 +11,7 @@ import { isPlainObject } from '../../forms/payload-guard';
 import { countedFields } from '../../forms/counted-fields';
 import { FormContextService } from '../services/form-context.service';
 import { DataSourceQueryService } from '../services/data-source-query.service';
+import { OpenWithService } from '../services/open-with.service';
 import { FormSubmissionService, SubmitBody } from '../services/form-submission.service';
 import { FormUploadService } from '../services/form-upload.service';
 import { FormThrottlerGuard } from './form-throttler.guard';
@@ -38,6 +39,7 @@ export class FormPublicController {
     private readonly plans: PlansService,
     private readonly drafts: DraftsService,
     private readonly portal: PortalService,
+    private readonly openWith: OpenWithService,
   ) {}
 
   // Static routes first.
@@ -96,6 +98,28 @@ export class FormPublicController {
       closesAt: def.closesAt,
       message: state === 'CLOSED' ? def.closedMessage : undefined,
     });
+  }
+
+  /**
+   * The answers a form opens with, when it opens filled from a record: read on the server from the record the
+   * link (or the signed-in person) stands for. Only the mapped answers are returned, never the record.
+   */
+  @Get('forms/:code/opens-with')
+  @Throttle({ default: THROTTLE.read })
+  async opensWith(@Query('org') org: string, @Param('code') code: string, @Query('fill') fill?: string, @Headers('authorization') auth?: string) {
+    const orgId = await this.context.resolveOrgId(org);
+    const user = await this.context.optionalUser(auth);
+    const def = await this.submissions.publishedFor(orgId, code, user, 'show');
+    if (formAvailability(def) !== 'OPEN') return apiResponse(true, 200, 'Form is not open', { values: {}, found: false, locked: [] });
+    try {
+      return apiResponse(true, 200, 'Answers fetched', await this.openWith.answers(def, { fill, user }));
+    } catch (e) {
+      // A form that opens only from a link says why it cannot. One that can also be filled by hand must not be
+      // stopped by the other system being down: it opens empty, and says the record could not be read.
+      if (def.openWith?.only) throw e;
+      orgLog.warn(orgId, 'connectors', `${def.name}: could not read the record it opens with`, { form: def.code });
+      return apiResponse(true, 200, 'The record could not be read', { values: {}, found: false, locked: [], unavailable: true });
+    }
   }
 
   @Post('forms/:code/submissions')

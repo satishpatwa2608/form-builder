@@ -67,6 +67,7 @@ import { FormSubmission, FormSubmissionSchema } from './work/schemas/form-submis
 import { FormRateLimit, FormRateLimitSchema, FormUpload, FormUploadSchema } from './work/schemas/upload.schema';
 import { CaptchaVerifierService } from './work/services/captcha-verifier.service';
 import { DataSourceQueryService } from './work/services/data-source-query.service';
+import { OpenWithService } from './work/services/open-with.service';
 import { FormAutomationService } from './work/services/form-automation.service';
 import { Job, JobSchema } from './jobs/job.schema';
 import { SharedWorkflowRow, SharedWorkflowSchema } from './workflows/workflow.schema';
@@ -301,6 +302,7 @@ export class AppModule {
         NotificationsService,
         FormContextService,
         DataSourceQueryService,
+        OpenWithService,
         CaptchaVerifierService,
         FormUploadService,
         FormSubmissionService,

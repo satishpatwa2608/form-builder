@@ -18,6 +18,12 @@ async function uploadFile(def: FormDefinition, fieldName: string, file: File): P
   return { uploadId: ticket.uploadId };
 }
 
+/** The link this page was opened with, when the form opens filled from a record: sent back with the answers so the server can read the record again. */
+let fillLink: string | undefined;
+export const rememberFillLink = (link: string | undefined) => {
+  fillLink = link;
+};
+
 /** Real submissions: files first (the submission refers to verified uploads), one idempotency key per attempt. */
 export const httpSubmissionAdapter: SubmissionAdapter = {
   async submit({ definition, payload, values, systemContext }) {
@@ -27,7 +33,7 @@ export const httpSubmissionAdapter: SubmissionAdapter = {
         const files = Array.isArray(values[f.name]) ? (values[f.name] as unknown[]) : [];
         body[f.name] = await Promise.all(files.filter((x): x is File => x instanceof File).map((file) => uploadFile(definition, f.name, file)));
       }
-      const send = { values: body, idempotencyKey: crypto.randomUUID(), channel: systemContext.sourceChannel, urlParams: systemContext.urlParams, timeZone: systemContext.timeZone, language: systemContext.language, proofs: proofsFor(definition, values) };
+      const send = { ...(fillLink ? { fill: fillLink } : {}), values: body, idempotencyKey: crypto.randomUUID(), channel: systemContext.sourceChannel, urlParams: systemContext.urlParams, timeZone: systemContext.timeZone, language: systemContext.language, proofs: proofsFor(definition, values) };
       const at = (what: string) => `/forms/${encodeURIComponent(definition.code)}/${what}?org=${encodeURIComponent(definition.orgId)}`;
       type Done = { submissionId: string; ref?: string; payload: FormValues };
       let data: Done;

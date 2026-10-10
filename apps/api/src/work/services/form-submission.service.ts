@@ -40,6 +40,7 @@ import { FormSubmission, FormSubmissionDocument } from '../schemas/form-submissi
 import type { FormUpload } from '../schemas/upload.schema';
 import { FormDefinitionService } from './form-definition.service';
 import { DataSourceQueryService } from './data-source-query.service';
+import { OpenWithService } from './open-with.service';
 import { ExtensionsService } from '../../extensions/extensions.service';
 import { CaptchaVerifierService } from './captcha-verifier.service';
 import { FormUploadService } from './form-upload.service';
@@ -58,6 +59,8 @@ export interface SubmitBody {
   language?: unknown;
   /** For each field confirmed with a one-time code, the proof the check returned (verify/verify.service.ts). */
   proofs?: unknown;
+  /** The link the form was opened with, when it opens filled from a record (open-with.service.ts). */
+  fill?: unknown;
 }
 
 /** The payment a response came with (payments/payments.service.ts). */
@@ -105,6 +108,7 @@ export class FormSubmissionService {
     private readonly records: FormRecordService,
     private readonly extensions: ExtensionsService,
     private readonly verify: VerifyService,
+    private readonly openWith: OpenWithService,
   ) {
     // Sensitive answers are sealed with the installation's key as they are saved, and opened as they are read.
     useSealingKey(new SecretBox(Buffer.from(config.SECRET_KEY, 'base64')));
@@ -207,6 +211,12 @@ export class FormSubmissionService {
       // Locked prefill for a signed-in person: the real value wins over whatever was sent.
       const locked = f.prefill?.lock ? prefillValue(f, ctx) : undefined;
       if (locked !== undefined) values[f.name] = locked;
+    }
+    // A form that opens filled from a record: what is to stay as the record says is read from the record again
+    // (never taken from the browser), and a form that opens only from a link is not sent without one.
+    if (OpenWithService.matters(def) && opts.source !== 'MODULE') {
+      const opened = await this.openWith.answers(def, { fill: body.fill, user });
+      for (const name of opened.locked) values[name] = opened.values[name];
     }
 
     // 4. CAPTCHA before any heavier work (bots stop here). Trusted callers have no widget to solve.

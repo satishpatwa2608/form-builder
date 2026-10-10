@@ -13,8 +13,6 @@ import {
   buildZodSchema,
   childrenOf,
   clickableButtons,
-  formShape,
-  MAX_ROWS,
   watchedFields,
   coerceToField,
   computeFormState,
@@ -34,6 +32,8 @@ import {
   localize,
   pickLanguage,
   uiText,
+  readOwnPath,
+  sectionRows,
 } from '../../engine';
 import { defaultSubmissionAdapter, type SubmissionAdapter } from '../../adapters/submission/submission-adapter';
 import { defaultDataSourceAdapter, type DataSourceAdapter } from '../../adapters/data-source/data-source-adapter';
@@ -77,6 +77,8 @@ export interface FormRuntimeProps {
   initialValues?: FormValues;
   /** Keep the form (with its values) after a successful submit instead of showing the success screen. */
   stayOnSubmit?: boolean;
+  /** Questions (and repeating sections) shown but not changeable: answers the form opened with that are kept as the record has them. */
+  lockedFields?: string[];
 }
 
 export interface FormContainerProps extends FormRuntimeProps {
@@ -143,14 +145,6 @@ function useDependencyReset(
   }, [values, children, definition, form, skipNext]);
 }
 
-/** `a.b.c` in a fetched row, reading only what the row itself holds. */
-function readOwnPath(row: Record<string, unknown>, path: string): unknown {
-  return path.split('.').reduce<unknown>(
-    (at, key) => (at && typeof at === 'object' && Object.prototype.hasOwnProperty.call(at, key) ? (at as Record<string, unknown>)[key] : undefined),
-    row,
-  );
-}
-
 function browserTimeZone(): string | undefined {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -201,6 +195,7 @@ function FormRuntime({
   liveStyles,
   initialValues,
   stayOnSubmit = false,
+  lockedFields,
 }: FormRuntimeProps & { definition: FormDefinition }) {
   const containerRef = useRef<HTMLFormElement>(null);
   // The form in the language it is being shown in: wording only; names, values and rules are the same in every language.
@@ -402,24 +397,9 @@ function FormRuntime({
             const [row] = found;
             if (!row) setNotice(ui('lookupNone'));
             else for (const [name, path] of Object.entries(action.set)) fill(name, readOwnPath(row, path));
-            // One row of the repeating section for each row that came back, within the section's own limit.
-            const section = action.rows && definition.fields.find((f) => f.name === action.rows!.into && f.type === 'REPEAT');
-            if (action.rows && section && row) {
-              const children = formShape(definition.fields).repeats.find((r) => r.field.id === section.id)?.valueChildren ?? [];
-              const most = Math.min(section.validation?.max ?? MAX_ROWS, MAX_ROWS);
-              form.setValue(
-                section.name,
-                found.slice(0, most).map((r) =>
-                  Object.fromEntries(
-                    Object.entries(action.rows!.set).flatMap(([name, path]) => {
-                      const child = children.find((c) => c.name === name);
-                      return child ? [[name, coerceToField(readOwnPath(r, path), child)]] : [];
-                    }),
-                  ),
-                ),
-                { shouldDirty: true },
-              );
-            }
+            // One row of the repeating section for each row that came back (or for each related row the first one brings), within the section's own limit.
+            const filled = row ? sectionRows(definition.fields, found, action.rows) : undefined;
+            if (filled) form.setValue(filled.name, filled.rows, { shouldDirty: true });
           } catch {
             setNotice(ui('lookupFailed'));
           }
@@ -624,7 +604,7 @@ function FormRuntime({
   formActions.current = { focus: focusField, reset: resetForm, submit: () => onSubmit({ preventDefault: () => undefined } as FormEvent) };
 
   // Switched off by a rule, or filled in by one: either way not for typing into.
-  const readOnly = useMemo(() => new Set([...formState.disabled, ...formState.calculated]), [formState]);
+  const readOnly = useMemo(() => new Set([...formState.disabled, ...formState.calculated, ...(lockedFields ?? [])]), [formState, lockedFields]);
 
   const clickable = useMemo(() => clickableButtons(definition), [definition]);
   const onButtonClick = useCallback((name: string) => runEvent({ type: 'CLICK', field: name }), [runEvent]);

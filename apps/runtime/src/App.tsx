@@ -6,7 +6,7 @@ import { isRtl, languageName, languagesOf, localize, pickLanguage, uiText } from
 import { FormContainer } from '@form/runtime/FormContainer/FormContainer';
 import { API_URL, publicApi, trySession } from './api';
 import { createVisit } from './visit';
-import { httpSubmissionAdapter, publicDataSourceAdapter } from './adapters';
+import { httpSubmissionAdapter, publicDataSourceAdapter, rememberFillLink } from './adapters';
 
 /** Messages an embedding page can listen for when the form runs in an iframe (`?embed=1`). */
 export const EMBED_MESSAGE = { submitted: 'form-builder:submitted', resize: 'form-builder:resize' } as const;
@@ -99,7 +99,7 @@ export default function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const embed = params.get('embed') === '1';
   const [target, setTarget] = useState<{ org: string; code: string } | null>();
-  const [state, setState] = useState<{ loading: boolean; definition?: FormDefinition; unavailable?: Unavailable; error?: string; session?: Session; initialValues?: FormValues; resumed?: boolean; /** The answers came back from this device's own draft. */ kept?: boolean }>({ loading: true });
+  const [state, setState] = useState<{ loading: boolean; definition?: FormDefinition; unavailable?: Unavailable; error?: string; session?: Session; initialValues?: FormValues; resumed?: boolean; /** The answers came back from this device's own draft. */ kept?: boolean; /** The form opened filled from a record: which answers are kept as it has them. */ opened?: { locked: string[]; filled: boolean; unavailable: boolean } }>({ loading: true });
   const [branding, setBranding] = useState<Branding>();
   const pageRef = useRef<HTMLDivElement>(null);
   const values = useRef<FormValues>({});
@@ -139,6 +139,25 @@ export default function App() {
             setDraft({ error: (e as Error).message });
           }
         }
+        // A form that opens filled from a record: the server reads the record and gives the answers it may show.
+        let opened: { locked: string[]; filled: boolean; unavailable: boolean } | undefined;
+        if (definition.openWith) {
+          const link = params.get('fill') ?? undefined;
+          const got = await publicApi<{ values: FormValues; found: boolean; locked: string[]; unavailable?: boolean }>(
+            `/forms/${target.code}/opens-with?org=${encodeURIComponent(target.org)}${link ? `&fill=${encodeURIComponent(link)}` : ''}`,
+          );
+          rememberFillLink(got.found ? link : undefined);
+          // Answers saved earlier come back as they were, except those the record decides.
+          initialValues = { ...got.values, ...initialValues, ...Object.fromEntries(got.locked.map((name) => [name, got.values[name]])) } as FormValues;
+          opened = { locked: got.locked, filled: got.found, unavailable: !!got.unavailable };
+          if (link) {
+            // Out of the address bar once used, like a link to saved answers.
+            const url = new URL(window.location.href);
+            url.searchParams.delete('fill');
+            window.history.replaceState(null, '', url.toString());
+          }
+        }
+        const fromRecord = !!opened?.filled;
         let kept = false;
         if (definition.saveAsYouGo && definition.saveForLater !== false && !embed) {
           const start = () =>
@@ -160,7 +179,7 @@ export default function App() {
             }
           }
         }
-        setState({ loading: false, definition, session: session?.orgId === target.org ? session : null, initialValues, resumed: !!initialValues && !kept, kept });
+        setState({ loading: false, definition, session: session?.orgId === target.org ? session : null, initialValues, resumed: !!initialValues && !kept && !fromRecord, kept, opened });
         if (resumeToken) {
           // Out of the address bar (and so out of Referer headers) once used.
           const url = new URL(window.location.href);
@@ -335,7 +354,10 @@ export default function App() {
           </p>
         )}
         {draft.error && <p className="rt-banner rt-banner--error">{draft.error}</p>}
+        {state.opened?.filled && <p className="rt-banner rt-banner--kept">{ui('openedFilled')}</p>}
+        {state.opened?.unavailable && <p className="rt-banner rt-banner--error">{ui('openedEmpty')}</p>}
         <FormContainer
+          lockedFields={state.opened?.locked}
           definition={state.definition}
           systemContext={systemContext}
           submissionAdapter={httpSubmissionAdapter}

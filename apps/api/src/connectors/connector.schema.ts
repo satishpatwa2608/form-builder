@@ -19,6 +19,21 @@ export class ExposedEntity {
    */
   @Prop({ type: [{ name: String, type: { type: String }, nullable: Boolean, maxLength: Number, hasDefault: Boolean, min: Number, max: Number, minLength: Number, pattern: String, _id: false }], default: [] })
   about: { name: string; type?: string; nullable?: boolean; maxLength?: number; hasDefault?: boolean; min?: number; max?: number; minLength?: number; pattern?: string }[];
+  /**
+   * Rows of other tables that belong to a row of this one ("a customer has many orders"): the rows of `source`
+   * (any exposed table of the organisation, on this connector or another) whose `field` equals this row's
+   * `equals`. They come along under `name` when a look-up finds a handful of rows, so one look-up fills a
+   * form and its repeating section.
+   */
+  @Prop({ type: [{ name: String, source: String, field: String, equals: String, _id: false }], default: [] })
+  related: RelatedRows[];
+}
+
+export interface RelatedRows {
+  name: string;
+  source: string;
+  field: string;
+  equals: string;
 }
 
 @Schema({ _id: false })

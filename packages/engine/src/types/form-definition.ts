@@ -34,6 +34,8 @@ export interface FormDefinition {
    * the form's owner who says it suits their form. Needs `saveForLater` not to be off.
    */
   saveAsYouGo?: boolean;
+  /** The form opens already filled from a record, read on the server (see OpenWith). */
+  openWith?: OpenWith;
   /**
    * The connected table this form was started from (`<connector id>/<table>`), so the builder can say when
    * the table has gained columns. `leftOut` are columns the designer chose not to ask for.
@@ -134,3 +136,30 @@ export interface FormDefinition {
   createdAt?: string;
   updatedAt?: string;
 }
+
+/**
+ * A form that opens already filled from a record in one of the organisation's systems. The record is read on the
+ * server, and only the answers named in `set` and `rows` ever reach the browser, never the rest of the record.
+ */
+export interface OpenWith {
+  /** The data source the record is in: a key as a look-up's (`/connectors/<ref>/<table>`). */
+  source: string;
+  /** The source's field the record is found by. */
+  param: string;
+  /**
+   * Where that field's value comes from. LINK: a link made for one record, signed so it can be neither guessed
+   * nor changed. USER_EMAIL / EMPLOYEE_ID: the signed-in person's own.
+   */
+  by: 'LINK' | 'USER_EMAIL' | 'EMPLOYEE_ID';
+  /** Question -> property of the record. */
+  set: Record<string, string>;
+  /** Repeating sections filled from lists the record brings along (its related rows). */
+  rows?: import('./rules').FetchRows[];
+  /** Questions that stay as the record says: shown, not changeable, and put back by the server when the form is sent. */
+  lock?: string[];
+  /** LINK only: the form cannot be opened or sent without a link made for a record. */
+  only?: boolean;
+}
+
+/** What the browser is told about it: enough to ask for the answers and to know they may be locked, nothing about where they come from. */
+export type PublicOpenWith = Pick<OpenWith, 'by' | 'only'>;

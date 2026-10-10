@@ -27,6 +27,7 @@ export * from './working-time';
 export * from './definition.schema';
 export * from './diff';
 export * from './import-form';
+export * from './fill-from-row';
 export * from './shared-workflow';
 export * from './fragments';
 export * from './i18n';

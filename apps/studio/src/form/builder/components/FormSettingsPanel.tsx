@@ -10,6 +10,7 @@ import { VISIBLE_BORDER } from '../../runtime/styles';
 import { ColorSetting, SelectSetting, Setting, SwitchSetting, TextSetting } from './settings';
 import { MultiSelect } from '@ui/multiselect';
 import { OwnPdfSetting } from './OwnPdfSetting';
+import { OpenWithSetting } from './OpenWithSetting';
 
 /** A stored ISO time as the value of a date-and-time box (the person's own time zone), and back. */
 function toLocalInput(iso: string | undefined): string {
@@ -215,6 +216,7 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
             onChange={(closedMessage) => onChange({ closedMessage: closedMessage || undefined })}
           />
         )}
+        <OpenWithSetting form={form} onChange={(openWith) => onChange({ openWith })} />
         <SwitchSetting
           label="Let people save and continue later"
           hint="They get a private link to come back to their answers within 30 days."

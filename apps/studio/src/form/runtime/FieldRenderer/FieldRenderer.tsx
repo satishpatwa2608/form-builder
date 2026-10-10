@@ -19,7 +19,8 @@ export function FieldRenderer({ field }: { field: FormField }) {
   const state = states.get(key);
   if (state && !state.visible) return null;
   // Locked to the signed-in user, switched off by a rule, or calculated: read-only (the server enforces it too).
-  const locked = isPrefillLocked(field, systemContext) || readOnly.has(key);
+  // A repeating section kept as a record has it locks every answer in its rows.
+  const locked = isPrefillLocked(field, systemContext) || readOnly.has(key) || (!!row && readOnly.has(row.split('.')[0]!));
   const shown = row || locked ? { ...field, name: key, ...(locked ? { disabled: true } : {}) } : field;
 
   const Component = getFieldComponent(field.type) ?? UnsupportedField;

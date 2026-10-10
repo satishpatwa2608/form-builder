@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { Auth, type AuthContext } from '../auth/auth-context';
 import { idParam } from '../common/id-param';
 import { ZodBody } from '../common/zod-body';
 import { FormSubmissionService } from '../work/services/form-submission.service';
+import { FormDefinitionService } from '../work/services/form-definition.service';
+import { FILL_LINK_MAX_DAYS, OpenWithService } from '../work/services/open-with.service';
 import { PlansService } from '../plans/plans.service';
 import { FormsService } from './forms.service';
 
@@ -13,6 +15,7 @@ const createBody = z.object({ folderId: id, definition: z.record(z.string(), z.u
 const moveBody = z.object({ folderId: id });
 const importBody = z.object({ folderId: id, package: z.record(z.string(), z.unknown()), code: z.string().regex(/^[A-Z0-9_]{1,100}$/).optional() });
 const listQuery = z.object({ folderId: id.optional() });
+const fillLinkBody = z.object({ value: z.string().trim().min(1).max(200), days: z.number().int().min(1).max(FILL_LINK_MAX_DAYS).optional() });
 
 /** Permissions are checked per form (its folder) in FormsService, not per route. */
 @Controller('forms')
@@ -21,6 +24,8 @@ export class FormsController {
     private readonly forms: FormsService,
     private readonly submissions: FormSubmissionService,
     private readonly plans: PlansService,
+    private readonly openWith: OpenWithService,
+    private readonly definitions: FormDefinitionService,
   ) {}
 
   @Get()
@@ -84,6 +89,20 @@ export class FormsController {
   @Put(':id')
   update(@Auth() auth: AuthContext, @Param('id') formId: string, @Body() body: unknown) {
     return this.forms.update(auth, idParam(formId), body);
+  }
+
+  /**
+   * A link that opens the form filled from one record (the form's "Opens with a record" setting, found by a link).
+   * For people who may read the form's responses: what the link shows is that record's mapped answers.
+   */
+  @Post(':id/fill-links')
+  @HttpCode(200)
+  async fillLink(@Auth() auth: AuthContext, @Param('id') formId: string, @Body(new ZodBody(fillLinkBody)) body: z.infer<typeof fillLinkBody>) {
+    const code = await this.forms.assertCanReadSubmissions(auth, idParam(formId));
+    const def = await this.definitions.findPublished(auth.orgId, code);
+    if (!def?.openWith || def.openWith.by !== 'LINK') throw new BadRequestException('The published form does not open from a link made for a record. Set that under "Opens with a record" and publish it.');
+    const { token, expiresAt } = this.openWith.link(def, body.value, body.days ?? 30);
+    return { token, expiresAt, code: def.code };
   }
 
   @Post(':id/publish')

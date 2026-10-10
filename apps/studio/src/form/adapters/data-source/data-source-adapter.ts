@@ -118,6 +118,8 @@ export interface DataSourceInfo {
   list?: boolean;
   /** For a list that depends on another: that other list's name. */
   dependsOnName?: string;
+  /** Lists of related rows a row of this source brings along (a customer's orders), with what each of their rows holds. */
+  related?: { name: string; fields: string[] }[];
 }
 
 /** Tests: the organisation's lists as dropdown sources. */
@@ -132,11 +134,11 @@ export function useDataSources() {
     queryFn: async (): Promise<DataSourceInfo[]> => {
       if (!USE_API) return [...localListSources, ...MOCK_DATA_SOURCE_URLS.map((key) => ({ key, name: key }))];
       const { api } = await import('../../../lib/api');
-      type Source = { key: string; name: string; params: string[]; valueField?: string; labelField?: string; list?: boolean; dependsOnName?: string; description?: string };
+      type Source = { key: string; name: string; params: string[]; valueField?: string; labelField?: string; list?: boolean; dependsOnName?: string; description?: string; related?: { name: string; fields: string[] }[] };
       // Connector sources, then the lists the organisation's extension offers. Either may be absent.
       const [lists, connectors, extensions] = await Promise.all([api<Source[]>('/lists/sources').catch(() => []), api<Source[]>('/connectors/sources').catch(() => []), api<Source[]>('/extensions/sources').catch(() => [])]);
       // The organisation's own lists first: they are what most dropdowns want.
-      return [...lists, ...connectors, ...extensions].map((x) => ({ key: x.key, name: x.name, params: x.params, valueField: x.valueField, labelField: x.labelField, list: x.list, dependsOnName: x.dependsOnName, description: x.list ? x.description : undefined }));
+      return [...lists, ...connectors, ...extensions].map((x) => ({ key: x.key, name: x.name, params: x.params, valueField: x.valueField, labelField: x.labelField, list: x.list, dependsOnName: x.dependsOnName, description: x.list ? x.description : undefined, related: x.related }));
     },
     staleTime: 60_000,
     retry: false,
