@@ -19,10 +19,9 @@ jobs:
     env:
       # The API's one-second promise is measured on the product's own size of machine; this runner is smaller and shared.
       API_P95_BUDGET_MS: 2000
-      # Two outside checkers of the PDFs we make, which share no code with what makes them. Here they must run;
-      # on a developer's machine the tests that use them are skipped when they are not installed.
+      # An outside checker of the seals on our PDFs, which shares no code with what makes them. Here it must run;
+      # on a developer's machine the tests that use it are skipped when it is not installed.
       REQUIRE_PDFSIG: '1'
-      REQUIRE_VERAPDF: '1'
       # A real identity provider (Keycloak, started in a step below) for "sign in as a person" on a connector.
       KEYCLOAK_TEST: http://127.0.0.1:8088
     steps:
@@ -42,8 +41,8 @@ jobs:
       # Started first, so it is up by the time the tests want it. (It needs a command of its own, which a service cannot be given.)
       - run: docker run -d --name keycloak -p 8088:8080 -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.0 start-dev
       - run: pnpm install --frozen-lockfile
-      # pdfsig (poppler) checks the seal on a sealed PDF; veraPDF checks that an archival PDF really is PDF/A.
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils && pdfsig -v && docker pull -q verapdf/cli
+      # pdfsig (poppler) checks the seal on a sealed PDF.
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils && pdfsig -v
       # The API and gateway load these two packages from their build output.
       - run: pnpm --filter @fb/engine --filter @fb/connectors --filter @fb/sdk --filter @fb/gateway build
       - run: pnpm lint
@@ -57,6 +56,12 @@ jobs:
           docker logs keycloak 2>&1 | tail -30
           exit 1
       - run: pnpm test
+      # veraPDF checks that an archival PDF really is PDF/A. It is a heavy Java program, so it runs here, by itself,
+      # and not beside every other test (where it slowed the machine enough to make unrelated tests time out).
+      - name: Archival PDFs, checked by veraPDF
+        env:
+          REQUIRE_VERAPDF: '1'
+        run: docker pull -q verapdf/cli && pnpm --filter @fb/api exec jest src/documents/pdfa-validator test/signatures.e2e-spec.ts -t "archival"
       - run: pnpm test:infra
       - run: pnpm build
 
