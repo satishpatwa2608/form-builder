@@ -1444,3 +1444,61 @@
   font-size: 0.7rem;
   color: var(--muted-foreground, #6b7280);
 }
+
+/* An approval's two outcomes, side by side under it: each a short column of the steps that run only that way. */
+.fb-flow__fork {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 2px solid var(--border);
+}
+.fb-flow__branch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.fb-flow__branch--APPROVED {
+  border-color: #16a34a;
+}
+.fb-flow__branch--REJECTED {
+  border-color: #dc2626;
+}
+.fb-flow__branch-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.fb-flow__branch--APPROVED .fb-flow__branch-title {
+  color: #15803d;
+}
+.fb-flow__branch--REJECTED .fb-flow__branch-title {
+  color: #b91c1c;
+}
+.fb-flow__branch-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--background);
+  color: var(--primary);
+}
+.fb-flow__picker--branch {
+  grid-template-columns: 1fr;
+}
+@media (max-width: 720px) {
+  .fb-flow__fork {
+    grid-template-columns: 1fr;
+  }
+}

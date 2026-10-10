@@ -437,3 +437,57 @@ export const actionKeyFrom = (label: string) =>
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^[^a-z]+|_+$/g, '')
     .slice(0, 40) || 'action';
+
+/** The two ways an approval can end; each can have its own steps. */
+export type Decision = 'APPROVED' | 'REJECTED';
+export const DECISIONS: Decision[] = ['APPROVED', 'REJECTED'];
+export const DECISION_LABEL: Record<Decision, string> = { APPROVED: 'If approved', REJECTED: 'If rejected' };
+
+/** "Run only if that approval ended this way": what puts a step on a branch. Stored as an ordinary condition. */
+export const decisionIf = (approvalKey: string, decision: Decision) => ({ field: `$steps.${approvalKey}.decision`, operator: 'equals' as const, value: decision });
+
+/** The branch of an approval a step is on, from its "run only if": which approval (by key) and which way. */
+export function branchOf(step: AutomationAction): { approvalKey: string; decision: Decision } | undefined {
+  const c = step.if as { field?: unknown; operator?: unknown; value?: unknown } | undefined;
+  const m = typeof c?.field === 'string' ? /^\$steps\.([^.]+)\.decision$/.exec(c.field) : null;
+  if (!m || c?.operator !== 'equals' || (c.value !== 'APPROVED' && c.value !== 'REJECTED')) return undefined;
+  return { approvalKey: m[1]!, decision: c.value };
+}
+
+/** One box on the main line of a flow; an approval also carries the steps on each of its branches. */
+export interface FlowBlock {
+  index: number;
+  branches?: Record<Decision, number[]>;
+}
+
+/**
+ * How a flow is drawn. Steps still run top to bottom as one list; the steps straight after an approval that
+ * run only for one of its outcomes are drawn beside each other under it, as its two branches.
+ */
+export function flowBlocks(steps: AutomationAction[]): FlowBlock[] {
+  const blocks: FlowBlock[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]!;
+    if (step.type !== 'APPROVAL') {
+      blocks.push({ index: i });
+      continue;
+    }
+    const key = stepKey(step, i);
+    const branches: Record<Decision, number[]> = { APPROVED: [], REJECTED: [] };
+    let j = i + 1;
+    for (; j < steps.length; j++) {
+      const on = branchOf(steps[j]!);
+      if (on?.approvalKey !== key) break;
+      branches[on.decision].push(j);
+    }
+    blocks.push({ index: i, branches });
+    i = j - 1;
+  }
+  return blocks;
+}
+
+/** Where a new step on a branch goes in the list: after the last step already on any branch of that approval. */
+export function branchEnd(steps: AutomationAction[], approvalIndex: number): number {
+  const block = flowBlocks(steps).find((b) => b.index === approvalIndex);
+  return Math.max(approvalIndex, ...(block?.branches ? [...block.branches.APPROVED, ...block.branches.REJECTED] : [])) + 1;
+}

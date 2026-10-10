@@ -11,6 +11,13 @@ import { ActionEditor } from './ActionEditor';
 import {
   ACTION_LABEL,
   availableData,
+  branchEnd,
+  branchOf,
+  DECISION_LABEL,
+  DECISIONS,
+  decisionIf,
+  flowBlocks,
+  type Decision,
   insertStep,
   moveStep,
   newAutomation,
@@ -66,6 +73,7 @@ export function FlowEditor({ form, people, customWorkflows, startAt = 0, onChang
   const [current, setCurrent] = useState(startAt);
   const [selected, setSelected] = useState<Selected>({ kind: 'start' });
   const [pickerAt, setPickerAt] = useState<number | null>(null);
+  const [branchPick, setBranchPick] = useState<string | null>(null);
 
   const tracked = !!form.workflow?.enabled;
   const index = Math.min(current, Math.max(automations.length - 1, 0));
@@ -86,11 +94,12 @@ export function FlowEditor({ form, people, customWorkflows, startAt = 0, onChang
     setSelected({ kind: 'start' });
     setPickerAt(null);
   };
-  const addStep = (at: number, type: AutomationAction['type']) => {
+  const addStep = (at: number, type: AutomationAction['type'], onlyIf?: AutomationAction['if']) => {
     if (!flow) return;
-    setSteps(insertStep(flow.actions, at, newStep(type, form, flow.actions)));
+    setSteps(insertStep(flow.actions, at, { ...newStep(type, form, flow.actions), ...(onlyIf ? { if: onlyIf } : {}) }));
     setSelected({ kind: 'step', index: at });
     setPickerAt(null);
+    setBranchPick(null);
   };
 
   const stepTypes = (Object.keys(ACTION_LABEL) as AutomationAction['type'][]).filter((t) => !UNAVAILABLE_ACTIONS.has(t) && (tracked || !WORKFLOW_ONLY_ACTIONS.has(t)));
@@ -120,6 +129,81 @@ export function FlowEditor({ form, people, customWorkflows, startAt = 0, onChang
       )}
     </Fragment>
   );
+
+  // One step's box. Steps on an approval's branch are the same boxes, drawn under "If approved" / "If rejected".
+  const node = (i: number) => {
+    if (!flow) return null;
+    const step = flow.actions[i]!;
+    return (
+      <div key={`s${i}`} className={`fb-flow__node${selected.kind === 'step' && selected.index === i ? ' fb-flow__node--selected' : ''}`}>
+        <button type="button" className="fb-flow__select" onClick={() => setSelected({ kind: 'step', index: i })}>
+          <span className="fb-flow__icon">{STEP_ICON[step.type]}</span>
+          <span className="fb-flow__text">
+            <span className="fb-flow__title">
+              {i + 1}. {stepTitle(step)}
+            </span>
+            <span className="fb-flow__summary">{stepSummary(step, form, people, customWorkflows)}</span>
+            <span className="fb-flow__badges">
+              <span className="fb-code">{stepKey(step, i)}</span>
+              {/* On a branch the branch's own title already says when it runs. */}
+                        {step.if && !branchOf(step) && <span className="fb-chip fb-chip--rule">only if…</span>}
+              {step.continueOnError && <span className="fb-chip">continues on error</span>}
+            </span>
+          </span>
+        </button>
+        <span className="fb-flow__tools">
+          <button type="button" className="fb-icon-btn" aria-label={`Move step ${i + 1} up`} disabled={i === 0} onClick={() => setSteps(moveStep(flow.actions, i, -1))}>
+            <ArrowUp size={14} />
+          </button>
+          <button
+            type="button"
+            className="fb-icon-btn"
+            aria-label={`Move step ${i + 1} down`}
+            disabled={i === flow.actions.length - 1}
+            onClick={() => setSteps(moveStep(flow.actions, i, 1))}
+          >
+            <ArrowDown size={14} />
+          </button>
+          <button
+            type="button"
+            className="fb-icon-btn fb-icon-btn--danger"
+            aria-label={`Delete step ${i + 1}`}
+            onClick={() => {
+              setSteps(flow.actions.filter((_, j) => j !== i));
+              setSelected({ kind: 'start' });
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </span>
+      </div>
+    );
+  };
+
+  // "+ Add a step" at the foot of a branch: the new step runs only when that approval ended that way.
+  const branchAdd = (approvalIndex: number, decision: Decision) => {
+    if (!flow) return null;
+    const id = `${approvalIndex}:${decision}`;
+    return (
+      <>
+        <button type="button" className="fb-flow__branch-add" aria-expanded={branchPick === id} onClick={() => setBranchPick(branchPick === id ? null : id)}>
+          {branchPick === id ? <X size={12} /> : <Plus size={12} />} Add a step {decision === 'APPROVED' ? 'when approved' : 'when rejected'}
+        </button>
+        {branchPick === id && (
+          <div className="fb-flow__picker fb-flow__picker--branch" role="group" aria-label="Choose a step">
+            {stepTypes
+              .filter((t) => t !== 'APPROVAL')
+              .map((t) => (
+                <button key={t} type="button" className="fb-flow__pick" onClick={() => addStep(branchEnd(flow.actions, approvalIndex), t, decisionIf(stepKey(flow.actions[approvalIndex]!, approvalIndex), decision))}>
+                  {STEP_ICON[t]}
+                  {ACTION_LABEL[t]}
+                </button>
+              ))}
+          </div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="fb-settings" style={{ gap: 12 }}>
@@ -164,50 +248,21 @@ export function FlowEditor({ form, people, customWorkflows, startAt = 0, onChang
               </span>
             </button>
             {connector(0)}
-            {flow.actions.map((step, i) => (
-              <Fragment key={`s${i}`}>
-                <div className={`fb-flow__node${selected.kind === 'step' && selected.index === i ? ' fb-flow__node--selected' : ''}`}>
-                  <button type="button" className="fb-flow__select" onClick={() => setSelected({ kind: 'step', index: i })}>
-                    <span className="fb-flow__icon">{STEP_ICON[step.type]}</span>
-                    <span className="fb-flow__text">
-                      <span className="fb-flow__title">
-                        {i + 1}. {stepTitle(step)}
-                      </span>
-                      <span className="fb-flow__summary">{stepSummary(step, form, people, customWorkflows)}</span>
-                      <span className="fb-flow__badges">
-                        <span className="fb-code">{stepKey(step, i)}</span>
-                        {step.if && <span className="fb-chip fb-chip--rule">only if…</span>}
-                        {step.continueOnError && <span className="fb-chip">continues on error</span>}
-                      </span>
-                    </span>
-                  </button>
-                  <span className="fb-flow__tools">
-                    <button type="button" className="fb-icon-btn" aria-label={`Move step ${i + 1} up`} disabled={i === 0} onClick={() => setSteps(moveStep(flow.actions, i, -1))}>
-                      <ArrowUp size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="fb-icon-btn"
-                      aria-label={`Move step ${i + 1} down`}
-                      disabled={i === flow.actions.length - 1}
-                      onClick={() => setSteps(moveStep(flow.actions, i, 1))}
-                    >
-                      <ArrowDown size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="fb-icon-btn fb-icon-btn--danger"
-                      aria-label={`Delete step ${i + 1}`}
-                      onClick={() => {
-                        setSteps(flow.actions.filter((_, j) => j !== i));
-                        setSelected({ kind: 'start' });
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </span>
-                </div>
-                {connector(i + 1)}
+            {flowBlocks(flow.actions).map((block) => (
+              <Fragment key={`b${block.index}`}>
+                {node(block.index)}
+                {block.branches && (
+                  <div className="fb-flow__fork" role="group" aria-label={`Branches of step ${block.index + 1}`}>
+                    {DECISIONS.map((d) => (
+                      <div key={d} className={`fb-flow__branch fb-flow__branch--${d}`} role="group" aria-label={`${DECISION_LABEL[d]}, after step ${block.index + 1}`}>
+                        <span className="fb-flow__branch-title">{DECISION_LABEL[d]}</span>
+                        {block.branches![d].map((i) => node(i))}
+                        {branchAdd(block.index, d)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {connector(block.branches ? branchEnd(flow.actions, block.index) : block.index + 1)}
               </Fragment>
             ))}
             <div className="fb-flow__node fb-flow__node--end" aria-label="End">

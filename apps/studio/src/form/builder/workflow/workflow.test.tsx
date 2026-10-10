@@ -22,6 +22,7 @@ beforeAll(() => {
 const basic = fixtureDefinitions.find((d) => d.code === 'CUSTOMER_COMPLAINT_BASIC')!;
 
 import { describeMoves, workflowMoves } from './workflow-map';
+import { branchEnd, branchOf, decisionIf, flowBlocks } from './workflow-edits';
 
 describe('workflow edits', () => {
   it('status keys follow the name until a published version uses them', () => {
@@ -384,6 +385,39 @@ describe('Workflow dialog', () => {
     expect(screen.getByRole('img', { name: /The process/ }).textContent).toContain('Cancel (from any status)');
     first.unmount();
     expect(describeMoves(STARTER_WORKFLOW)).toEqual(['Staff can move a record to any status.']);
+  });
+
+  it('an approval\'s outcomes are drawn as two branches, and a step added to a branch runs only that way', async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    const steps = [
+      { id: 'ask', type: 'APPROVAL' as const, to: [{ kind: 'MANAGER' as const }], title: 'Refund?' },
+      { id: 'yes', type: 'NOTIFY' as const, to: [], message: 'Approved', if: decisionIf('ask', 'APPROVED') },
+      { id: 'no', type: 'NOTIFY' as const, to: [], message: 'Rejected', if: decisionIf('ask', 'REJECTED') },
+      { id: 'after', type: 'NOTIFY' as const, to: [], message: 'Either way' },
+    ];
+    // In the list they are one after another; in the picture the two conditional ones sit under the approval.
+    expect(flowBlocks(steps)).toEqual([{ index: 0, branches: { APPROVED: [1], REJECTED: [2] } }, { index: 3 }]);
+    expect(branchEnd(steps, 0)).toBe(3);
+    expect(branchOf(steps[1]!)).toEqual({ approvalKey: 'ask', decision: 'APPROVED' });
+    expect(branchOf(steps[3]!)).toBeUndefined();
+
+    render(<Harness initial={{ ...basic, workflow: STARTER_WORKFLOW, automations: [{ id: 'a', name: 'Refunds', enabled: true, when: 'SUBMITTED', actions: steps }] }} spy={spy} />);
+    await user.click(screen.getByRole('tab', { name: /Automations/ }));
+    const approved = screen.getByRole('group', { name: 'If approved, after step 1' });
+    const rejected = screen.getByRole('group', { name: 'If rejected, after step 1' });
+    expect(within(approved).getByText(/^2\. /)).toBeInTheDocument();
+    expect(within(rejected).getByText(/^3\. /)).toBeInTheDocument();
+    expect(within(approved).queryByText(/^4\. /)).not.toBeInTheDocument();
+
+    // A step added on the rejected side goes after the steps already on the branches, and carries its condition.
+    await user.click(within(rejected).getByRole('button', { name: /Add a step when rejected/ }));
+    await user.click(within(within(rejected).getByRole('group', { name: 'Choose a step' })).getByRole('button', { name: /Send an email/ }));
+    const made = spy.mock.lastCall![0].automations[0].actions;
+    expect(made.map((a: { id: string }) => a.id).slice(0, 3)).toEqual(['ask', 'yes', 'no']);
+    expect(made[3]).toMatchObject({ type: 'EMAIL', if: { field: '$steps.ask.decision', operator: 'equals', value: 'REJECTED' } });
+    expect(made[4].id).toBe('after');
+    expect(within(screen.getByRole('group', { name: 'If rejected, after step 1' })).getByText(/^4\. /)).toBeInTheDocument();
   });
 
   it('read-only: tabs work, editors are locked', async () => {

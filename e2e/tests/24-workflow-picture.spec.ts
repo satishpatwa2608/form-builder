@@ -38,6 +38,19 @@ test.beforeAll(async () => {
           },
           automations: [
             { id: 'a1', name: 'Thank the customer', enabled: true, when: 'SUBMITTED', actions: [{ id: 'm', type: 'EMAIL', to: [{ kind: 'FIELD', field: 'email' }], subject: 'We have your claim', body: 'Thank you.' }] },
+            {
+              id: 'a3',
+              name: 'Large claims',
+              enabled: true,
+              when: 'STATUS_CHANGED',
+              toStatus: 'ASSESS',
+              actions: [
+                { id: 'ask', type: 'APPROVAL', to: [{ kind: 'MANAGER' }], title: 'Large claim {{$record.ref}}', dueInHours: 48 },
+                { id: 'ok', type: 'EMAIL', to: [{ kind: 'FIELD', field: 'email' }], subject: 'Your claim is approved', body: 'We will pay it shortly.', if: { field: '$steps.ask.decision', operator: 'equals', value: 'APPROVED' } },
+                { id: 'no', type: 'EMAIL', to: [{ kind: 'FIELD', field: 'email' }], subject: 'About your claim', body: 'We could not approve it.', if: { field: '$steps.ask.decision', operator: 'equals', value: 'REJECTED' } },
+                { id: 'log', type: 'NOTIFY', to: [{ kind: 'ASSIGNEE' }], message: 'The manager has answered.' },
+              ],
+            },
             { id: 'a2', name: 'Tell them it is paid', enabled: true, when: 'STATUS_CHANGED', toStatus: 'CLOSED', actions: [{ id: 'm', type: 'EMAIL', to: [{ kind: 'FIELD', field: 'email' }], subject: 'Paid', body: 'Your claim is paid.' }] },
           ],
         },
@@ -65,5 +78,17 @@ test('opening a workflow shows it as a picture, and clicking a part opens where 
   await dialog.getByRole('button', { name: 'Open the automation Tell them it is paid' }).click();
   await expect(dialog.getByRole('tab', { name: /Automations/ })).toHaveAttribute('aria-selected', 'true');
   await expect(dialog.getByRole('tab', { name: /Tell them it is paid/ })).toHaveAttribute('aria-selected', 'true');
+
+  // An approval's two outcomes are drawn side by side, each with its own steps; what follows runs either way.
+  await dialog.getByRole('tab', { name: /Large claims/ }).click();
+  const approved = dialog.getByRole('group', { name: 'If approved, after step 1' });
+  const rejected = dialog.getByRole('group', { name: 'If rejected, after step 1' });
+  await expect(approved).toContainText('2. Send an email');
+  await expect(rejected).toContainText('3. Send an email');
+  await expect(approved).not.toContainText('4.');
+  if (process.env.SHOT_DIR) await dialog.screenshot({ path: `${process.env.SHOT_DIR}/workflow-branches.png` });
+  await rejected.getByRole('button', { name: /Add a step when rejected/ }).click();
+  await rejected.getByRole('group', { name: 'Choose a step' }).getByRole('button', { name: /Notify in Form Builder/ }).click();
+  await expect(dialog.getByRole('group', { name: 'If rejected, after step 1' })).toContainText('4. Notify in Form Builder');
   expect(problems).toEqual([]);
 });
