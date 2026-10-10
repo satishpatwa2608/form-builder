@@ -1,5 +1,5 @@
 import { useUi } from '../FormRuntimeContext';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useFieldArray, useFormContext, useFormState } from 'react-hook-form';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@ui/button';
@@ -38,6 +38,17 @@ export function RepeatField({ field, required }: FieldComponentProps) {
   const addLabel = typeof field.props?.addLabel === 'string' && field.props.addLabel.trim() ? field.props.addLabel : ui('addAnother');
   const problem = ownError(errors[field.name]);
 
+  // "As many rows as the answer to...": the count follows a number question, within the section's own limits.
+  // People then fill the rows in; they do not add or remove them by hand.
+  const follows = typeof field.props?.rowsFrom === 'string' && field.props.rowsFrom ? field.props.rowsFrom : undefined;
+  const asked = follows ? values[follows] : undefined;
+  const wanted = typeof asked === 'number' && Number.isFinite(asked) ? Math.min(Math.max(Math.round(asked), atLeast), atMost) : undefined;
+  useEffect(() => {
+    if (wanted === undefined || field.disabled) return;
+    if (rows.length < wanted) append(Array.from({ length: wanted - rows.length }, () => defaultRow(definition, field)), { shouldFocus: false });
+    else if (rows.length > wanted) remove(Array.from({ length: rows.length - wanted }, (_, i) => wanted + i));
+  }, [wanted, rows.length, append, remove, definition, field]);
+
   const totals = (Array.isArray(field.props?.totals) ? (field.props.totals as unknown[]) : [])
     .map((name) => children.find((c) => c.name === name))
     .filter((c) => !!c)
@@ -73,16 +84,18 @@ export function RepeatField({ field, required }: FieldComponentProps) {
               <FieldList parentId={field.id} column={0} />
             </RowProvider>
           </div>
-          <button
-            type="button"
-            className="fp-repeat__remove"
-            aria-label={ui('removeRow', { label: title, n: i + 1 })}
-            title={ui('removeThisRow')}
-            disabled={field.disabled || rows.length <= atLeast}
-            onClick={() => remove(i)}
-          >
-            <Trash2 size={16} />
-          </button>
+          {!follows && (
+            <button
+              type="button"
+              className="fp-repeat__remove"
+              aria-label={ui('removeRow', { label: title, n: i + 1 })}
+              title={ui('removeThisRow')}
+              disabled={field.disabled || rows.length <= atLeast}
+              onClick={() => remove(i)}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
       ))}
       {!rows.length && <p className="text-sm text-muted-foreground">{ui('nothingAdded')}</p>}
@@ -98,12 +111,14 @@ export function RepeatField({ field, required }: FieldComponentProps) {
         </dl>
       )}
 
-      <div>
-        <Button type="button" variant="outline" size="sm" disabled={field.disabled || rows.length >= atMost} onClick={() => append(defaultRow(definition, field))}>
-          <Plus /> {addLabel}
-        </Button>
-        {rows.length >= atMost && <span className="text-sm text-muted-foreground"> No more than {atMost}.</span>}
-      </div>
+      {!follows && (
+        <div>
+          <Button type="button" variant="outline" size="sm" disabled={field.disabled || rows.length >= atMost} onClick={() => append(defaultRow(definition, field))}>
+            <Plus /> {addLabel}
+          </Button>
+          {rows.length >= atMost && <span className="text-sm text-muted-foreground"> No more than {atMost}.</span>}
+        </div>
+      )}
       {problem && (
         <p role="alert" className="text-sm" style={errorText}>
           {problem}

@@ -270,11 +270,16 @@ function CustomFieldSetting({ field, onChange }: Pick<PanelProps, 'field' | 'onC
   );
 }
 
+const ADD_BY_HAND = '__by_hand__';
+
 function RepeatSettings({ field, form, onChange }: Pick<PanelProps, 'field' | 'form' | 'onChange'>) {
   const props = field.props ?? {};
   const v = field.validation ?? {};
   const numbers = (formShape(form.fields).repeats.find((r) => r.field.id === field.id)?.valueChildren ?? []).filter(isNumberField);
   const totals = new Set(Array.isArray(props.totals) ? (props.totals as string[]) : []);
+  // Number questions outside any repeating section: the ones a row count can follow.
+  const inRepeat = formShape(form.fields).repeatOf;
+  const rowCounters = form.fields.filter((f) => isNumberField(f) && !inRepeat.has(f.name));
   const limits = (changes: Partial<ValidationConfig>) => {
     const next = { ...v, ...changes };
     onChange({ validation: next.min === undefined && next.max === undefined && !next.messages ? undefined : next });
@@ -288,6 +293,13 @@ function RepeatSettings({ field, form, onChange }: Pick<PanelProps, 'field' | 'f
         <NumberSetting label="Rows at least" min={0} value={v.min} onChange={(min) => limits({ min })} />
         <NumberSetting label="Rows at most" min={1} value={v.max} onChange={(max) => limits({ max: max === undefined ? undefined : Math.min(max, MAX_ROWS) })} />
       </div>
+      <SelectSetting
+        label="How many rows"
+        value={typeof props.rowsFrom === 'string' && rowCounters.some((f) => f.name === props.rowsFrom) ? (props.rowsFrom as string) : ADD_BY_HAND}
+        options={[{ label: 'People add and remove rows', value: ADD_BY_HAND }, ...rowCounters.map((f) => ({ label: `As many as the answer to "${f.label || f.name}"`, value: f.name }))]}
+        hint={props.rowsFrom ? 'The rows appear as the number is answered, within the limits above. People fill them in; they do not add or remove them.' : rowCounters.length ? undefined : 'To have the rows follow an answer, add a number question outside this section first.'}
+        onChange={(from) => onChange({ props: { ...props, rowsFrom: from === ADD_BY_HAND ? undefined : from } })}
+      />
       <SelectSetting
         label="Rows look like"
         value={props.layout === 'table' ? 'table' : 'cards'}

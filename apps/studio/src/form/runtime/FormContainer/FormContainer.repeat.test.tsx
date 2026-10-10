@@ -91,6 +91,34 @@ describe('repeating section in the live form', () => {
     expect([input(1, /^Item/).value, input(2, /^Item/).value]).toEqual(['first', 'third']);
   });
 
+  it('as many rows as an answer says: they appear and go as the number changes, keep what was typed, and stay within the limits', async () => {
+    const counted = order({ rules: [] }, { validation: { min: 0, max: 3 }, props: { rowsFrom: 'howMany' } });
+    counted.fields = [{ id: 'n', type: 'NUMBER', name: 'howMany', label: 'How many lines' }, ...counted.fields];
+    const { user } = renderForm(counted);
+    const rows = () => screen.queryAllByRole('group', { name: /Lines row/ });
+    expect(rows()).toHaveLength(0);
+    // People fill the rows in; they do not add or remove them.
+    expect(screen.queryByRole('button', { name: /Add another|Add a line/ })).toBeNull();
+
+    await user.type(screen.getByLabelText(/^How many lines/), '2');
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(screen.queryByRole('button', { name: /Remove row/ })).toBeNull();
+    await user.type(input(1, /^Item/), 'first');
+    await user.type(input(2, /^Item/), 'second');
+
+    // More than the section allows stops at its limit; what was typed stays.
+    await user.clear(screen.getByLabelText(/^How many lines/));
+    await user.type(screen.getByLabelText(/^How many lines/), '9');
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    expect([input(1, /^Item/).value, input(2, /^Item/).value, input(3, /^Item/).value]).toEqual(['first', 'second', '']);
+
+    // Fewer: the last rows go.
+    await user.clear(screen.getByLabelText(/^How many lines/));
+    await user.type(screen.getByLabelText(/^How many lines/), '1');
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(input(1, /^Item/).value).toBe('first');
+  });
+
   it('calculates each row and the totals as the person types', async () => {
     const { user } = renderForm();
     await user.type(input(1, /^Qty/), '3');
