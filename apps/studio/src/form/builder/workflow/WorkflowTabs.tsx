@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { WorkflowMap } from './WorkflowMap';
 import type { ReactNode } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ui/tabs';
 import type { FormDefinition } from '../../types';
@@ -30,12 +32,17 @@ interface WorkflowTabsProps {
 export function WorkflowTabs({ form, people, customWorkflows, publishedKeys, readOnly, shared = false, first, onChange }: WorkflowTabsProps) {
   // With a team, records (and approvals) can only go to its members.
   const access = form.recordAccess;
+  // With a workflow to look at, the picture comes first: what it is, before the tabs where each part is changed.
+  // With none yet, Process comes first, since that is where tracking is switched on.
+  const [tab, setTab] = useState(first?.value ?? (form.workflow?.enabled ? 'map' : 'process'));
+  const [openAutomation, setOpenAutomation] = useState<number>();
   const teamPeople = access ? people.filter((p) => access.userIds.includes(p.uuid) || (!!p.department && access.departments.includes(p.department))) : people;
   return (
     // Tabs stay usable read-only; only the editors inside are locked.
-    <Tabs defaultValue={first?.value ?? 'process'}>
+    <Tabs value={tab} onValueChange={setTab}>
       <TabsList>
         {first && <TabsTrigger value={first.value}>{first.label}</TabsTrigger>}
+        <TabsTrigger value="map">Picture</TabsTrigger>
         <TabsTrigger value="process">Process</TabsTrigger>
         <TabsTrigger value="sla">SLA</TabsTrigger>
         <TabsTrigger value="emails">Emails{form.workflow?.emailTemplates?.length ? ` (${form.workflow.emailTemplates.length})` : ''}</TabsTrigger>
@@ -49,6 +56,16 @@ export function WorkflowTabs({ form, people, customWorkflows, publishedKeys, rea
           </fieldset>
         </TabsContent>
       )}
+      <TabsContent value="map">
+        {/* Looking and clicking through work on a published form too: nothing here changes anything. */}
+        <WorkflowMap
+          form={form}
+          onOpen={(to, automation) => {
+            if (automation !== undefined) setOpenAutomation(automation);
+            setTab(to);
+          }}
+        />
+      </TabsContent>
       <TabsContent value="process">
         <fieldset disabled={readOnly} style={LOCK}>
           <div className="fb-settings" style={{ gap: 20 }}>
@@ -74,7 +91,7 @@ export function WorkflowTabs({ form, people, customWorkflows, publishedKeys, rea
       </TabsContent>
       <TabsContent value="automations">
         <fieldset disabled={readOnly} style={LOCK}>
-          <FlowEditor form={form} people={teamPeople} customWorkflows={customWorkflows} onChange={(automations) => onChange({ automations })} />
+          <FlowEditor key={openAutomation ?? 'first'} startAt={openAutomation} form={form} people={teamPeople} customWorkflows={customWorkflows} onChange={(automations) => onChange({ automations })} />
         </fieldset>
       </TabsContent>
     </Tabs>

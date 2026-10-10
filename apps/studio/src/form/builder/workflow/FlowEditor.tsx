@@ -26,6 +26,8 @@ interface FlowEditorProps {
   form: FormDefinition;
   people: Person[];
   customWorkflows: CustomWorkflow[];
+  /** Which automation to show first (the picture of the workflow opens the one that was clicked). */
+  startAt?: number;
   onChange: (automations: Automation[] | undefined) => void;
 }
 
@@ -59,9 +61,9 @@ type Selected = { kind: 'start' } | { kind: 'step'; index: number };
  * clicking a node opens its settings on the right. Each step gets the
  * payload (answers + record) and what the steps above it produced.
  */
-export function FlowEditor({ form, people, customWorkflows, onChange }: FlowEditorProps) {
+export function FlowEditor({ form, people, customWorkflows, startAt = 0, onChange }: FlowEditorProps) {
   const automations = form.automations ?? [];
-  const [current, setCurrent] = useState(0);
+  const [current, setCurrent] = useState(startAt);
   const [selected, setSelected] = useState<Selected>({ kind: 'start' });
   const [pickerAt, setPickerAt] = useState<number | null>(null);
 

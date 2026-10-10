@@ -1316,3 +1316,131 @@
   display: grid;
   gap: 6px;
 }
+
+/* The workflow as a picture: statuses left to right, an arrow for every button, then a row for each automation. */
+.fb-map {
+  overflow-x: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+.fb-map__svg {
+  display: block;
+  margin: 0 auto;
+  font-family: inherit;
+}
+.fb-map__status {
+  cursor: pointer;
+}
+.fb-map__status rect {
+  fill: var(--background, #fff);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.fb-map__status--OPEN rect {
+  stroke: #d97706;
+}
+.fb-map__status--IN_PROGRESS rect {
+  stroke: #2563eb;
+}
+.fb-map__status--DONE rect {
+  stroke: #16a34a;
+  fill: color-mix(in srgb, #16a34a 8%, white);
+}
+.fb-map__status:hover rect {
+  stroke-width: 2.5;
+}
+.fb-map__name {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--foreground, #111827);
+}
+.fb-map__note {
+  font-size: 10.5px;
+  fill: var(--muted-foreground, #6b7280);
+}
+.fb-map__move path {
+  fill: none;
+  stroke: #6b7280;
+  stroke-width: 1.5;
+}
+.fb-map__move--dashed path {
+  stroke-dasharray: 5 4;
+  stroke: #dc2626;
+}
+.fb-map__move text {
+  font-size: 11px;
+  fill: #374151;
+  paint-order: stroke;
+  stroke: var(--background, #fff);
+  stroke-width: 3px;
+}
+.fb-map__head {
+  fill: #6b7280;
+}
+.fb-map__words {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+  color: var(--muted-foreground, #6b7280);
+}
+.fb-lane {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background, #fff);
+  cursor: pointer;
+}
+.fb-lane:hover {
+  border-color: var(--primary);
+}
+.fb-lane--off {
+  opacity: 0.6;
+}
+.fb-lane__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.fb-lane__flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.fb-lane__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fb-lane__arrow {
+  color: #9ca3af;
+}
+.fb-lane__box {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+.fb-lane__box--start {
+  border-radius: 999px;
+  border-color: var(--primary);
+}
+.fb-lane__box--if {
+  border-style: dashed;
+}
+.fb-lane__if {
+  font-size: 0.7rem;
+  color: var(--muted-foreground, #6b7280);
+}

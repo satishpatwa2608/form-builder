@@ -21,6 +21,8 @@ beforeAll(() => {
 
 const basic = fixtureDefinitions.find((d) => d.code === 'CUSTOMER_COMPLAINT_BASIC')!;
 
+import { describeMoves, workflowMoves } from './workflow-map';
+
 describe('workflow edits', () => {
   it('status keys follow the name until a published version uses them', () => {
     expect(statusKeyFrom('Waiting for customer!')).toBe('WAITING_FOR_CUSTOMER');
@@ -262,6 +264,7 @@ describe('Workflow dialog', () => {
     const spy = vi.fn();
     const wf = { ...STARTER_WORKFLOW, actions: [{ key: 'resolve', label: 'Resolve', to: 'CLOSED', approval: { to: [{ kind: 'MANAGER' as const }] } }] };
     render(<Harness initial={{ ...basic, workflow: wf }} spy={spy} />);
+    await user.click(screen.getByRole('tab', { name: 'Process' }));
     const action = screen.getByLabelText('Action Resolve');
     const approval = () => spy.mock.lastCall![0].workflow.actions[0].approval;
 
@@ -288,6 +291,7 @@ describe('Workflow dialog', () => {
     const spy = vi.fn();
     const wf = { ...STARTER_WORKFLOW, actions: [{ key: 'resolve', label: 'Resolve', to: 'CLOSED' }] };
     render(<Harness initial={{ ...basic, workflow: wf }} spy={spy} />);
+    await user.click(screen.getByRole('tab', { name: 'Process' }));
 
     const action = screen.getByLabelText('Action Resolve');
     await user.click(within(action).getByRole('switch', { name: 'Needs approval' }));
@@ -329,9 +333,65 @@ describe('Workflow dialog', () => {
     expect(within(picker).getByRole('button', { name: /Send an email/ })).toBeInTheDocument();
   });
 
+  it('the picture: statuses in order, an arrow for every button, approvals and rejections marked, and each automation as a row', async () => {
+    const user = userEvent.setup();
+    const wf = {
+      ...STARTER_WORKFLOW,
+      actions: [
+        { key: 'start', label: 'Start', from: ['NEW'], to: 'IN_PROGRESS' },
+        { key: 'resolve', label: 'Resolve', from: ['IN_PROGRESS'], to: 'CLOSED', approval: { to: [{ kind: 'MANAGER' as const }], onReject: 'NEW' } },
+      ],
+    };
+    const automations = [
+      { id: 'a1', name: 'Tell the customer', enabled: true, when: 'STATUS_CHANGED' as const, toStatus: 'CLOSED', actions: [{ id: 'e', type: 'EMAIL' as const, to: [], subject: 's', body: 'b' }, { id: 'n', type: 'NOTIFY' as const, to: [], message: 'm', if: { field: 'email', operator: 'equals' as const, value: 'x' } }] },
+      { id: 'a2', name: 'Old one', enabled: false, when: 'SUBMITTED' as const, actions: [] },
+    ];
+    render(<Harness initial={{ ...basic, workflow: wf, automations }} spy={vi.fn()} />);
+
+    // It is the first thing shown, and it says in words what it draws.
+    const words = within(screen.getByRole('list', { name: 'The process in words' })).getAllByRole('listitem').map((li) => li.textContent);
+    expect(words).toEqual(['Start: New to In progress', 'Resolve: In progress to Closed, once approved (if rejected: New)']);
+    const picture = screen.getByRole('img', { name: /The process: New, then In progress, then Closed/ });
+    expect(picture.querySelectorAll('.fb-map__status')).toHaveLength(3);
+    // Two buttons and one way back for a rejection.
+    expect(picture.querySelectorAll('.fb-map__move')).toHaveLength(3);
+    expect(picture.querySelectorAll('.fb-map__move--dashed')).toHaveLength(1);
+    expect(picture.textContent).toContain('Resolve ✓');
+    expect(picture.textContent).toContain('starts here');
+
+    const lanes = screen.getByRole('group', { name: 'What happens by itself' });
+    const first = within(lanes).getByRole('button', { name: 'Open the automation Tell the customer' });
+    expect(first.textContent).toContain('When the status becomes Closed');
+    expect(first.textContent).toContain('Send an email');
+    expect(first.textContent).toContain('only if…');
+    expect(within(lanes).getByRole('button', { name: 'Open the automation Old one' }).textContent).toContain('Off');
+
+    // Clicking a row opens that automation where it is edited.
+    await user.click(within(lanes).getByRole('button', { name: 'Open the automation Old one' }));
+    expect(screen.getByRole('tab', { name: /Automations/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /Old one/ })).toHaveAttribute('aria-selected', 'true');
+    // And a status opens the process.
+    await user.click(screen.getByRole('tab', { name: 'Picture' }));
+    await user.click(screen.getByRole('button', { name: 'Change the process' }));
+    expect(screen.getByRole('tab', { name: 'Process' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the picture: a button usable from many statuses is one arrow "from any status"; with no buttons it says moves are free', () => {
+    const many = { ...STARTER_WORKFLOW, statuses: [...STARTER_WORKFLOW.statuses, { key: 'HOLD', label: 'On hold', category: 'OPEN' as const }, { key: 'LEGAL', label: 'With legal', category: 'OPEN' as const }], actions: [{ key: 'cancel', label: 'Cancel', to: 'CLOSED' }] };
+    expect(workflowMoves(many).moves[0]).toMatchObject({ any: true, to: 'CLOSED' });
+    expect(describeMoves(many)).toEqual(['Cancel: any other status to Closed']);
+    const first = render(<Harness initial={{ ...basic, workflow: many }} spy={vi.fn()} />);
+    expect(screen.getByRole('img', { name: /The process/ }).textContent).toContain('Cancel (from any status)');
+    first.unmount();
+    expect(describeMoves(STARTER_WORKFLOW)).toEqual(['Staff can move a record to any status.']);
+  });
+
   it('read-only: tabs work, editors are locked', async () => {
     const user = userEvent.setup();
     render(<Harness initial={{ ...basic, workflow: STARTER_WORKFLOW }} readOnly spy={vi.fn()} />);
+    // It opens on the picture, which can be looked at and clicked through even when nothing can be changed.
+    expect(screen.getByRole('group', { name: 'The process' })).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Process' }));
     expect(screen.getByRole('switch', { name: 'Track submissions as records' })).toBeDisabled();
     await user.click(screen.getByRole('tab', { name: /Automations/ }));
     expect(screen.getByRole('button', { name: /New automation/ })).toBeDisabled();
