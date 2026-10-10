@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs';
-import pdfParse from 'pdf-parse';
+import { readPdf as pdfParse } from '../../test/read-pdf';
 import type { FormField } from '@fb/engine';
 import { documentRows, fontRuns, renderDocument, type DocumentInput } from './submission-pdf';
 

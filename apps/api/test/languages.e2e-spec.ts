@@ -1,4 +1,4 @@
-import pdfParse from 'pdf-parse';
+import { readPdf as pdfParse } from './read-pdf';
 import { startApp, type Harness } from './harness';
 
 const form = {

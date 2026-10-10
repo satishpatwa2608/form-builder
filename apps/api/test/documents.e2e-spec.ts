@@ -1,7 +1,7 @@
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import pdfParse from 'pdf-parse';
+import { readPdf as pdfParse } from './read-pdf';
 import { OBJECT_STORE, type ObjectStore } from '../src/common/object-store';
 import { JobQueue } from '../src/jobs/job-queue.service';
 import { startApp, type Harness } from './harness';

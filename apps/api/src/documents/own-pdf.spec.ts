@@ -1,5 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
-import pdfParse from 'pdf-parse';
+import { readPdf as pdfParse } from '../../test/read-pdf';
 import type { FormField } from '@fb/engine';
 import { fillableBoxes, fillOwnPdf, questionFor } from './own-pdf';
 
@@ -64,6 +64,27 @@ describe("an organisation's own PDF, filled with a response", () => {
     expect(text).toContain('Accident');
     expect(text).not.toContain('never shown');
     expect((await PDFDocument.load(filled)).getForm().getFields()).toHaveLength(0);
+  });
+
+  it('leaves nothing in the filled PDF pointing at a box that is no longer there', async () => {
+    const filled = (await fillOwnPdf(await ownPdf(), { fields }, { fullName: 'Asha Rao', agreed: true })).toString('latin1');
+    const there = new Set([...filled.matchAll(/(?:^|\n)(\d+) 0 obj/g)].map((m) => m[1]));
+    const pointedAt = [...filled.matchAll(/(\d+) 0 R/g)].map((m) => m[1]!);
+    expect(pointedAt.length).toBeGreaterThan(0);
+    expect(pointedAt.filter((n) => !there.has(n))).toEqual([]);
+  });
+
+  it('a small filled PDF is read wherever in memory it happens to sit', async () => {
+    // Under 4 KB, which is where the reader used in these tests once went wrong now and then: see test/read-pdf.ts.
+    const doc = await PDFDocument.create();
+    doc.getForm().createTextField('Full name').addToPage(doc.addPage([300, 200]), { x: 20, y: 120, width: 200, height: 20 });
+    const filled = await fillOwnPdf(Buffer.from(await doc.save()), { fields }, { fullName: 'Asha Rao' });
+    expect(filled.length).toBeLessThan(4096);
+    for (const offset of [0, 8, 1000]) {
+      const shared = Buffer.from(new ArrayBuffer(8192), offset, filled.length);
+      filled.copy(shared);
+      expect((await pdfParse(shared)).text).toContain('Asha Rao');
+    }
   });
 
   it('an unanswered question leaves its box empty, and something that is not a PDF is refused', async () => {

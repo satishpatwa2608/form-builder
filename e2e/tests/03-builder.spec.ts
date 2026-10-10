@@ -71,10 +71,15 @@ test('build an order form with a repeating section, a rule and an event, publish
   await settings(page).getByRole('switch', { name: 'Required' }).click();
 
   // Two numbers and a line total, dragged into the section.
+  let before = 'Item';
   for (const [labelText, key] of [['Quantity', 'qty'], ['Price', 'price'], ['Line total', 'lineTotal']] as const) {
     await drag(page, palette(page).getByRole('button', { name: 'Number', exact: true }), canvas.locator('.fb-section-body .fb-drop-end').last());
     await expect(settings(page)).toContainText('Number field');
+    // The settings must have moved on to the field just dropped: the one before it is a Number field too, so on a
+    // slow machine the line above can pass early and the label would be typed over the previous field's.
+    await expect(settings(page).getByLabel('Label', { exact: true })).not.toHaveValue(before);
     await setting(settings(page), 'Label', labelText);
+    before = labelText;
     await setting(settings(page), 'Field key', key);
   }
   await expect(canvas.locator('.fb-section-body').getByText('Line total')).toBeVisible();

@@ -1,5 +1,5 @@
 import { answerText, isValueField, type FormDefinition, type FormField, type FormValues } from '@fb/engine';
-import { PDFCheckBox, PDFDocument, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField } from 'pdf-lib';
+import { PDFCheckBox, PDFDocument, PDFDropdown, PDFName, PDFOptionList, PDFRadioGroup, PDFRef, PDFTextField } from 'pdf-lib';
 
 /** The largest PDF an organisation may keep as a template. */
 export const OWN_PDF_MAX_BYTES = 4 * 1024 * 1024;
@@ -65,5 +65,22 @@ export async function fillOwnPdf(template: Buffer, def: Pick<FormDefinition, 'fi
     }
   }
   form.flatten();
+  forgetRemovedBoxes(doc);
   return Buffer.from(await doc.save({ useObjectStreams: false }));
+}
+
+/**
+ * Flattening removes each box but can leave the page still listing it. Nothing is drawn for a listing that leads
+ * nowhere, but a checker of archive PDFs reports every one, so they are taken off the page.
+ */
+function forgetRemovedBoxes(doc: PDFDocument): void {
+  for (const page of doc.getPages()) {
+    const listed = page.node.Annots();
+    if (!listed) continue;
+    for (let i = listed.size() - 1; i >= 0; i--) {
+      const entry = listed.get(i);
+      if (entry instanceof PDFRef && !doc.context.lookup(entry)) listed.remove(i);
+    }
+    if (!listed.size()) page.node.delete(PDFName.of('Annots'));
+  }
 }

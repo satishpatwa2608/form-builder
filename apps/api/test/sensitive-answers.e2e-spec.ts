@@ -83,7 +83,7 @@ describe('Sensitive answers are stored encrypted (e2e)', () => {
     const pdf = await h.api().get(`/forms/${formId}/submissions/${id}/document`).set(h.bearer(owner)).buffer(true).parse((res, cb) => { const chunks: Buffer[] = []; res.on('data', (c: Buffer) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks))); });
     expect(pdf.status).toBe(200);
     expect((pdf.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
-    const pdfParse = (await import('pdf-parse')).default;
+    const { readPdf: pdfParse } = await import('./read-pdf');
     expect((await pdfParse(pdf.body as Buffer)).text).toContain('ABCDE1234F');
   });
 
