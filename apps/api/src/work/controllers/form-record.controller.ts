@@ -205,6 +205,21 @@ export class FormRecordController {
     return { done: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok) };
   }
 
+  /** "Ask a colleague" for their view, without giving the record away. */
+  @Post('records/:id/ask')
+  @HttpCode(200)
+  @RequirePermission('record.work')
+  ask(@Param('id') id: string, @Body() body: { userId?: unknown; question?: unknown }, @Req() req: any) {
+    return this.records.ask(req.user, id, body ?? {});
+  }
+
+  @Post('records/:id/answer')
+  @HttpCode(200)
+  @RequirePermission('record.work')
+  answer(@Param('id') id: string, @Body() body: { answer?: unknown }, @Req() req: any) {
+    return this.records.answerAsk(req.user, id, body ?? {});
+  }
+
   /** "Take it": make an unassigned record of my team's queue mine. */
   @Post('records/:id/take')
   @HttpCode(200)

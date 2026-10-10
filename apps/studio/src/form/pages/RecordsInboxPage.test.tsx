@@ -274,6 +274,38 @@ describe('Records inbox', () => {
     expect(api.mutate).toHaveBeenCalledWith({ kind: 'assign', userId: 'u2', note: 'Customer is calling back at 4' });
   });
 
+  it('ask a colleague: a question is needed; someone asked sees it with a box for their answer', async () => {
+    Object.assign(registry, { forms: [form] });
+    api.mutate.mockReset();
+    api.mutate.mockResolvedValue({});
+    const user = userEvent.setup();
+    const first = render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).queryByRole('group', { name: 'Your view is asked' })).not.toBeInTheDocument();
+    await user.click(within(drawer).getByRole('button', { name: 'Ask a colleague' }));
+    const ask = within(drawer).getByRole('group', { name: 'Ask a colleague' });
+    await user.click(within(ask).getByRole('combobox', { name: 'Ask' }));
+    await user.click(await screen.findByRole('option', { name: /Loom Lead/ }));
+    // A colleague alone is not a question.
+    expect(within(ask).getByRole('button', { name: 'Ask' })).toBeDisabled();
+    await user.type(within(ask).getByRole('textbox', { name: 'Your question' }), 'Is lot 42 recalled?');
+    await user.click(within(ask).getByRole('button', { name: 'Ask' }));
+    expect(api.mutate).toHaveBeenCalledWith({ kind: 'ask', userId: 'u2', question: 'Is lot 42 recalled?' });
+    first.unmount();
+
+    api.extra = { askedOfMe: { id: 'a1', by: 'u1', to: 'me', question: 'Is lot 42 recalled?', askedAt: '2026-10-10T10:00:00.000Z', answer: '', answeredAt: null } };
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    const asked = within(await screen.findByRole('dialog')).getByRole('group', { name: 'Your view is asked' });
+    expect(within(asked).getByText('Denim Head asks for your view')).toBeInTheDocument();
+    expect(within(asked).getByText('Is lot 42 recalled?')).toBeInTheDocument();
+    await user.type(within(asked).getByRole('textbox', { name: 'Your answer' }), 'Yes, since Monday.');
+    await user.click(within(asked).getByRole('button', { name: 'Send answer' }));
+    expect(api.mutate).toHaveBeenCalledWith({ kind: 'answer', answer: 'Yes, since Monday.' });
+    api.extra = {};
+  });
+
   it('"Take it" is offered on work nobody holds, and only there', async () => {
     Object.assign(registry, { forms: [form] });
     api.mutate.mockReset();

@@ -188,6 +188,44 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
     });
   });
 
+  describe('asking a colleague', () => {
+    it('the colleague sees the record and answers; it stays with its owner; then the colleague loses sight of it', async () => {
+      const id = await send('TONIA');
+      // Sam has nothing to do with it yet.
+      await h.api().get(`/records/${id}`).set(h.bearer(samToken)).expect(404);
+      const asked = (await h.api().post(`/records/${id}/ask`).set(h.bearer(niaToken)).send({ userId: sam, question: 'Is this covered by the warranty?' }).expect(200)).body;
+      expect(asked.record.assigneeId).toBe(nia);
+      expect(asked.record.asks).toEqual([expect.objectContaining({ by: nia, to: sam, question: 'Is this covered by the warranty?', answeredAt: null })]);
+      // Asked twice while unanswered: no.
+      await h.api().post(`/records/${id}/ask`).set(h.bearer(niaToken)).send({ userId: sam, question: 'Again?' }).expect(409);
+
+      const seen = (await h.api().get(`/records/${id}`).set(h.bearer(samToken)).expect(200)).body;
+      expect(seen.askedOfMe).toMatchObject({ question: 'Is this covered by the warranty?' });
+      expect((await h.api().get('/records').set(h.bearer(samToken)).expect(200)).body.rows.map((r: { uuid: string }) => r.uuid)).toContain(id);
+      // He can read and answer, and nothing else.
+      await h.api().post(`/records/${id}/assign`).set(h.bearer(samToken)).send({ userId: sam }).expect(403);
+      await h.api().post(`/records/${id}/actions/close`).set(h.bearer(samToken)).send({}).expect(403);
+      await h.api().post(`/records/${id}/priority`).set(h.bearer(samToken)).send({ priority: 'HIGH' }).expect(403);
+
+      const before = (await h.api().get('/notifications').set(h.bearer(niaToken)).expect(200)).body.unread as number;
+      expect((await h.api().post(`/records/${id}/answer`).set(h.bearer(samToken)).send({ answer: 'Yes, until March.' }).expect(200)).body).toEqual({ gone: true });
+      await h.api().get(`/records/${id}`).set(h.bearer(samToken)).expect(404);
+      await h.api().post(`/records/${id}/answer`).set(h.bearer(samToken)).send({ answer: 'Twice' }).expect(404);
+      const after = await record(id);
+      expect(after.record.assigneeId).toBe(nia);
+      expect(after.events.filter((e) => e.type === 'ASK').map((e) => [e.data?.phase, e.message])).toEqual([['asked', 'Is this covered by the warranty?'], ['answered', 'Yes, until March.']]);
+      expect((await h.api().get('/notifications').set(h.bearer(niaToken)).expect(200)).body.unread).toBe(before + 1);
+    });
+
+    it('needs a question and a colleague who works records, other than oneself', async () => {
+      const id = await send('TONIA');
+      await h.api().post(`/records/${id}/ask`).set(h.bearer(niaToken)).send({ userId: sam, question: ' ' }).expect(400);
+      await h.api().post(`/records/${id}/ask`).set(h.bearer(niaToken)).send({ userId: nia, question: 'Me?' }).expect(400);
+      await h.api().post(`/records/${id}/ask`).set(h.bearer(niaToken)).send({ userId: 'nobody', question: 'Who?' }).expect(400);
+      await h.api().post(`/records/${id}/answer`).set(h.bearer(niaToken)).send({ answer: 'Nothing asked' }).expect(400);
+    });
+  });
+
   describe('several records at once', () => {
     const bulk = (token: string, body: object, expected = 200) => h.api().post('/records/bulk').set(h.bearer(token)).send(body).expect(expected);
 

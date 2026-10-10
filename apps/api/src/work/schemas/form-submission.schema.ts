@@ -15,6 +15,16 @@ export class SubmissionFile {
  * already validated against `formVersion` - one collection serves every form,
  * org and business without per-form schema.
  */
+export interface RecordAsk {
+  id: string;
+  by: string;
+  to: string;
+  question: string;
+  askedAt: Date;
+  answer: string;
+  answeredAt: Date | null;
+}
+
 @Schema({ timestamps: true, collection: 'form_submissions', minimize: false })
 export class FormSubmission {
   @Prop({ required: true, type: String })
@@ -90,6 +100,13 @@ export class FormSubmission {
   /** User uuid working on it, '' when unassigned. */
   @Prop({ type: String, default: '' })
   assigneeId: string;
+
+  /**
+   * Colleagues asked for their view ("Ask a colleague"). While a question is open, the person asked can see the
+   * record and answer; they never own it and cannot move it. Each entry: who asked whom, what, and the answer.
+   */
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+  asks: RecordAsk[];
 
   @Prop({ type: Date, default: null })
   statusChangedAt: Date | null;

@@ -33,6 +33,7 @@ import {
   useRecordAction,
   type Person,
   type RecordApproval,
+  type RecordAsk,
   type RecordEvent,
 } from "../adapters/workflow";
 import { PersonSelect } from "../builder/workflow/PersonSelect";
@@ -130,6 +131,8 @@ function describe(
       return e.message;
     case "REOPENED":
       return `Reopened (${String(e.data.count ?? 1)}) into ${status(e.data.to)}${e.message ? ` - "${e.message}"` : ""}`;
+    case "ASK":
+      return e.data.phase === "answered" ? `Answered ${who(e.data.askedBy)}: "${e.message}"` : `Asked ${who(e.data.to)} for their view: "${e.message}"`;
     case "APPROVAL":
       if (e.data.phase === "approved-by-one")
         return `${String(e.data.title ?? "Approval")}: approved, still waiting for ${((e.data.waitingFor as string[]) ?? []).map(who).join(", ")}${e.message ? ` - "${e.message}"` : ""}`;
@@ -356,37 +359,59 @@ function ApprovalCard({
 }
 
 /** One record: answers, what can be done with it, and everything that happened to it. */
-/** Giving the record to a colleague with a few words on why: they read the note in their notification and on the timeline. */
-function HandOver({ people, busy, onHandOver }: { people: Person[]; busy: boolean; onHandOver: (userId: string, note: string) => Promise<unknown> }) {
+/**
+ * A colleague and a few words: used to hand the record over with a note, and to ask someone's view without
+ * giving it away. Closed, it is one quiet link; open, a dropdown, a box and two buttons.
+ */
+function ColleagueNote({ people, busy, open: openLabel, group, pick, note: noteLabel, hint, send, needNote, onSend }: { people: Person[]; busy: boolean; open: string; group: string; pick: string; note: string; hint: string; send: string; needNote?: boolean; onSend: (userId: string, note: string) => Promise<unknown> }) {
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState("");
   const [note, setNote] = useState("");
   if (!open)
     return (
       <Button type="button" variant="link" size="sm" className="fb-handover__open" onClick={() => setOpen(true)}>
-        Hand over with a note
+        {openLabel}
       </Button>
     );
   return (
-    <div className="fb-handover" role="group" aria-label="Hand over">
-      <ChoiceSelect<string> ariaLabel="Hand over to" value={to} placeholder="Choose a colleague" disabled={busy} options={people.map((p) => ({ label: p.name || p.email, value: p.uuid }))} onChange={setTo} />
-      <Textarea className={VISIBLE_BORDER} rows={2} maxLength={2000} value={note} aria-label="Note for them" placeholder="What they need to know" onChange={(e) => setNote(e.target.value)} />
+    <div className="fb-handover" role="group" aria-label={group}>
+      <ChoiceSelect<string> ariaLabel={pick} value={to} placeholder="Choose a colleague" disabled={busy} options={people.map((p) => ({ label: p.name || p.email, value: p.uuid }))} onChange={setTo} />
+      <Textarea className={VISIBLE_BORDER} rows={2} maxLength={2000} value={note} aria-label={noteLabel} placeholder={hint} onChange={(e) => setNote(e.target.value)} />
       <div className="fb-handover__buttons">
         <Button
           type="button"
           size="sm"
-          disabled={busy || !to}
+          disabled={busy || !to || (needNote && !note.trim())}
           onClick={async () => {
-            await onHandOver(to, note.trim());
+            await onSend(to, note.trim());
             setOpen(false);
             setTo("");
             setNote("");
           }}
         >
-          Hand over
+          {send}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
           Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Someone asked for this person's view: the question, and a box for the answer. */
+function AskedOfMe({ ask, who, busy, onAnswer }: { ask: RecordAsk; who: string; busy: boolean; onAnswer: (answer: string) => Promise<unknown> }) {
+  const [answer, setAnswer] = useState("");
+  return (
+    <div className="fb-panel fb-settings fb-approval" style={{ gap: 8 }} role="group" aria-label="Your view is asked">
+      <div className="fb-panel__title">{who} asks for your view</div>
+      <p className="text-sm" style={{ whiteSpace: "pre-wrap" }}>
+        {ask.question}
+      </p>
+      <Textarea className={VISIBLE_BORDER} rows={3} maxLength={2000} value={answer} aria-label="Your answer" placeholder="Your answer goes back to them; the record stays where it is" onChange={(e) => setAnswer(e.target.value)} />
+      <div>
+        <Button type="button" size="sm" disabled={busy || !answer.trim()} onClick={() => void onAnswer(answer.trim())}>
+          Send answer
         </Button>
       </div>
     </div>
@@ -462,6 +487,14 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
               </TabsList>
               {/* Every tab stays in the page (only one is shown), so nothing typed in one is lost by looking at another. */}
               <TabsContent value="answers" forceMount className="fb-record__tab fb-settings">
+            {data.askedOfMe && (
+              <AskedOfMe
+                ask={data.askedOfMe}
+                who={data.people[data.askedOfMe.by]?.name ?? "A colleague"}
+                busy={act.isPending}
+                onAnswer={(answer) => run({ kind: "answer", answer }, "Answer sent")}
+              />
+            )}
             {data.approvals.length > 0 && (
               <section
                 className="fb-settings"
@@ -666,11 +699,34 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
                       Take it
                     </Button>
                   )}
-                  <HandOver
+                  <ColleagueNote
                     people={people.filter((p) => p.uuid !== record.assigneeId)}
                     busy={act.isPending}
-                    onHandOver={(userId, note) => run({ kind: "assign", userId, note }, "Handed over")}
+                    open="Hand over with a note"
+                    group="Hand over"
+                    pick="Hand over to"
+                    note="Note for them"
+                    hint="What they need to know"
+                    send="Hand over"
+                    onSend={(userId, note) => run({ kind: "assign", userId, note }, "Handed over")}
                   />
+                  <ColleagueNote
+                    people={people.filter((p) => p.uuid !== record.assigneeId)}
+                    busy={act.isPending}
+                    open="Ask a colleague"
+                    group="Ask a colleague"
+                    pick="Ask"
+                    note="Your question"
+                    hint="They can see the record and answer; it stays with its owner"
+                    send="Ask"
+                    needNote
+                    onSend={(userId, question) => run({ kind: "ask", userId, question }, "Asked")}
+                  />
+                  {(record.asks ?? []).filter((a) => !a.answeredAt).map((a) => (
+                    <span key={a.id} className="fb-muted">
+                      Waiting for {data.people[a.to]?.name ?? "a colleague"}&apos;s view
+                    </span>
+                  ))}
                 </div>
               </section>
             )}

@@ -73,6 +73,14 @@ what their people hold, which they can open and give to someone else.
 To give a record to a colleague with a few words on why, use **Hand over with a
 note** on the record. The note is in their notification and in the history.
 
+## Ask a colleague
+
+On a record, **Ask a colleague** takes a person and a question. The record
+stays with whoever holds it. The colleague is told, can open the record and
+read it, and has a box for their answer; they cannot move it, reassign it or
+change it. When they answer, you are told, the answer is in the history, and
+the record leaves their list.
+
 ## Several records at once
 
 In the Work inbox, tick the items (or the box at the top for the whole page). A

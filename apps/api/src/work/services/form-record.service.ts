@@ -30,7 +30,7 @@ import { conditionValues, escapeHtml, evaluateCondition, renderTemplate, valuesF
 import type { RecipientRef, WorkflowStatus } from '@fb/engine';
 import { FormCalendarService } from './form-calendar.service';
 import { onMove, onPriority, startTargets, statusDue, type SlaContext } from './sla';
-import { FormSubmission, FormSubmissionDocument } from '../schemas/form-submission.schema';
+import { FormSubmission, FormSubmissionDocument, type RecordAsk } from '../schemas/form-submission.schema';
 import {
   FormCounter,
   FormCounterDocument,
@@ -341,6 +341,8 @@ export class FormRecordService {
         { uuid: { $in: waiting } },
         // Their team's queue: work nobody has taken yet, on forms whose team they are in.
         ...(queues.length ? [{ assigneeId: '', formCode: { $in: queues } }] : []),
+        // Asked for their view: they see it until they have answered.
+        { asks: { $elemMatch: { to: user.uuid, answeredAt: null } } },
         // A manager sees what their people hold.
         ...(reports.length ? [{ assigneeId: { $in: reports } }] : []),
       ],
@@ -356,12 +358,17 @@ export class FormRecordService {
   }
 
   /** 404 (not 403) for records outside the user's scope - don't reveal they exist. */
-  private async mustSee(user: AuthUser, id: string) {
+  private async mustSee(user: AuthUser, id: string, toRead = false) {
     const found = await this.mustGet(user.orgId, id);
     if (isRecordAdmin(user) || found.record.assigneeId === user.uuid) return found;
     if ((await this.waitingOn(user)).includes(id)) return found;
     if (!found.record.assigneeId && (await this.queuesOf(user)).includes(found.record.formCode)) return found;
     if (found.record.assigneeId && (await this.directory.reportsOf(user.orgId, user.uuid)).includes(found.record.assigneeId)) return found;
+    // Asked for their view: they may read it and answer, and nothing else.
+    if ((found.record.asks ?? []).some((a) => a.to === user.uuid && !a.answeredAt)) {
+      if (toRead) return found;
+      throw new ForbiddenException('You were asked for your view on this record. You can answer, but not change it.');
+    }
     throw new NotFoundException('Record not found');
   }
 
@@ -508,7 +515,7 @@ export class FormRecordService {
   }
 
   async get(user: AuthUser, id: string) {
-    const { record, definition } = await this.mustSee(user, id);
+    const { record, definition } = await this.mustSee(user, id, true);
     const events = await this.events.find({ orgId: user.orgId, recordId: id }).sort({ createdAt: 1 }).select('-_id -__v').lean();
     const runs = await this.runs.find({ orgId: user.orgId, recordId: id, approval: { $ne: null } }).sort({ createdAt: 1 }).lean();
     const approvals = runs.map((r) => ({
@@ -522,6 +529,7 @@ export class FormRecordService {
       record.assigneeId,
       record.submittedBy,
       ...events.map((e) => e.by),
+      ...(record.asks ?? []).flatMap((a) => [a.by, a.to]),
       // People the history names without their having done anything: who it went to, who it was meant for, who is still to answer.
       ...events.flatMap((e) => {
         const d = (e.data ?? {}) as Record<string, unknown>;
@@ -536,6 +544,8 @@ export class FormRecordService {
       approvals,
       // Nobody's yet, and this person may work it: the screen offers "Take it".
       canTake: !record.assigneeId && !!definition.workflow?.enabled,
+      // The question put to this person, if one is still open: the screen shows it with a box for the answer.
+      askedOfMe: (record.asks ?? []).find((a) => a.to === user.uuid && !a.answeredAt) ?? null,
       people: Object.fromEntries(people),
       // Forms with named actions move only through them; others offer the allowed statuses.
       actions: definition.workflow?.enabled ? actionsFor(workflowOf(definition), record.status) : [],
@@ -987,8 +997,41 @@ export class FormRecordService {
     const message = typeof body?.message === 'string' ? body.message.trim() : '';
     if (!message) throw new BadRequestException('Write a comment');
     if (message.length > WORKFLOW.commentLength) throw new BadRequestException(`Comments are limited to ${WORKFLOW.commentLength} characters`);
-    await this.mustSee(user, id);
+    await this.mustSee(user, id, true);
     await this.log(user.orgId, id, 'COMMENT', user.uuid, message);
+    return this.getAfterChange(user, id);
+  }
+
+  /**
+   * "Ask a colleague": the record stays with whoever holds it. The colleague is told, can open it and answer,
+   * and loses sight of it once they have. (AEM calls this consulting.)
+   */
+  async ask(user: AuthUser, id: string, body: { userId?: unknown; question?: unknown }) {
+    const question = typeof body?.question === 'string' ? body.question.trim().slice(0, WORKFLOW.commentLength) : '';
+    if (!question) throw new BadRequestException('Write what you want to ask');
+    const to = typeof body?.userId === 'string' ? body.userId : '';
+    if (!to || to === user.uuid) throw new BadRequestException('Choose a colleague to ask');
+    const { record, definition } = await this.mustSee(user, id);
+    if (!(await this.findPeople(user.orgId, [to])).length) throw new BadRequestException('That person can\'t work on records (they need a Form records module)');
+    if ((record.asks ?? []).some((a) => a.to === to && !a.answeredAt)) throw new ConflictException('They have already been asked and have not answered yet');
+    const ask: RecordAsk = { id: uuidv4(), by: user.uuid, to, question, askedAt: new Date(), answer: '', answeredAt: null };
+    await this.records.updateOne({ uuid: id, orgId: user.orgId }, { $push: { asks: ask } });
+    await this.log(user.orgId, id, 'ASK', user.uuid, question, { phase: 'asked', askId: ask.id, to });
+    this.notify(user.orgId, [to], `Your view is asked on ${record.ref || definition.name}: "${question}"`, record.uuid, record.ref, definition.name);
+    return this.getAfterChange(user, id);
+  }
+
+  /** The colleague answers; whoever asked is told, and the record leaves the colleague's view. */
+  async answerAsk(user: AuthUser, id: string, body: { answer?: unknown }) {
+    const answer = typeof body?.answer === 'string' ? body.answer.trim().slice(0, WORKFLOW.commentLength) : '';
+    if (!answer) throw new BadRequestException('Write your answer');
+    const { record, definition } = await this.mustSee(user, id, true);
+    const ask = (record.asks ?? []).find((a) => a.to === user.uuid && !a.answeredAt);
+    if (!ask) throw new BadRequestException('Nothing here is waiting for your answer');
+    const done = await this.records.updateOne({ uuid: id, orgId: user.orgId, asks: { $elemMatch: { id: ask.id, answeredAt: null } } }, { $set: { 'asks.$.answer': answer, 'asks.$.answeredAt': new Date() } });
+    if (!done.modifiedCount) throw new ConflictException('This was already answered');
+    await this.log(user.orgId, id, 'ASK', user.uuid, answer, { phase: 'answered', askId: ask.id, askedBy: ask.by });
+    this.notify(user.orgId, [ask.by], `${record.ref || definition.name}: your question was answered - "${answer}"`, record.uuid, record.ref, definition.name);
     return this.getAfterChange(user, id);
   }
 }

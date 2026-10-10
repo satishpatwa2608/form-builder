@@ -53,6 +53,8 @@ export interface CustomWorkflow {
 
 export interface RecordRow {
   uuid: string;
+  /** Questions put to colleagues about this record ("Ask a colleague"). */
+  asks?: RecordAsk[];
   ref: string;
   formId: string;
   formCode: string;
@@ -82,7 +84,7 @@ export interface RecordRow {
 
 export interface RecordEvent {
   uuid: string;
-  type: 'CREATED' | 'STATUS' | 'ASSIGNED' | 'COMMENT' | 'SLA' | 'AUTOMATION' | 'PRIORITY' | 'FIELD_UPDATE' | 'APPROVAL' | 'REOPENED' | 'ESCALATED' | 'EMAIL';
+  type: 'CREATED' | 'STATUS' | 'ASSIGNED' | 'COMMENT' | 'SLA' | 'AUTOMATION' | 'PRIORITY' | 'FIELD_UPDATE' | 'APPROVAL' | 'REOPENED' | 'ESCALATED' | 'ASK' | 'EMAIL' | 'ASK';
   by: string;
   message: string;
   data: Record<string, unknown>;
@@ -144,6 +146,19 @@ export interface RecordDetail {
   next: WorkflowStatus[];
   /** Nobody holds it yet: the screen offers "Take it". */
   canTake?: boolean;
+  /** A colleague asked for this person's view and is waiting for it. */
+  askedOfMe?: RecordAsk | null;
+}
+
+/** "Ask a colleague": a question put to someone who does not hold the record, and their answer. */
+export interface RecordAsk {
+  id: string;
+  by: string;
+  to: string;
+  question: string;
+  askedAt: string;
+  answer: string;
+  answeredAt: string | null;
 }
 
 const KEY = ['form-platform', 'records'] as const;
@@ -235,6 +250,8 @@ type RecordAction =
   | { kind: 'status'; to: string; note?: string }
   | { kind: 'assign'; userId: string; note?: string }
   | { kind: 'take' }
+  | { kind: 'ask'; userId: string; question: string }
+  | { kind: 'answer'; answer: string }
   | { kind: 'comment'; message: string }
   | { kind: 'decide'; runId: string; decision: 'APPROVED' | 'REJECTED'; comment?: string }
   | { kind: 'act'; key: string; comment?: string }
@@ -264,6 +281,10 @@ export function useRecordAction(id: string | undefined) {
             ? { userId: action.userId, note: action.note }
             : action.kind === 'take'
               ? {}
+              : action.kind === 'ask'
+                ? { userId: action.userId, question: action.question }
+                : action.kind === 'answer'
+                  ? { answer: action.answer }
             : action.kind === 'comment'
               ? { message: action.message }
               : action.kind === 'act'

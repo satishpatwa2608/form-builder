@@ -44,7 +44,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | A task's deadline is acted on; reminders before it | Step reference, To-do lists | Built (10 Oct): an approval's time to answer ends in a reminder, the manager, or a refusal. One reminder, not a series |
 | The same task goes to several people and all must answer | To-do lists, Tracking | Built (10 Oct): "Every one of them" must approve |
 | Forward a task with a note; the receiver can send it back | To-do lists | **Part.** Built (10 Oct): "Hand over with a note". No one-press "send it back" |
-| Consult a colleague without giving the task away | To-do lists | **Missing** |
+| Consult a colleague without giving the task away | To-do lists | Built (10 Oct): "Ask a colleague" on a record. They see it, answer, and lose sight of it; they cannot change it |
 | Share my list with a colleague | To-do lists | **Missing** (team queues cover most of the need) |
 | A manager sees and moves their people's tasks | Manager view | Built (10 Oct): "My team's work" |
 | Finish several like tasks at once | Workspace overview, To-do lists | Built (10 Oct): tick items in the inbox, then give them to someone, set their priority, take them, or approve or reject them. Named actions (such as Resolve) are still one record at a time |
