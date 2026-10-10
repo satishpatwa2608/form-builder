@@ -76,6 +76,21 @@ describe('What a submission says, for its document', () => {
     expect(documentRows({ fields }, values, {}).some((r) => r.kind === 'note')).toBe(false);
   });
 
+  it('a section can start on a new page; an empty one, or the very first, adds no blank page', async () => {
+    const rows = documentRows({ fields }, values, { newPage: ['delivery', 'extras'] });
+    // Delivery has answers and something before it: it gets a break. Extras holds nothing that was answered: no break, no title.
+    expect(rows.filter((r) => r.kind === 'break')).toHaveLength(1);
+    const at = rows.findIndex((r) => r.kind === 'break');
+    expect(rows[at + 1]).toEqual({ kind: 'heading', text: 'Delivery' });
+    expect(JSON.stringify(rows)).not.toContain('Extras');
+    const one = await renderDocument(input({ rows: documentRows({ fields }, values, {}) }));
+    const two = await renderDocument(input({ rows }));
+    expect((await pdfParse(two)).numpages).toBe((await pdfParse(one)).numpages + 1);
+    // A break asked for on the first section of a form changes nothing.
+    const first = documentRows({ fields: [{ id: 's', type: 'SECTION', name: 'only', label: 'Only' }, { id: 'a', type: 'TEXT', name: 'a', label: 'A', parentId: 's' }] }, { a: 'x' }, { newPage: ['only'] });
+    expect(first.some((r) => r.kind === 'break')).toBe(false);
+  });
+
   it('prints the closing note under the answers', async () => {
     const pdf = await renderDocument(input({ rows: documentRows({ fields }, values, { note: 'Keep this for your records.' }) }));
     expect((await pdfParse(pdf)).text).toContain('Keep this for your records.');

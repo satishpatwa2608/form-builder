@@ -54,6 +54,8 @@ export interface FormDefinition {
     leaveOut?: string[];
     /** A closing paragraph under the answers: a disclaimer, or what happens next. */
     note?: string;
+    /** Names of sections that start on a new page of the PDF. */
+    newPage?: string[];
   };
   /**
    * Money taken before a response is accepted. The amount is the value of a number field of this form

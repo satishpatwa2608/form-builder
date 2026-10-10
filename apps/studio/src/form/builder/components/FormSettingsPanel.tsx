@@ -271,6 +271,19 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
             />
           )}
         </Setting>
+        {form.fields.some((f) => f.type === 'SECTION') && (
+          <Setting label="Start on a new page" hint="Sections that begin a fresh page of the PDF.">
+            {() => (
+              <MultiSelect
+                options={form.fields.filter((f) => f.type === 'SECTION').map((f) => ({ label: f.label || f.name, value: f.name }))}
+                value={form.document?.newPage ?? []}
+                onChange={(newPage) => onChange({ document: tidyDocument({ ...form.document, newPage: newPage.length ? newPage : undefined }) })}
+                placeholder="No page breaks"
+                maxVisibleTags={6}
+              />
+            )}
+          </Setting>
+        )}
         <TextSetting
           label="Closing note"
           multiline

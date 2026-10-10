@@ -12,6 +12,8 @@ export type DocumentRow =
   | { kind: 'heading'; text: string }
   | { kind: 'answer'; label: string; value: string }
   | { kind: 'image'; label: string; png: Buffer }
+  /** What follows starts on a new page. */
+  | { kind: 'break' }
   /** A closing paragraph in the form owner's words. */
   | { kind: 'note'; text: string }
   | { kind: 'table'; label: string; columns: string[]; rows: string[][] };
@@ -27,6 +29,8 @@ export interface DocumentOptions {
   leaveOut?: string[];
   /** A closing paragraph under the answers. */
   note?: string;
+  /** Sections (by name) that start on a new page. */
+  newPage?: string[];
 }
 
 export interface DocumentInput {
@@ -52,6 +56,7 @@ export function documentRows(def: Pick<FormDefinition, 'fields'>, values: FormVa
   for (const f of def.fields) children.set(f.parentId ?? '', [...(children.get(f.parentId ?? '') ?? []), f]);
   const out: DocumentRow[] = [];
   const leftOut = new Set(options.leaveOut ?? []);
+  const newPage = new Set(options.newPage ?? []);
   const walk = (parentId: string) => {
     for (const f of children.get(parentId) ?? []) {
       // Left out by the form's owner: a section takes everything in it along.
@@ -65,9 +70,13 @@ export function documentRows(def: Pick<FormDefinition, 'fields'>, values: FormVa
       if (!isValueField(f)) {
         // A container: its title, then what it holds. A title with nothing under it is taken back.
         const at = out.length;
+        // A new page for this section, unless it would be the document's first thing (or the section turns out empty).
+        const breaks = f.type === 'SECTION' && newPage.has(f.name) && out.some((r) => r.kind !== 'break');
+        if (breaks) out.push({ kind: 'break' });
         if (f.type === 'SECTION' && f.label) out.push({ kind: 'heading', text: f.label });
+        const before = out.length;
         walk(f.id);
-        if (out.length === at + 1 && out[at]?.kind === 'heading') out.pop();
+        if (out.length === before) out.length = at;
         continue;
       }
       const value = values[f.name];
@@ -266,6 +275,9 @@ export function renderDocument(input: DocumentInput): Promise<Buffer> {
       doc.y = Math.max(afterLabel, doc.y) + 5;
       doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + width, doc.y).lineWidth(0.5).strokeColor(LINE).stroke();
       doc.y += 6;
+    } else if (row.kind === 'break') {
+      doc.addPage();
+      doc.y = MARGIN;
     } else if (row.kind === 'note') {
       room(Math.min(heightOf(clean(row.text), width, 9.5), bottom() - MARGIN) + 20);
       doc.y += 8;
@@ -304,7 +316,7 @@ export function renderDocument(input: DocumentInput): Promise<Buffer> {
       doc.y += 4;
     }
   }
-  if (!input.rows.some((r) => r.kind !== 'note')) write('Nothing was answered.', MARGIN, doc.y, width, 10, { color: MUTED });
+  if (!input.rows.some((r) => r.kind !== 'note' && r.kind !== 'break')) write('Nothing was answered.', MARGIN, doc.y, width, 10, { color: MUTED });
 
   // ── Foot of every page ──
   const pages = doc.bufferedPageRange();

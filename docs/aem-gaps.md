@@ -98,12 +98,12 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | AEM capability | Where | Form Builder |
 |---|---|---|
 | A PDF of each response with logo, title, footer | Document of record | Built |
-| Leave chosen fields out; a disclaimer; a font; page breaks | Document of record | **Part.** Built (10 Oct): "Leave out of the PDF" (questions or whole sections) and a closing note. No choice of font, no page breaks |
+| Leave chosen fields out; a disclaimer; a font; page breaks | Document of record | **Part.** Built (10 Oct): "Leave out of the PDF" (questions or whole sections), a closing note, and sections that start on a new page. No choice of font (one family, chosen because it covers Indian scripts) |
 | Fill the customer's own PDF with the answers | Forms service | **Missing.** A fillable PDF can start a form; answers cannot be put back into it |
 | Many documents in one run | Communications | Built (our layout only) |
 | PDF/A, locked PDFs, certified PDFs | Communications | **Missing** |
 | Several signers, in order or together, with an end date | Adobe Sign | Built |
-| Check the signer by a code to their phone or email | Adobe Sign | **Missing.** The code service exists and is not used for signers |
+| Check the signer by a code to their phone or email | Adobe Sign | **Missing.** A signer is known to us only by their email, and the signing link sent there already proves they read that mailbox; a code to the same mailbox would add nothing. It becomes worth building when a form can name the signer's phone number |
 
 ## Order of work
 
