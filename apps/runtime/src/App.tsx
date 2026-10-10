@@ -342,6 +342,7 @@ export default function App() {
           dataSourceAdapter={publicDataSourceAdapter(state.definition)}
           onSubmitted={onSubmitted}
           onValuesChange={onValuesChange}
+          onSaveDraft={!embed && state.definition.saveForLater !== false ? () => void saveForLater() : undefined}
           onProblems={(fields) => visit.current.problems(fields)}
           initialValues={state.initialValues}
         />

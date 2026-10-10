@@ -77,6 +77,7 @@ function propsToCss(sel: string, p: StyleProps): string {
       ['text-align', align],
       ['box-shadow', p.shadow ? SHADOWS[p.shadow] : undefined],
     ]),
+    block(`${sel}:hover`, [['background-color', color(p.hoverBackgroundColor)]]),
     block(`${sel} [data-slot="form-label"],${sel} label`, [['color', color(p.labelColor)]]),
     block(`${sel} input,${sel} textarea,${sel} [data-slot="select-trigger"]`, [
       ['background-color', color(p.inputBackground)],

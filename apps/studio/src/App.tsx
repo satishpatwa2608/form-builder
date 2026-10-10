@@ -27,6 +27,7 @@ const NewWorkItemRoute = lazy(() => work().then((m) => ({ default: m.NewWorkItem
 const WorkingTimeRoute = lazy(() => work().then((m) => ({ default: m.WorkingTimeRoute })));
 const WebhooksRoute = lazy(() => work().then((m) => ({ default: m.WebhooksRoute })));
 const WorkflowsRoute = lazy(() => work().then((m) => ({ default: m.WorkflowsRoute })));
+const StylesRoute = lazy(() => work().then((m) => ({ default: m.StylesRoute })));
 const FragmentsRoute = lazy(() => work().then((m) => ({ default: m.FragmentsRoute })));
 const ListsRoute = lazy(() => work().then((m) => ({ default: m.ListsRoute })));
 const EmailTemplatesRoute = lazy(() => work().then((m) => ({ default: m.EmailTemplatesRoute })));
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="lists" element={lazyPage(<ListsRoute />)} />
         <Route path="email-templates" element={lazyPage(<EmailTemplatesRoute />)} />
         <Route path="workflows" element={lazyPage(<WorkflowsRoute />)} />
+        <Route path="styles" element={lazyPage(<StylesRoute />)} />
         <Route path="connectors" element={<ConnectorsPage />} />
         <Route path="members" element={<MembersPage />} />
         <Route path="access" element={<AccessPage />} />

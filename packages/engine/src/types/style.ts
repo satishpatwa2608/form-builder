@@ -11,6 +11,8 @@ export interface StyleProps {
   textColor?: string;
   labelColor?: string;
   backgroundColor?: string;
+  /** Its background while the mouse is over it. */
+  hoverBackgroundColor?: string;
   borderColor?: string;
   /** px, 0-8 */
   borderWidth?: number;

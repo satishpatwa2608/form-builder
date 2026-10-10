@@ -85,6 +85,22 @@ describe('Connectors: a customer database behind forms (e2e)', () => {
     expect(rows).toEqual([{ code: 'P1', name: 'Pune plant', region: 'WEST' }]); // budget isn't exposed
   });
 
+  it('trying a write adds one real row, for whoever manages the connector, where writes are allowed and the table takes new rows', async () => {
+    const tryIt = (token: string, body: object) => h.api().post(`/connectors/${connectorId}/try-insert`).set(h.bearer(token)).send(body);
+    await h.api().patch(`/connectors/${connectorId}`).set(h.bearer(owner)).send({ writable: false }).expect(200);
+    expect((await tryIt(owner, { entity: 'complaints', values: { plant: 'P1', description: 'A test' } }).expect(400)).body.message).toContain('read only');
+    await h.api().patch(`/connectors/${connectorId}`).set(h.bearer(owner)).send({ writable: true }).expect(200);
+    // A designer may use the connector in forms, and may not write through it by hand.
+    expect((await tryIt(designer, { entity: 'complaints', values: { plant: 'P1' } })).status).toBeGreaterThanOrEqual(403);
+    // Plants are exposed for reading only.
+    expect((await tryIt(owner, { entity: 'plants', values: { code: 'P9' } }).expect(400)).body.message).toBe('That table is not exposed for adding rows');
+    expect((await tryIt(owner, { entity: 'complaints', values: { budget: 5 } }).expect(400)).body.message).toBe('Type a value for at least one of its fields');
+    // A field that is not exposed is not written, however it is sent.
+    const done = (await tryIt(owner, { entity: 'complaints', values: { plant: 'P1', description: 'Tried from the Connectors page', secret: 'x' } }).expect(200)).body;
+    expect(done.added).toBe(1);
+    expect(JSON.stringify(done)).not.toContain('secret');
+  });
+
   it('a "look up" event binds a source too, with its own parameters', async () => {
     const folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Lookups' }).expect(201)).body[0].id;
     const lookup = (disabled: boolean) => ({

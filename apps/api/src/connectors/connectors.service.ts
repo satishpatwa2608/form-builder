@@ -388,6 +388,26 @@ export class ConnectorsService implements OnModuleDestroy {
     return this.readSource(auth.orgId, key, params, auth.userId);
   }
 
+  /**
+   * "Try it" for a write: adds one row to an exposed table with the values typed, exactly as a workflow step
+   * would, and says what came back. It really writes, so it is for whoever manages the connector, and only
+   * where the connector allows writes and the table is exposed for adding rows.
+   */
+  async tryInsert(auth: AuthContext, id: string, entityKey: string, values: Record<string, unknown>) {
+    const c = await this.mustGet(auth, id, 'manage');
+    if (!c.writable) throw new BadRequestException(`${c.name} is read only. Allow writes first.`);
+    const entity = c.entities.find((e) => e.key === entityKey);
+    if (!entity || !entity.operations.includes('insert')) throw new BadRequestException('That table is not exposed for adding rows');
+    const row = Object.fromEntries(Object.entries(values).filter(([k, v]) => entity.fields.includes(k) && v !== '' && v !== null && v !== undefined));
+    if (!Object.keys(row).length) throw new BadRequestException('Type a value for at least one of its fields');
+    try {
+      const res = await this.run(c, entity, 'insert', row, `user:${auth.userId}`);
+      return { added: res.affected ?? 1, row: res.rows[0] ?? null };
+    } catch (e) {
+      throw new BadRequestException(e instanceof ConnectorError ? e.message : `It could not be added (${(e as Error).name})`);
+    }
+  }
+
   /** Write operations offered as automation steps. */
   async actions(orgId: string): Promise<ConnectorAction[]> {
     const rows = await this.connectors.find({ orgId, isDeleted: false, writable: true }).lean<Connector[]>();

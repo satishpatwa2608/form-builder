@@ -530,6 +530,62 @@ export function TryIt({ c }: { c: ConnectorView }) {
   );
 }
 
+/**
+ * "Try adding a row": one real row written to an exposed table with the values typed here, exactly as a
+ * workflow step would write it. It asks first, because the row really is added to the other system.
+ */
+export function TryWrite({ c }: { c: ConnectorView }) {
+  const writable = c.entities.filter((e) => e.operations.includes('insert'));
+  const [key, setKey] = useState(writable[0]?.key ?? '');
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [sure, setSure] = useState(false);
+  const [done, setDone] = useState<{ added: number; row: Record<string, unknown> | null }>();
+  const entity = writable.find((e) => e.key === key);
+  const add = useSubmit(async () => {
+    setDone(undefined);
+    setDone(await api<{ added: number; row: Record<string, unknown> | null }>(`/connectors/${c.id}/try-insert`, { method: 'POST', body: { entity: key, values } }));
+    setSure(false);
+  });
+  const filled = Object.values(values).some((v) => v.trim() !== '');
+  return (
+    <form className="st-stack" onSubmit={add.submit} aria-label={`Try adding a row to ${c.name}`}>
+      <strong>Try adding a row</strong>
+      <div className="st-away">
+        <SelectField
+          label="Add to"
+          value={key}
+          onChange={(e) => {
+            setKey(e.target.value);
+            setValues({});
+            setDone(undefined);
+            setSure(false);
+          }}
+        >
+          {writable.map((e) => (
+            <option key={e.key} value={e.key}>
+              {e.label}
+            </option>
+          ))}
+        </SelectField>
+        {(entity?.fields ?? []).slice(0, 12).map((f) => (
+          <TextField key={f} label={f} value={values[f] ?? ''} onChange={(e) => setValues((was) => ({ ...was, [f]: e.target.value }))} />
+        ))}
+      </div>
+      <label className="st-row" style={{ gap: 8 }}>
+        <input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} />
+        I understand this adds a real row to {c.name}.
+      </label>
+      <div>
+        <Button type="submit" variant="secondary" size="sm" busy={add.busy} disabled={!sure || !filled}>
+          Add the row
+        </Button>
+      </div>
+      {add.error && <Alert tone="error">{add.error}</Alert>}
+      {done && <Alert tone="success">{done.added === 1 ? 'One row was added.' : `${done.added} rows were added.`}{done.row ? ` It came back as: ${JSON.stringify(done.row).slice(0, 300)}` : ''}</Alert>}
+    </form>
+  );
+}
+
 function ConnectorCard({ c, onMessage }: { c: ConnectorView; onMessage: (tone: 'success' | 'error', text: string) => void }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState<'expose' | 'calls' | 'secrets' | 'try' | null>(null);
@@ -618,6 +674,7 @@ function ConnectorCard({ c, onMessage }: { c: ConnectorView; onMessage: (tone: '
     >
       {open === 'expose' && <ExposeEditor c={c} onSaved={(m) => onMessage('success', m)} />}
       {open === 'try' && <TryIt c={c} />}
+      {open === 'try' && c.writable && c.permissions.manage && c.entities.some((e) => e.operations.includes('insert')) && <TryWrite c={c} />}
       {open === 'secrets' && (
         <form
           className="st-stack"

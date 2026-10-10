@@ -60,6 +60,8 @@ export interface FormRuntimeProps {
   /** Called after the adapter accepts a submission. */
   onSubmitted?: (result: SubmissionResult) => void;
   onValuesChange?: (values: FormValues) => void;
+  /** A button of the form asks for the answers to be saved for later. Whoever shows the form does the saving. */
+  onSaveDraft?: () => void;
   /** Called with the questions at fault when the person tries to go on or submit and cannot. */
   onProblems?: (fields: string[]) => void;
   /** Used for cancel/success redirects and BUTTON links. Defaults to a full page load. */
@@ -192,6 +194,7 @@ function FormRuntime({
   captchaMode,
   onSubmitted,
   onValuesChange,
+  onSaveDraft,
   onProblems,
   onNavigate = fullPageNavigate,
   showHeader = true,
@@ -383,6 +386,7 @@ function FormRuntime({
         else if (action.type === 'FOCUS') formActions.current.focus(action.target);
         else if (action.type === 'RESET') formActions.current.reset();
         else if (action.type === 'SUBMIT') await formActions.current.submit();
+        else if (action.type === 'SAVE') onSaveDraft?.();
         else if (action.type === 'GO_TO_STEP') {
           const index = stepsRef.current?.findIndex((st) => st.section?.name === action.step) ?? -1;
           if (index >= 0) setStepIndex(index);
@@ -422,7 +426,7 @@ function FormRuntime({
         }
       }
     },
-    [definition, form, context, dataSourceAdapter, watched],
+    [definition, form, context, dataSourceAdapter, watched, onSaveDraft],
   );
 
   // "When an answer changes": a moment after the person stops changing a watched answer, its events run.

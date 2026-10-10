@@ -130,6 +130,8 @@ export type FormEventAction =
   | { type: 'SUBMIT' }
   /** Empties the form back to how it opened. */
   | { type: 'RESET' }
+  /** Saves the answers so far for later, as "Save and continue later" does (where the form allows saving). */
+  | { type: 'SAVE' }
   /** After a submit: the text shown instead of the standard success or error message. */
   | { type: 'SHOW_MESSAGE'; message: string }
   /** After a successful submit: go to this address instead of showing a message. */

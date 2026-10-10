@@ -85,6 +85,7 @@ export function PreviewDialog({ form, open, onOpenChange }: PreviewDialogProps) 
             submissionAdapter={previewAdapter}
             onSubmitted={(result) => setPayload(result.payload)}
             onNavigate={(url) => toast.info(`Would go to ${url}`)}
+            onSaveDraft={() => toast.info('Would save the answers and show a link to continue later')}
           />
           </div>
         )}

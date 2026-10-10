@@ -40,6 +40,7 @@ const entitiesBody = z.object({
     )
     .max(100),
 });
+const tryInsertBody = z.object({ entity: z.string().max(120), values: z.record(z.string().max(100), z.union([z.string().max(5000), z.number(), z.boolean(), z.null()])) });
 const queryBody = z.object({ key: z.string().max(200), params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}) });
 
 /** Permissions are per connector (org role or a connector grant), checked in the service. */
@@ -98,6 +99,13 @@ export class ConnectorsController {
   @HttpCode(200)
   test(@Auth() auth: AuthContext, @Param('id') id: string) {
     return this.connectors.test(auth, idParam(id));
+  }
+
+  /** Try a write: one real row added to an exposed table, by whoever manages the connector. */
+  @Post(':id/try-insert')
+  @HttpCode(200)
+  tryInsert(@Auth() auth: AuthContext, @Param('id') id: string, @Body(new ZodBody(tryInsertBody)) body: z.infer<typeof tryInsertBody>) {
+    return this.connectors.tryInsert(auth, idParam(id), body.entity, body.values);
   }
 
   @Post(':id/discover')

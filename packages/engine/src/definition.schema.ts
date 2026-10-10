@@ -93,6 +93,7 @@ const eventActionSchema: z.ZodType<FormEventAction> = z.union([
   z.object({ type: z.literal('FOCUS'), target: z.string().min(1) }),
   z.object({ type: z.literal('SUBMIT') }),
   z.object({ type: z.literal('RESET') }),
+  z.object({ type: z.literal('SAVE') }),
   z.object({
     type: z.literal('FETCH'),
     source: fetchSourceSchema,
@@ -228,6 +229,7 @@ export const formStyleSchema = z.object({
     textColor: z.string().optional(),
     labelColor: z.string().optional(),
     backgroundColor: z.string().optional(),
+    hoverBackgroundColor: z.string().optional(),
     borderColor: z.string().optional(),
     borderWidth: z.number().optional(),
     borderRadius: z.number().optional(),
@@ -870,7 +872,7 @@ function checkPaymentAndCodes(def: FormDefinition, ctx: z.RefinementCtx) {
 /** Which actions make sense for which trigger. */
 const EVENT_ACTIONS: Record<string, ReadonlySet<FormEventAction['type']>> = {
   LOAD: new Set(['SET_VALUE', 'FETCH', 'FOCUS']),
-  CLICK: new Set(['SET_VALUE', 'FETCH', 'GO_TO_STEP', 'FOCUS', 'SUBMIT', 'RESET']),
+  CLICK: new Set(['SET_VALUE', 'FETCH', 'GO_TO_STEP', 'FOCUS', 'SUBMIT', 'RESET', 'SAVE']),
   CHANGE: new Set(['SET_VALUE', 'FETCH', 'FOCUS']),
   SUBMIT_SUCCESS: new Set(['SHOW_MESSAGE', 'REDIRECT']),
   SUBMIT_ERROR: new Set(['SHOW_MESSAGE']),
@@ -953,6 +955,9 @@ function checkEvents(def: FormDefinition, ctx: z.RefinementCtx) {
         }
         case 'SUBMIT':
         case 'RESET':
+          break;
+        case 'SAVE':
+          if (def.saveForLater === false) at('This form does not let people save and continue later (form settings)');
           break;
         case 'REDIRECT':
           if (!safeLinkUrl(action.url)) at('The address must start with https:// or be a path on this site (/…)');

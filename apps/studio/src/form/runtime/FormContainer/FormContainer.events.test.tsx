@@ -223,6 +223,19 @@ describe('FormContainer — form events', () => {
     expect(value(/^Full name/)).toBe('ABCDE1234F');
   });
 
+  it('a button can ask for the answers to be saved for later; whoever shows the form does the saving', async () => {
+    const onSaveDraft = vi.fn();
+    const save: FormEvent = { id: 's', on: { type: 'CLICK', field: 'find' }, do: [{ type: 'SAVE' }] };
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <FormContainer definition={form([save])} submissionAdapter={createMockSubmissionAdapter({ delayMs: 0 })} dataSourceAdapter={{ fetchRows: async () => [] }} onSaveDraft={onSaveDraft} />
+      </QueryClientProvider>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Find me' }));
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalledTimes(1));
+  });
+
   it('a button opens another step', async () => {
     const steps: FormField[] = [
       { id: 's1', type: 'SECTION', name: 'about', label: 'About you' },

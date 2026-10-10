@@ -141,6 +141,7 @@ export const EVENT_ACTION_LABEL: Record<EventActionType, string> = {
   FOCUS: 'Put the cursor in',
   SUBMIT: 'Send the form',
   RESET: 'Start the form again',
+  SAVE: 'Save the answers for later',
   SHOW_MESSAGE: 'Show this message',
   REDIRECT: 'Go to this address',
 };
@@ -148,7 +149,7 @@ export const EVENT_ACTION_LABEL: Record<EventActionType, string> = {
 /** What can happen at each moment (mirrors what publishing accepts). */
 export const EVENT_ACTIONS_FOR: Record<TriggerType, EventActionType[]> = {
   LOAD: ['SET_VALUE', 'FETCH', 'FOCUS'],
-  CLICK: ['SET_VALUE', 'FETCH', 'GO_TO_STEP', 'FOCUS', 'SUBMIT', 'RESET'],
+  CLICK: ['SET_VALUE', 'FETCH', 'GO_TO_STEP', 'FOCUS', 'SUBMIT', 'RESET', 'SAVE'],
   CHANGE: ['FETCH', 'SET_VALUE', 'FOCUS'],
   SUBMIT_SUCCESS: ['SHOW_MESSAGE', 'REDIRECT'],
   SUBMIT_ERROR: ['SHOW_MESSAGE'],
@@ -169,6 +170,7 @@ export function eventActionOf(type: EventActionType, fields: FormField[]): FormE
       return { type, target: watchableFields(fields)[0]?.name ?? '' };
     case 'SUBMIT':
     case 'RESET':
+    case 'SAVE':
       return { type };
     case 'SHOW_MESSAGE':
       return { type, message: '' };

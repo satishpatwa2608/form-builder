@@ -89,6 +89,11 @@ describe('style CSS', () => {
     expect(css).toContain('.scope .fps-box [data-slot="form-label"],.scope .fps-box label{color:#123456}');
   });
 
+  it('a style can change its background while the mouse is over it, and only to a colour', () => {
+    expect(styleToCss('.scope', { id: 'box', name: 'Box', props: { hoverBackgroundColor: '#fef3c7' } })).toBe('.scope .fps-box:hover{background-color:#fef3c7}');
+    expect(styleToCss('.scope', { id: 'box', name: 'Box', props: { hoverBackgroundColor: 'url(x)' } })).toBe('');
+  });
+
   it('a theme sets the colour of mistakes, the corners and the room between questions from fixed choices', () => {
     const css = buildFormCss('.scope', { errorColor: '#b91c1c', corners: 'pill', spacing: 'roomy' }, []);
     expect(css).toContain('--destructive:#b91c1c');

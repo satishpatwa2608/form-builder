@@ -107,6 +107,10 @@ describe('event edits', () => {
     // The cursor goes in a question, not in a button.
     expect(said(click({ type: 'FOCUS', target: 'find' }))).toContain('is not a question the cursor can be put in');
     expect(said({ id: 'e', on: { type: 'SUBMIT_SUCCESS' }, do: [{ type: 'RESET' }] })).toContain('This action does not fit when the event happens');
+    // Saving for later is a button's to ask for, and only on a form that lets people save.
+    expect(said(click({ type: 'SAVE' }))).toBe('');
+    const noSaving = validateFormDefinition({ ...form(), saveForLater: false, events: [click({ type: 'SAVE' })] });
+    expect(JSON.stringify(noSaving.success ? '' : noSaving.issues)).toContain('does not let people save and continue later');
     // Opening the form may point at a question, and nothing more drastic.
     expect(said({ id: 'e', on: { type: 'LOAD' }, do: [eventActionOf('FOCUS', fields)] })).toBe('');
     expect(said({ id: 'e', on: { type: 'LOAD' }, do: [{ type: 'SUBMIT' }] })).toContain('This action does not fit when the event happens');
