@@ -304,6 +304,11 @@ nothing about who answered or what they wrote.
 
 Add the step **Send for signature** to an automation (Workflow → Automations).
 
+- **Save answers as people go** (form settings, off unless you turn it on):
+  nothing to press. Answers are kept every 30 seconds and are there again
+  when the person comes back on the same phone or computer, with a **Start
+  again** button if they are not theirs. Leave it off for forms filled in on
+  a shared computer. Attachments are not kept.
 - **Signers:** pick an email field of the form, type an address, or choose a
   member of staff. A new step already has the form's email field.
 - **What is being signed:** the name signers see, for example

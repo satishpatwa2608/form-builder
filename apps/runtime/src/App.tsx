@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createAutosave } from './autosave';
 import type { FormDefinition, FormValues, SubmissionResult, SystemContext } from '@fb/engine';
 import { isRtl, languageName, languagesOf, localize, pickLanguage, uiText } from '@fb/engine';
 import { FormContainer } from '@form/runtime/FormContainer/FormContainer';
@@ -91,7 +92,7 @@ export default function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const embed = params.get('embed') === '1';
   const [target, setTarget] = useState<{ org: string; code: string } | null>();
-  const [state, setState] = useState<{ loading: boolean; definition?: FormDefinition; unavailable?: Unavailable; error?: string; session?: Session; initialValues?: FormValues; resumed?: boolean }>({ loading: true });
+  const [state, setState] = useState<{ loading: boolean; definition?: FormDefinition; unavailable?: Unavailable; error?: string; session?: Session; initialValues?: FormValues; resumed?: boolean; /** The answers came back from this device's own draft. */ kept?: boolean }>({ loading: true });
   const [branding, setBranding] = useState<Branding>();
   const pageRef = useRef<HTMLDivElement>(null);
   const values = useRef<FormValues>({});
@@ -103,6 +104,9 @@ export default function App() {
   // (it could have been planted by someone who wants to read what gets saved next).
   const [draft, setDraft] = useState<{ token?: string; busy?: boolean; link?: string; error?: string }>({});
   const resumeToken = useMemo(() => params.get('resume') ?? undefined, [params]);
+  // Answers that save themselves (the form's own setting): the draft's token stays on this device.
+  const auto = useRef<ReturnType<typeof createAutosave>>();
+  const draftUrl = useCallback((t: { org: string; code: string }, rest = '') => `/forms/${t.code}/drafts${rest}?org=${encodeURIComponent(t.org)}`, []);
 
   useEffect(() => {
     void resolveTarget().then((t) => setTarget(t));
@@ -128,7 +132,27 @@ export default function App() {
             setDraft({ error: (e as Error).message });
           }
         }
-        setState({ loading: false, definition, session: session?.orgId === target.org ? session : null, initialValues, resumed: !!initialValues });
+        let kept = false;
+        if (definition.saveAsYouGo && definition.saveForLater !== false && !embed) {
+          const start = () =>
+            createAutosave({
+              key: `fb-draft:${target.org}:${target.code}`,
+              save: (v, token) => publicApi<{ token: string }>(draftUrl(target), { method: 'POST', body: { values: v, token } }),
+            });
+          auto.current = start();
+          const mine = auto.current.token();
+          if (mine && !resumeToken) {
+            try {
+              initialValues = (await publicApi<{ values: FormValues }>(draftUrl(target, '/load'), { method: 'POST', body: { token: mine } })).values;
+              kept = true;
+            } catch {
+              // Expired, or already sent in: start clean, without a word about it.
+              auto.current.forget();
+              auto.current = start();
+            }
+          }
+        }
+        setState({ loading: false, definition, session: session?.orgId === target.org ? session : null, initialValues, resumed: !!initialValues && !kept, kept });
         if (resumeToken) {
           // Out of the address bar (and so out of Referer headers) once used.
           const url = new URL(window.location.href);
@@ -141,7 +165,7 @@ export default function App() {
         setState({ loading: false, error: (e as Error).message, session });
       }
     })();
-  }, [target, resumeToken]);
+  }, [target, resumeToken, embed, draftUrl]);
 
   const onValuesChange = useCallback(
     (v: FormValues) => {
@@ -152,6 +176,8 @@ export default function App() {
         started.current = true;
         track(target.org, target.code, 'start');
       }
+      // Only once the person has answered something: a form that fills in its own defaults has nothing worth keeping.
+      if (started.current && state.definition) auto.current?.changed(draftValues(state.definition, v));
     },
     [target, state.definition],
   );
@@ -168,7 +194,10 @@ export default function App() {
   useEffect(() => {
     const interact = () => visit.current.interact();
     // `pagehide` is the last thing a page is told on phones as well as desktops.
-    const leave = () => sendVisit(false);
+    const leave = () => {
+      sendVisit(false);
+      void auto.current?.flush();
+    };
     // Typing, choosing, pasting, autofill and dictation all end in one of these; the form's own changes never do.
     const signs = ['pointerdown', 'keydown', 'input', 'change'] as const;
     for (const sign of signs) document.addEventListener(sign, interact, true);
@@ -233,11 +262,20 @@ export default function App() {
 
   const onSubmitted = (result: SubmissionResult) => {
     sendVisit(true);
-    for (const token of new Set([draft.token, resumeToken].filter(Boolean))) {
+    for (const token of new Set([draft.token, resumeToken, auto.current?.token()].filter(Boolean))) {
       if (target) void publicApi(`/forms/${target.code}/drafts/discard?org=${encodeURIComponent(target.org)}`, { method: 'POST', body: { token } }).catch(() => undefined);
     }
+    auto.current?.forget();
     setDraft({});
     if (embed && window.parent !== window) window.parent.postMessage({ type: EMBED_MESSAGE.submitted, code: target?.code, submissionId: result.submissionId }, '*');
+  };
+
+  /** The answers kept on this device are not wanted: forget them here and on the server, and show the empty form. */
+  const startAgain = () => {
+    const token = auto.current?.token();
+    auto.current?.forget();
+    const gone = target && token ? publicApi(draftUrl(target, '/discard'), { method: 'POST', body: { token } }).catch(() => undefined) : Promise.resolve();
+    void gone.then(() => window.location.reload());
   };
 
   let body: ReactNode;
@@ -279,6 +317,14 @@ export default function App() {
           </div>
         )}
         {state.resumed && <p className="rt-banner">{ui('welcomeBack')}</p>}
+        {state.kept && (
+          <p className="rt-banner rt-banner--kept">
+            <span>{ui('keptAnswers')}</span>
+            <button type="button" className="rt-save__btn" onClick={startAgain}>
+              {ui('startAgain')}
+            </button>
+          </p>
+        )}
         {draft.error && <p className="rt-banner rt-banner--error">{draft.error}</p>}
         <FormContainer
           definition={state.definition}
@@ -290,6 +336,7 @@ export default function App() {
           onProblems={(fields) => visit.current.problems(fields)}
           initialValues={state.initialValues}
         />
+        {auto.current && <p className="rt-soft rt-kept-note">{ui('keptAsYouGo')}</p>}
         {!embed && state.definition.saveForLater !== false && (
           <div className="rt-save">
             {draft.link ? (

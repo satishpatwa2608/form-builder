@@ -95,6 +95,8 @@ describe('Work: away, and approvals that need everyone or run out of time (e2e)'
       expect(after.record.assigneeId).toBe(sam);
       const event = after.events.find((e) => e.type === 'ASSIGNED')!;
       expect(event).toMatchObject({ message: 'Please look at this first', data: { to: sam, insteadOf: nia } });
+      // The history can name the person it was meant for, who has done nothing on this record.
+      expect((after as unknown as { people: Record<string, { name: string }> }).people[nia]?.name).toBe('Nia');
     });
 
     it('away from a day still to come changes nothing yet; an end that has passed is over', async () => {

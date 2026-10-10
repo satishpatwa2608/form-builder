@@ -223,3 +223,64 @@ test.describe('uploads, drafts, CAPTCHA and sign-in', () => {
     await expect(form.getByLabel(label('Your view'))).toBeDisabled();
   });
 });
+
+test.describe('answers that save themselves', () => {
+  let formId: string;
+
+  test.beforeAll(async () => {
+    formId = await publishForm(org, {
+      name: 'Long application',
+      code: 'LONG_APP',
+      saveAsYouGo: true,
+      fields: [
+        { id: 'n', type: 'TEXT', name: 'applicant', label: 'Applicant', required: true },
+        { id: 'w', type: 'TEXTAREA', name: 'why', label: 'Why you are applying' },
+      ],
+    });
+  });
+
+  test('nothing to press: the answers are there on coming back, can be thrown away, and are gone once sent', async ({ page }) => {
+    const problems = watchForProblems(page);
+    // The page's own clock, so half a minute of typing takes no time here.
+    await page.clock.install();
+    await page.goto(formUrl(org, 'LONG_APP'));
+    await expect(page.getByText('Your answers are kept on this device as you go.')).toBeVisible();
+    await page.getByLabel(label('Applicant')).fill('Kiran Rao');
+    await page.getByLabel(label('Why you are applying')).fill('I have driven forklifts for six years.');
+    const saved = page.waitForResponse((r) => /\/forms\/LONG_APP\/drafts\?/.test(r.url()) && r.request().method() === 'POST');
+    await page.clock.runFor(31_000);
+    expect((await saved).status()).toBe(201);
+
+    // Closed and opened again, with no link: the same device has them.
+    await page.reload();
+    await expect(page.getByText(/We kept the answers you gave here earlier/)).toBeVisible();
+    await expect(page.getByLabel(label('Applicant'))).toHaveValue('Kiran Rao');
+    await expect(page.getByLabel(label('Why you are applying'))).toHaveValue('I have driven forklifts for six years.');
+
+    // Not mine (a shared computer): start again, and they are gone for good.
+    await page.getByRole('button', { name: 'Start again' }).click();
+    await expect(page.getByLabel(label('Applicant'))).toHaveValue('');
+    await expect(page.getByText(/We kept the answers/)).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByLabel(label('Applicant'))).toHaveValue('');
+
+    // Saved again, then sent in: nothing is offered next time.
+    await page.getByLabel(label('Applicant')).fill('Meera Shah');
+    const again = page.waitForResponse((r) => /\/forms\/LONG_APP\/drafts\?/.test(r.url()) && r.request().method() === 'POST');
+    await page.clock.runFor(31_000);
+    await again;
+    await page.getByRole('button', { name: 'Submit' }).click();
+    await expect.poll(async () => (await submissions(org, formId)).length).toBe(1);
+    expect((await submissions(org, formId))[0].payload).toMatchObject({ applicant: 'Meera Shah' });
+    await page.reload();
+    await expect(page.getByLabel(label('Applicant'))).toHaveValue('');
+    await expect(page.getByText(/We kept the answers/)).toHaveCount(0);
+    expect(problems.filter((p) => !/4\d\d/.test(p))).toEqual([]);
+  });
+
+  test('a form that has not asked for it keeps nothing by itself', async ({ page }) => {
+    await page.goto(formUrl(org, 'SITE_VISIT'));
+    await expect(page.getByText('Step 1 of 3')).toBeVisible();
+    await expect(page.getByText('Your answers are kept on this device as you go.')).toHaveCount(0);
+  });
+});

@@ -516,7 +516,12 @@ export class FormRecordService {
       record.assigneeId,
       record.submittedBy,
       ...events.map((e) => e.by),
-      ...runs.flatMap((r) => [...r.approval!.approvers, r.approval!.decidedBy]),
+      // People the history names without their having done anything: who it went to, who it was meant for, who is still to answer.
+      ...events.flatMap((e) => {
+        const d = (e.data ?? {}) as Record<string, unknown>;
+        return [d.from, d.to, d.insteadOf, ...(Array.isArray(d.waitingFor) ? d.waitingFor : []), ...(Array.isArray(d.approvers) ? d.approvers : [])].filter((v): v is string => typeof v === 'string' && v.length > 0 && v.length <= 64);
+      }),
+      ...runs.flatMap((r) => [...r.approval!.approvers, ...(r.approval!.approved ?? []), r.approval!.decidedBy]),
     ]);
     return apiResponse(true, 200, 'Record fetched', {
       record,

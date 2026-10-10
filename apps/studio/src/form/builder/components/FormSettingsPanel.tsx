@@ -214,8 +214,16 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           label="Let people save and continue later"
           hint="They get a private link to come back to their answers within 30 days."
           checked={form.saveForLater !== false}
-          onChange={(on) => onChange({ saveForLater: on ? undefined : false })}
+          onChange={(on) => onChange({ saveForLater: on ? undefined : false, ...(on ? {} : { saveAsYouGo: undefined }) })}
         />
+        {form.saveForLater !== false && (
+          <SwitchSetting
+            label="Save answers as people go"
+            hint="Nothing to press: answers are kept every few seconds and are there when the person comes back on the same phone or computer. Leave off for forms filled in on a shared computer."
+            checked={!!form.saveAsYouGo}
+            onChange={(on) => onChange({ saveAsYouGo: on || undefined })}
+          />
+        )}
         {form.access === 'PUBLIC' && (
           <SwitchSetting
             label="List on the requests portal"

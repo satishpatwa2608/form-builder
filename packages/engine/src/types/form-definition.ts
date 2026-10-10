@@ -29,6 +29,12 @@ export interface FormDefinition {
    */
   saveForLater?: boolean;
   /**
+   * Answers save themselves as the person goes, and are there again when they come back on the same device.
+   * Off unless set: on a shared computer the next person would be offered the last one's answers, so it is
+   * the form's owner who says it suits their form. Needs `saveForLater` not to be off.
+   */
+  saveAsYouGo?: boolean;
+  /**
    * The connected table this form was started from (`<connector id>/<table>`), so the builder can say when
    * the table has gained columns. `leftOut` are columns the designer chose not to ask for.
    */

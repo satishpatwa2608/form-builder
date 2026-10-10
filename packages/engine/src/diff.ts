@@ -57,6 +57,7 @@ const SETTINGS: [key: keyof FormDefinition, name: string][] = [
   ['captcha', 'CAPTCHA settings'],
   ['timeZone', 'time zone'],
   ['saveForLater', 'save and continue later'],
+  ['saveAsYouGo', 'answers saved as people go'],
   ['listOnPortal', 'listed on the requests portal'],
   ['opensAt', 'opening time'],
   ['closesAt', 'closing time'],

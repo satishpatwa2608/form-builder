@@ -264,3 +264,16 @@
   border-color: transparent;
   color: #fff;
 }
+
+/* Answers kept on this device: the notice, with the way out beside it. */
+.rt-banner--kept {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rt-kept-note {
+  margin-top: 10px;
+  font-size: 0.85rem;
+}

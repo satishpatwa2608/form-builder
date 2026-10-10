@@ -85,7 +85,7 @@ Adobe's site is under `experienceleague.adobe.com/en/docs/`.
 | Clear a value; add or remove a row; set focus; display formats | Rule editor | **Missing** |
 | Save, submit or reset the form from a rule | Rule editor | **Missing** |
 | Functions written by the customer for rules | Rule editor | Not for us in the builder: authoring stays dropdowns and plain words. Extensions cover checks |
-| Answers save themselves as people go | Drafts and portal | **Missing.** People press "Save and continue later" and keep a link |
+| Answers save themselves as people go | Drafts and portal | Built (10 Oct): the form setting "Save answers as people go"; kept every 30 seconds and found again on the same device, with "Start again". Off unless the form's owner turns it on |
 | The portal lists a person's unfinished forms | Drafts and portal | **Missing.** It lists what they sent |
 | Themes: states (hover, focus, error) and screen sizes | Theme editor | **Part.** A style library with fixed choices |
 | Translation by file exchange | Translation | **Part.** Spreadsheet in and out; no XLIFF. Machine translation is not for us (no AI) |
