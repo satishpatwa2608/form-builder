@@ -17,6 +17,8 @@ describe('what a new connector asks for', () => {
     expect(names('rest', 'basic')).toEqual(['baseUrl', 'auth', 'resources', 'username', 'password']);
     // An API that hands out tokens to applications (OAuth) is signed in to the same way as OData.
     expect(names('rest', 'oauth')).toEqual(['baseUrl', 'auth', 'tokenUrl', 'clientId', 'scope', 'resources', 'clientSecret']);
+    // A person signing in also needs the address they are sent to; there is no password to type here.
+    expect(names('rest', 'oauthUser')).toEqual(['baseUrl', 'auth', 'authUrl', 'tokenUrl', 'clientId', 'scope', 'resources', 'clientSecret']);
   });
 
   it('ways of signing in read as words, and every secret is marked as one', () => {

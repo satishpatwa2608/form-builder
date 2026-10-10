@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { Public } from '../auth/auth.guard';
 import { CONNECTOR_TYPES } from '@fb/connectors';
 import { z } from 'zod';
 import { Auth, type AuthContext } from '../auth/auth-context';
@@ -101,6 +103,13 @@ export class ConnectorsController {
     return this.connectors.test(auth, idParam(id));
   }
 
+  /** "Sign in" for a connector that signs in as a person: where to send them to agree. */
+  @Post(':id/sign-in')
+  @HttpCode(200)
+  signIn(@Auth() auth: AuthContext, @Param('id') id: string) {
+    return this.connectors.signInStart(auth, idParam(id));
+  }
+
   /** Try a write: one real row added to an exposed table, by whoever manages the connector. */
   @Post(':id/try-insert')
   @HttpCode(200)
@@ -122,5 +131,21 @@ export class ConnectorsController {
   @Get(':id/calls')
   calls(@Auth() auth: AuthContext, @Param('id') id: string) {
     return this.connectors.callLog(auth, idParam(id));
+  }
+}
+
+/**
+ * Where the other system sends a person back after they agreed to a connector signing in as them. Nobody is
+ * signed in to us on this request: the signed note that travelled with them says which connector it is for.
+ * The answer is always a redirect to our own Connectors page.
+ */
+@Public()
+@Controller('connectors/oauth')
+export class ConnectorSignInController {
+  constructor(private readonly connectors: ConnectorsService) {}
+
+  @Get('callback')
+  async back(@Query('state') state: string, @Query('code') code: string, @Query('error') error: string, @Res() res: Response) {
+    res.redirect(302, await this.connectors.signInFinish(state, code, error));
   }
 }

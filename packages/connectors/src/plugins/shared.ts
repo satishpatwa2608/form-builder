@@ -165,3 +165,42 @@ export async function applicationToken(ctx: ConnectorContext, s: { tokenUrl?: st
   tokens.set(key, { token: body.access_token, until: Date.now() + Math.max(30, (body.expires_in ?? 300) - 60) * 1000 });
   return body.access_token;
 }
+
+type PersonSignIn = { tokenUrl?: string; clientId?: string; scope?: string };
+const form = (fields: Record<string, string | undefined>) => new URLSearchParams(Object.entries(fields).filter((e): e is [string, string] => !!e[1])).toString();
+
+/**
+ * Signing in as a person (OAuth authorization code), second half: the code the other system handed back after
+ * the person agreed is exchanged for a lasting sign-in (a refresh token), which is what the connector keeps.
+ */
+export async function lastingSignIn(ctx: ConnectorContext, s: PersonSignIn, code: string, redirectUri: string): Promise<string> {
+  if (!s.tokenUrl || !s.clientId) throw new ConnectorError('UNSUPPORTED', 'Sign-in needs a token address and a client ID');
+  const r = await safeFetch(ctx, s.tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: form({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: s.clientId, client_secret: ctx.secrets.clientSecret }),
+  });
+  const body = (r.json ?? {}) as { refresh_token?: string };
+  if (r.status !== 200) throw new ConnectorError('FAILED', 'The sign-in was not accepted: check the token address, client ID and secret');
+  if (!body.refresh_token) throw new ConnectorError('FAILED', 'The other system gave a sign-in that does not last. Ask it for offline access (often the scope "offline_access").');
+  return body.refresh_token;
+}
+
+/** The token for a call made as that person: asked for with the lasting sign-in, and kept until shortly before it runs out. */
+export async function personToken(ctx: ConnectorContext, s: PersonSignIn): Promise<string> {
+  if (!s.tokenUrl || !s.clientId) throw new ConnectorError('UNSUPPORTED', 'Sign-in needs a token address and a client ID');
+  if (!ctx.secrets.refreshToken) throw new ConnectorError('FAILED', 'Nobody has signed in to this connector yet. Use "Sign in" on the Connectors page.');
+  const key = `person:${ctx.connector.id}:${s.tokenUrl}:${s.clientId}:${ctx.secrets.refreshToken.length}`;
+  const hit = tokens.get(key);
+  if (hit && hit.until > Date.now()) return hit.token;
+  const r = await safeFetch(ctx, s.tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: form({ grant_type: 'refresh_token', refresh_token: ctx.secrets.refreshToken, client_id: s.clientId, client_secret: ctx.secrets.clientSecret, scope: s.scope }),
+  });
+  const body = (r.json ?? {}) as { access_token?: string; expires_in?: number };
+  if (r.status !== 200 || !body.access_token) throw new ConnectorError('FAILED', 'The sign-in is no longer accepted. Sign in again on the Connectors page.');
+  if (tokens.size > 200) tokens.clear();
+  tokens.set(key, { token: body.access_token, until: Date.now() + Math.max(30, (body.expires_in ?? 300) - 60) * 1000 });
+  return body.access_token;
+}

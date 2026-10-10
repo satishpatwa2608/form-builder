@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ConnectorError } from '../registry';
 import type { ConnectorContext, ConnectorPlugin, Entity } from '../types';
-import { applicationToken, elapsed, filtersFrom, now, rowFrom, safeFetch, savedRow } from './shared';
+import { applicationToken, elapsed, personToken, filtersFrom, now, rowFrom, safeFetch, savedRow } from './shared';
 
 /**
  * A REST API. Each entity is a resource the connector manager defines:
@@ -19,11 +19,13 @@ const resourceSchema = z.object({
 
 const settingsSchema = z.object({
   baseUrl: z.string().url(),
-  auth: z.enum(['none', 'bearer', 'apiKey', 'basic', 'oauth']).default('none'),
+  auth: z.enum(['none', 'bearer', 'apiKey', 'basic', 'oauth', 'oauthUser']).default('none'),
   /** Header for apiKey auth, e.g. X-API-Key. */
   apiKeyHeader: z.string().regex(/^[A-Za-z0-9-]{1,60}$/).optional(),
   /** oauth (an application signing in as itself): where it gets its token, who it is, and what for. */
   tokenUrl: z.string().url().optional(),
+  /** oauthUser (a person signing in): where they are sent to agree. */
+  authUrl: z.string().url().optional(),
   clientId: z.string().max(200).optional(),
   scope: z.string().max(500).optional(),
   resources: z.array(resourceSchema).max(50).default([]),
@@ -40,6 +42,8 @@ async function authHeaders(ctx: ConnectorContext): Promise<Record<string, string
       return { Authorization: `Basic ${Buffer.from(`${ctx.secrets.username}:${ctx.secrets.password}`).toString('base64')}` };
     case 'oauth':
       return { Authorization: `Bearer ${await applicationToken(ctx, s)}` };
+    case 'oauthUser':
+      return { Authorization: `Bearer ${await personToken(ctx, s)}` };
     default:
       return {};
   }
@@ -69,7 +73,7 @@ export const restPlugin: ConnectorPlugin = {
   type: 'rest',
   label: 'REST API',
   settingsSchema: settingsSchema.extend({ resources: z.string().max(50_000).optional() }),
-  secretsSchema: z.object({ token: z.string().max(4000).optional(), username: z.string().max(200).optional(), password: z.string().max(500).optional(), clientSecret: z.string().max(2000).optional() }),
+  secretsSchema: z.object({ token: z.string().max(4000).optional(), username: z.string().max(200).optional(), password: z.string().max(500).optional(), clientSecret: z.string().max(2000).optional(), refreshToken: z.string().max(8000).optional() }),
   operations: ['list', 'get', 'lookup', 'insert', 'update'],
 
   async test(ctx) {

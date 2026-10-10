@@ -33,7 +33,7 @@ import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
 import { HealthController } from './health.controller';
 import { Connector, ConnectorCall, ConnectorCallSchema, ConnectorSchema } from './connectors/connector.schema';
-import { ConnectorsController } from './connectors/connectors.controller';
+import { ConnectorsController, ConnectorSignInController } from './connectors/connectors.controller';
 import { ConnectorsService } from './connectors/connectors.service';
 import { Gateway, GatewayCall, GatewayCallSchema, GatewaySchema } from './gateways/gateway.schema';
 import { GatewaysController } from './gateways/gateways.controller';
@@ -257,6 +257,7 @@ export class AppModule {
         SitePublicController,
         FormRecordController,
         NotificationsController,
+        ConnectorSignInController,
         ConnectorsController,
         GatewaysController,
         ...(config.STORAGE_PROVIDER === 'local' ? [LocalStoreController] : []),

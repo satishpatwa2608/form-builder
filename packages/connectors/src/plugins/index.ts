@@ -17,7 +17,7 @@ export { buildSoql, soqlLiteral } from './salesforce';
 export { setGoogleEndpoints, spreadsheetId } from './google-sheets';
 export { filesFor, safeFileName, setMicrosoftEndpoints, shareToken } from './microsoft';
 export { columnName, columnNames, rowFor, rowsFrom, safeCell } from './sheets-shared';
-export { assertPublicHost, isPrivateAddress, mongoHosts, safeFetch } from './shared';
+export { assertPublicHost, isPrivateAddress, lastingSignIn, mongoHosts, safeFetch } from './shared';
 export { setAwsFactories, setStsFactory } from './aws';
 export { closeMongoConnections } from './mongodb';
 export { closeSqlConnections } from './sql';

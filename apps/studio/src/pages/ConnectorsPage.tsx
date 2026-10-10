@@ -76,7 +76,7 @@ interface FieldSpec {
 
 /** The boxes to show: a way of signing in brings its own, and hides the others'. */
 export const fieldsFor = (fields: FieldSpec[], values: Record<string, string | boolean>) => fields.filter((f) => !f.showFor || f.showFor.includes(String(values.auth ?? 'none')));
-const AUTH_LABELS = { none: 'None', bearer: 'A token (Bearer)', apiKey: 'An API key in a header', basic: 'User name and password', oauth: 'As an application (OAuth client credentials)' };
+const AUTH_LABELS = { none: 'None', bearer: 'A token (Bearer)', apiKey: 'An API key in a header', basic: 'User name and password', oauth: 'As an application (OAuth client credentials)', oauthUser: 'As a person who signs in (OAuth)' };
 /** An application registered in the customer's Microsoft Entra directory, with Files.ReadWrite.All (or Sites.ReadWrite.All) and admin consent. */
 const MICROSOFT_APP: FieldSpec[] = [
   { name: 'tenantId', label: 'Directory (tenant) ID', hint: 'From the app registration in Microsoft Entra' },
@@ -133,16 +133,17 @@ export const SPECS: Record<ConnectorType, { label: string; blurb: string; fields
     blurb: 'Your own API: define resources as path + fields.',
     fields: [
       { name: 'baseUrl', label: 'Base URL', hint: 'https only' },
-      { name: 'auth', label: 'How it signs in', kind: 'select', options: ['none', 'bearer', 'apiKey', 'basic', 'oauth'], optionLabels: AUTH_LABELS },
+      { name: 'auth', label: 'How it signs in', kind: 'select', options: ['none', 'bearer', 'apiKey', 'basic', 'oauth', 'oauthUser'], optionLabels: AUTH_LABELS },
       { name: 'apiKeyHeader', label: 'API key header', optional: true, hint: 'e.g. X-API-Key', showFor: ['apiKey'] },
-      { name: 'tokenUrl', label: 'Token address', showFor: ['oauth'], hint: 'Where the API hands out tokens, e.g. https://login.example.com/oauth/token' },
-      { name: 'clientId', label: 'Client (application) ID', showFor: ['oauth'] },
-      { name: 'scope', label: 'Scope', optional: true, showFor: ['oauth'] },
+      { name: 'authUrl', label: 'Sign-in address', showFor: ['oauthUser'], hint: 'Where a person is sent to agree, e.g. https://login.example.com/oauth/authorize. After saving, press Sign in on the connector.' },
+      { name: 'tokenUrl', label: 'Token address', showFor: ['oauth', 'oauthUser'], hint: 'Where the API hands out tokens, e.g. https://login.example.com/oauth/token' },
+      { name: 'clientId', label: 'Client (application) ID', showFor: ['oauth', 'oauthUser'] },
+      { name: 'scope', label: 'Scope', optional: true, showFor: ['oauth', 'oauthUser'], hint: 'For a person signing in, include what makes the sign-in last (often offline_access).' },
       { name: 'resources', label: 'Resources (JSON)', kind: 'textarea', hint: '[{"key":"customers","path":"/customers","fields":["id","name"],"dataPath":"data"}]' },
       { name: 'token', label: 'Token / API key', secret: true, kind: 'password', showFor: ['bearer', 'apiKey'] },
       { name: 'username', label: 'User name', secret: true, showFor: ['basic'] },
       { name: 'password', label: 'Password', secret: true, kind: 'password', showFor: ['basic'] },
-      { name: 'clientSecret', label: 'Client secret', secret: true, kind: 'password', showFor: ['oauth'] },
+      { name: 'clientSecret', label: 'Client secret', secret: true, kind: 'password', showFor: ['oauth', 'oauthUser'] },
     ],
   },
   odata: {
@@ -642,6 +643,20 @@ function ConnectorCard({ c, onMessage }: { c: ConnectorView; onMessage: (tone: '
             <Button variant="secondary" size="sm" onClick={() => void test()}>
               <RefreshCw size={14} /> Test
             </Button>
+            {c.settings.auth === 'oauthUser' && !c.gatewayId && (
+              <Button
+                size="sm"
+                onClick={() =>
+                  // The browser goes to the other system to agree, and comes back to this page.
+                  void api<{ url: string }>(`/connectors/${c.id}/sign-in`, { method: 'POST' }).then(
+                    (r) => window.location.assign(r.url),
+                    (e) => onMessage('error', errorMessage(e)),
+                  )
+                }
+              >
+                Sign in
+              </Button>
+            )}
             <Button variant="secondary" size="sm" onClick={() => setOpen(open === 'expose' ? null : 'expose')}>
               <Database size={14} /> Expose
             </Button>
@@ -814,7 +829,15 @@ export default function ConnectorsPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['connectors'], queryFn: () => api<ConnectorView[]>('/connectors') });
   const [creating, setCreating] = useState(false);
-  const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string }>();
+  // Back from signing a connector in at another system: say how it went, once, and tidy the address.
+  const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | undefined>(() => {
+    const q = new URLSearchParams(window.location.search);
+    const ok = q.get('signedIn');
+    const failed = q.get('signInFailed');
+    if (!ok && !failed) return undefined;
+    window.history.replaceState(null, '', window.location.pathname);
+    return ok ? { tone: 'success', text: `${ok} is signed in. Press Test to check it.` } : { tone: 'error', text: failed! };
+  });
   const list = useMemo(() => data ?? [], [data]);
 
   return (

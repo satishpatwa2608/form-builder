@@ -2,12 +2,13 @@ import { orgLog } from '../logs/org-log';
 import { mappedValues } from '@fb/engine';
 import { BadRequestException, ForbiddenException, HttpException, Inject, Injectable, NotFoundException, type OnModuleDestroy } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   closeMongoConnections,
   closeSqlConnections,
   ConnectorError,
   defaultRegistry,
+  lastingSignIn,
   WRITE_OPERATIONS,
   type ConnectorRecord,
   type ConnectorType,
@@ -386,6 +387,86 @@ export class ConnectorsService implements OnModuleDestroy {
     const c = m ? await this.byRef(auth.orgId, m[1]!) : null;
     if (!c || !(await this.perms(auth, c)).use) throw new NotFoundException('Data source not found');
     return this.readSource(auth.orgId, key, params, auth.userId);
+  }
+
+  // ---------------------------------------------------------------- signing in as a person
+
+  /** The address our API is called back at once the person has agreed. It is what the other system must be told to allow. */
+  private signInReturn() {
+    return `${this.config.API_URL.replace(/\/+$/, '')}/connectors/oauth/callback`;
+  }
+
+  /** A note carried through the other system and back, signed so that only one we made is accepted, and only for ten minutes. */
+  private signState(c: Pick<Connector, 'id' | 'orgId'>, userId: string) {
+    const body = Buffer.from(JSON.stringify({ c: c.id, o: c.orgId, u: userId, e: Date.now() + 10 * 60_000 })).toString('base64url');
+    return `${body}.${createHmac('sha256', Buffer.from(this.config.SECRET_KEY, 'base64')).update(`connector-sign-in:${body}`).digest('base64url')}`;
+  }
+
+  private readState(state: unknown): { c: string; o: string; u: string } | null {
+    if (typeof state !== 'string' || state.length > 2000) return null;
+    const [body, mark] = state.split('.');
+    if (!body || !mark) return null;
+    const expected = createHmac('sha256', Buffer.from(this.config.SECRET_KEY, 'base64')).update(`connector-sign-in:${body}`).digest('base64url');
+    if (expected.length !== mark.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(mark))) return null;
+    try {
+      const read = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as { c?: unknown; o?: unknown; u?: unknown; e?: unknown };
+      if (typeof read.c !== 'string' || typeof read.o !== 'string' || typeof read.u !== 'string' || typeof read.e !== 'number' || read.e < Date.now()) return null;
+      return { c: read.c, o: read.o, u: read.u };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * "Sign in" on a connector that signs in as a person: where to send them. They agree at the other system,
+   * which sends them back to us with a code.
+   */
+  async signInStart(auth: AuthContext, id: string) {
+    const c = await this.mustGet(auth, id, 'manage');
+    const s = c.settings as { auth?: string; authUrl?: string; clientId?: string; scope?: string };
+    if (c.gatewayId) throw new BadRequestException("This connector's credentials live on its gateway agent");
+    if (s.auth !== 'oauthUser' || !s.authUrl || !s.clientId) throw new BadRequestException('This connector does not sign in as a person. Set how it signs in, the sign-in address and the client ID first.');
+    let url: URL;
+    try {
+      url = new URL(s.authUrl);
+    } catch {
+      throw new BadRequestException('The sign-in address is not a web address');
+    }
+    if (url.protocol !== 'https:' && !this.privateAllowed()) throw new BadRequestException('The sign-in address must start with https://');
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('client_id', s.clientId);
+    url.searchParams.set('redirect_uri', this.signInReturn());
+    if (s.scope) url.searchParams.set('scope', s.scope);
+    url.searchParams.set('state', this.signState(c, auth.userId));
+    return { url: url.toString(), returnAddress: this.signInReturn() };
+  }
+
+  /**
+   * The person is back from the other system. The note we sent with them says which connector this is for;
+   * the code is exchanged for a lasting sign-in, which is sealed with the connector's other credentials.
+   * Returns where to send their browser next (always a page of ours), saying how it went.
+   */
+  async signInFinish(state: unknown, code: unknown, refused?: unknown): Promise<string> {
+    const page = (how: 'signedIn' | 'signInFailed', text: string) => `${this.config.APP_URL.replace(/\/+$/, '')}/connectors?${how}=${encodeURIComponent(text.slice(0, 200))}`;
+    const note = this.readState(state);
+    if (!note) return page('signInFailed', 'That sign-in was not started here, or took too long. Start it again from the connector.');
+    const c = await this.connectors.findOne({ id: note.c, orgId: note.o, isDeleted: false });
+    if (!c) return page('signInFailed', 'That connector is no longer there.');
+    if (typeof refused === 'string' && refused) return page('signInFailed', `${c.name}: the other system did not allow it (${refused.replace(/[^A-Za-z0-9 _.-]/g, '').slice(0, 60)}).`);
+    if (typeof code !== 'string' || !code || code.length > 4000) return page('signInFailed', `${c.name}: the other system sent nothing to sign in with.`);
+    try {
+      const secrets = await this.secretsOf(c);
+      const refreshToken = await this.withTimeout((signal) =>
+        lastingSignIn({ connector: this.record(c), secrets, signal, allowPrivateNetwork: this.privateAllowed() }, c.settings as { tokenUrl?: string; clientId?: string }, code, this.signInReturn()),
+      );
+      c.set(await this.seal(c, { ...secrets, refreshToken }));
+      c.set({ lastTest: null });
+      await c.save();
+      await this.audit.record({ orgId: c.orgId, actorId: note.u, ip: '', userAgent: 'returned from the other system' }, { action: 'connector.signed_in', targetType: 'connector', targetId: c.id });
+      return page('signedIn', c.name);
+    } catch (e) {
+      return page('signInFailed', `${c.name}: ${e instanceof ConnectorError ? e.message : 'the sign-in could not be completed'}`);
+    }
   }
 
   /**
