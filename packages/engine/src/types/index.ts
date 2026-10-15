@@ -4,6 +4,7 @@ export * from './data-source';
 export * from './submission';
 export * from './captcha';
 export * from './form-definition';
+export * from './document';
 export * from './runtime';
 export * from './style';
 export * from './workflow';
