@@ -23,6 +23,7 @@ const BuilderRoute = lazy(() => import('./pages/BuilderRoute'));
 const work = () => import('./pages/WorkRoutes');
 const InboxRoute = lazy(() => work().then((m) => ({ default: m.InboxRoute })));
 const DashboardRoute = lazy(() => work().then((m) => ({ default: m.DashboardRoute })));
+const ReportsRoute = lazy(() => work().then((m) => ({ default: m.ReportsRoute })));
 const NewWorkItemRoute = lazy(() => work().then((m) => ({ default: m.NewWorkItemRoute })));
 const WorkingTimeRoute = lazy(() => work().then((m) => ({ default: m.WorkingTimeRoute })));
 const WebhooksRoute = lazy(() => work().then((m) => ({ default: m.WebhooksRoute })));
@@ -72,6 +73,7 @@ export default function App() {
         <Route path="account" element={<AccountPage />} />
         <Route path="work" element={lazyPage(<InboxRoute />)} />
         <Route path="work/dashboard" element={lazyPage(<DashboardRoute />)} />
+        <Route path="work/reports" element={lazyPage(<ReportsRoute />)} />
         <Route path="work/new" element={lazyPage(<NewWorkItemRoute />)} />
         <Route path="settings/working-time" element={lazyPage(<WorkingTimeRoute />)} />
         <Route path="settings/extensions" element={lazyPage(<ExtensionsRoute />)} />

@@ -84,6 +84,8 @@ export interface InboxQuery {
   /** Only records due in this stretch of time (ISO date-times; the end is not included): what a calendar shows. */
   dueFrom?: string;
   dueTo?: string;
+  /** Only records with someone of this department (team). */
+  team?: string;
 }
 
 export interface Person {
@@ -446,6 +448,9 @@ export class FormRecordService {
     if (query.assignee === 'reports') filter.assigneeId = { $in: await this.directory.reportsOf(user.orgId, user.uuid) };
     // "Shared with me": what colleagues who share their list hold.
     if (query.assignee === 'shared') filter.assigneeId = { $in: await this.directory.sharingWith(user.orgId, user.uuid) };
+    if (typeof query.team === 'string' && query.team.trim()) {
+      and.push({ assigneeId: { $in: await this.directory.inDepartment(user.orgId, query.team.trim().slice(0, 100)) } });
+    }
     if (query.overdue === 'true') {
       const now = new Date();
       and.push(openCondition(latest), { $or: [{ dueAt: { $lte: now } }, { resolutionDueAt: { $lte: now } }, { responseDueAt: { $lte: now }, respondedAt: null }] });

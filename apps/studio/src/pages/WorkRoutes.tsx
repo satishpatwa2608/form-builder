@@ -2,6 +2,7 @@ import { FormStats } from '../components/FormStats';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import RecordsInboxPage from '../form/pages/RecordsInboxPage';
 import WorkDashboardPage from '../form/pages/WorkDashboardPage';
+import WorkReportsPage from '../form/pages/WorkReportsPage';
 import NewWorkItemPage from '../form/pages/NewWorkItemPage';
 import WorkingTimePage from '../form/pages/WorkingTimePage';
 import WebhooksPage from '../form/pages/WebhooksPage';
@@ -40,6 +41,10 @@ export function InboxRoute() {
 export function DashboardRoute() {
   const navigate = useNavigate();
   return <WorkDashboardPage onOpenView={(preset) => navigate(`/work?preset=${encodeURIComponent(preset)}`)} />;
+}
+
+export function ReportsRoute() {
+  return <WorkReportsPage />;
 }
 
 export function NewWorkItemRoute() {

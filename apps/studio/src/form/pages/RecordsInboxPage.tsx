@@ -93,7 +93,8 @@ export default function RecordsInboxPage({
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const listKey = JSON.stringify(filters);
   useEffect(() => setTicked(new Set()), [listKey]);
-  const { data: people = [] } = usePeople(ticked.size > 0);
+  const { data: people = [] } = usePeople(true);
+  const teams = useMemo(() => [...new Set(people.map((p) => p.department ?? "").filter(Boolean))].sort((a, b) => a.localeCompare(b)), [people]);
   const { data: forms = [] } = useFormDefinitions();
   const set = (changes: Partial<InboxFilters>) =>
     setFilters((f) => ({ ...f, page: 1, ...changes }));
@@ -287,6 +288,14 @@ export default function RecordsInboxPage({
                 ]}
                 onChange={(v) => set({ priority: v === ALL ? undefined : v })}
               />
+              {teams.length > 0 && (
+                <ChoiceSelect
+                  ariaLabel="Team"
+                  value={filters.team ?? ALL}
+                  options={[{ label: "Any team", value: ALL }, ...teams.map((t) => ({ label: t, value: t }))]}
+                  onChange={(v) => set({ team: v === ALL ? undefined : v })}
+                />
+              )}
               <ChoiceSelect<"all" | "overdue">
                 ariaLabel="Due"
                 value={filters.overdue ? "overdue" : "all"}

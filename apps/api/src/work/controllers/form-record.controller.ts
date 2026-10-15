@@ -100,8 +100,15 @@ export class FormRecordController {
 
   @Get('work-dashboard')
   @RequirePermission('record.work')
-  dashboard(@Query('formCode') formCode: string, @Query('days') days: string, @Req() req: any) {
-    return this.portal.dashboard(req.user, { formCode, days });
+  dashboard(@Query('formCode') formCode: string, @Query('days') days: string, @Query('team') team: string, @Req() req: any) {
+    return this.portal.dashboard(req.user, { formCode, days, team });
+  }
+
+  /** Opened, resolved, open and overdue now and the median time to resolve, side by side by one choice (see report). */
+  @Get('work-reports')
+  @RequirePermission('record.work')
+  report(@Query('formCode') formCode: string, @Query('days') days: string, @Query('by') by: string, @Query('team') team: string, @Req() req: any) {
+    return this.portal.report(req.user, { formCode, days, by, team });
   }
 
   @Get('work-views')

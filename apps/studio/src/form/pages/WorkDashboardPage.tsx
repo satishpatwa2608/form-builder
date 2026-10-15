@@ -299,7 +299,8 @@ export default function WorkDashboardPage({
 }: WorkDashboardPageProps) {
   const [formCode, setFormCode] = useState<string>();
   const [days, setDays] = useState(30);
-  const { data, isLoading } = useWorkDashboard(formCode, days);
+  const [team, setTeam] = useState<string>();
+  const { data, isLoading } = useWorkDashboard(formCode, days, team);
   const { data: forms = [] } = useFormDefinitions();
   const { data: settings } = useWorkSettings();
   const user = useAuth().me?.user;
@@ -356,6 +357,17 @@ export default function WorkDashboardPage({
             ]}
             onChange={(v) => setDays(Number(v))}
           />
+          {(data?.teams?.length ?? 0) > 0 && (
+            <ChoiceSelect
+              ariaLabel="Team"
+              value={team ?? ALL}
+              options={[
+                { label: "All teams", value: ALL },
+                ...(data?.teams ?? []).map((t) => ({ label: t, value: t })),
+              ]}
+              onChange={(v) => setTeam(v === ALL ? undefined : v)}
+            />
+          )}
         </div>
       </header>
 

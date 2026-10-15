@@ -65,7 +65,7 @@ vi.mock('../adapters/registry/useFormRegistry', async (importOriginal) => ({
 const api = vi.hoisted(() => ({ rowExtra: {} as Record<string, unknown>, addFile: vi.fn(), fileLink: vi.fn(async () => 'https://files.test/letter.pdf'), bulk: vi.fn(), saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown>, events: [] as unknown[] }));
 vi.mock('../adapters/workflow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../adapters/workflow')>();
-  const people = [{ uuid: 'u1', name: 'Denim Head', email: 'd@x.test' }, { uuid: 'u2', name: 'Loom Lead', email: 'l@x.test' }];
+  const people = [{ uuid: 'u1', name: 'Denim Head', email: 'd@x.test' }, { uuid: 'u2', name: 'Loom Lead', email: 'l@x.test', department: 'Weaving' }];
   return {
     ...actual,
     recordsAvailable: true,
@@ -220,6 +220,15 @@ describe('Records inbox', () => {
     await user.type(within(drawer).getByRole('textbox', { name: 'Comment' }), 'Called back');
     await user.click(within(drawer).getByRole('button', { name: 'Comment' }));
     expect(api.mutate).toHaveBeenLastCalledWith({ kind: 'comment', message: 'Called back' });
+  });
+
+  it('a team filter: the teams people are in, and only that team\'s records', async () => {
+    Object.assign(registry, { forms: [form] });
+    const user = userEvent.setup();
+    render(<Page />);
+    await user.click(screen.getByRole('combobox', { name: 'Team' }));
+    await user.click(await screen.findByRole('option', { name: 'Weaving' }));
+    expect(api.filters.at(-1)).toMatchObject({ team: 'Weaving', page: 1 });
   });
 
   it('a flow that stopped on a failed step: a Forms admin runs it again from that step; others are not offered it', async () => {

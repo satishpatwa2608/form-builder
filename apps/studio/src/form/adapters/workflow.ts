@@ -126,6 +126,8 @@ export interface InboxFilters {
   ff?: FieldFilter[];
   sort?: InboxSort;
   q?: string;
+  /** Only records held by someone of this team (department). */
+  team?: string;
   page: number;
 }
 
@@ -213,6 +215,7 @@ export function useInbox(filters: InboxFilters) {
             formCode: filters.formCode || undefined,
             status: filters.status || undefined,
             priority: filters.priority || undefined,
+            team: filters.team || undefined,
             assignee: filters.assignee || undefined,
             waiting: filters.waiting ? 'me' : undefined,
             overdue: filters.overdue ? 'true' : undefined,
@@ -580,6 +583,8 @@ export function useSaveWorkSettings() {
 
 export interface WorkDashboard {
   days: number;
+  /** The organisation's teams (departments), to narrow the dashboard to one. */
+  teams?: string[];
   me: { open: number; overdue: number; dueToday: number; waitingMyApproval: number; resolvedToday: number };
   team: {
     open: number;
@@ -603,10 +608,43 @@ export interface WorkDashboard {
   };
 }
 
-export function useWorkDashboard(formCode: string | undefined, days: number) {
+export function useWorkDashboard(formCode: string | undefined, days: number, team?: string) {
   return useQuery({
-    queryKey: ['form-platform', 'work-dashboard', formCode ?? '', days],
-    queryFn: async () => unwrap<WorkDashboard>(await adminApi.get('/work-dashboard', { params: { formCode: formCode || undefined, days } })),
+    queryKey: ['form-platform', 'work-dashboard', formCode ?? '', days, team ?? ''],
+    queryFn: async () => unwrap<WorkDashboard>(await adminApi.get('/work-dashboard', { params: { formCode: formCode || undefined, days, team: team || undefined } })),
     enabled: recordsAvailable,
+  });
+}
+
+/** One row of a report: a property, a team, a priority... and its numbers for the period. */
+export interface ReportRow {
+  key: string;
+  label: string;
+  opened: number;
+  resolved: number;
+  openNow: number;
+  overdueNow: number;
+  /** Hours, to one decimal; null when nothing was resolved. */
+  medianResolveHours: number | null;
+}
+
+export interface WorkReport {
+  days: number;
+  from: string;
+  to: string;
+  by: string;
+  choices: { value: string; label: string }[];
+  teams: string[];
+  groups: ReportRow[];
+  total: Omit<ReportRow, 'key' | 'label'>;
+  partial: boolean;
+}
+
+export function useWorkReport(params: { formCode?: string; days: number; by?: string; team?: string }) {
+  return useQuery({
+    queryKey: ['form-platform', 'work-report', params.formCode ?? '', params.days, params.by ?? '', params.team ?? ''],
+    queryFn: async () => unwrap<WorkReport>(await adminApi.get('/work-reports', { params: { formCode: params.formCode || undefined, days: params.days, by: params.by || undefined, team: params.team || undefined } })),
+    enabled: recordsAvailable,
+    placeholderData: keepPreviousData,
   });
 }

@@ -167,7 +167,7 @@ describe('Tenant isolation: one organisation cannot reach another (e2e)', () => 
       const out: Record<string, string> = {};
       for (const r of lists) {
         const res = await h.api().get(r.path).set(h.bearer(a));
-        if (res.status === 200) out[r.path] = JSON.stringify(res.body).replace(/"(updatedAt|lastSeenAt|lastUsedAt|now|generatedAt)":"[^"]*"/g, '');
+        if (res.status === 200) out[r.path] = JSON.stringify(res.body).replace(/"(updatedAt|lastSeenAt|lastUsedAt|now|generatedAt)":"[^"]*"/g, '').replace(/"(from|to)":"\d{4}-\d\d-\d\dT[^"]*Z"/g, '');
       }
       return out;
     };

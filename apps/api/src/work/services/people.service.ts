@@ -97,4 +97,21 @@ export class PeopleService {
     const m = await this.memberships.findOne({ orgId, userId }).select('department').lean();
     return m?.department || undefined;
   }
+
+  /** The people in a department (a team). */
+  async inDepartment(orgId: string, department: string): Promise<string[]> {
+    return (await this.memberships.find({ orgId, department, status: 'ACTIVE' }).select('userId').limit(1000).lean()).map((m) => m.userId);
+  }
+
+  /** The departments the organisation's people are in, by name. */
+  async departments(orgId: string): Promise<string[]> {
+    return ((await this.memberships.distinct('department', { orgId, status: 'ACTIVE' })) as string[]).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }
+
+  /** Each of these people's department ('' for none). */
+  async departmentsOf(orgId: string, userIds: string[]): Promise<Map<string, string>> {
+    if (!userIds.length) return new Map();
+    const rows = await this.memberships.find({ orgId, userId: { $in: [...new Set(userIds)].slice(0, 1000) } }).select('userId department').lean();
+    return new Map(rows.map((m) => [m.userId, m.department ?? '']));
+  }
 }
