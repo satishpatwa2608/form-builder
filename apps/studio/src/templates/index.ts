@@ -17,6 +17,8 @@ export interface FormTemplate {
   setup?: string[];
   /** The industry a long, ready-made form belongs to. Without one it is a general starting point. */
   industry?: string;
+  /** Saved inbox views made with the form, shared with the team (its overdue work, say). */
+  views?: { name: string; filters: Record<string, string> }[];
 }
 
 const strip = (def: Record<string, unknown>) => {
@@ -40,6 +42,7 @@ export const FORM_TEMPLATES: FormTemplate[] = [
     label: t.name,
     description: t.description,
     setup: t.setup,
+    views: t.views,
     definition: { businessId: '', submission: { method: 'POST', endpointId: 'default-submit' }, ...t.definition, name: t.name } as Record<string, unknown>,
   })),
   // Long multi-step forms by industry (./industry): each uses steps, calculations, repeating sections and its own workflow.

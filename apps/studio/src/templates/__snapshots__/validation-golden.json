@@ -1008,6 +1008,290 @@
    "message": "Notifications, tasks and approvals go to Prism users (assignee, submitter or a chosen user)"
   }
  ],
+ "template:maintenance-complaint | as given | shape": "valid",
+ "template:maintenance-complaint | as given | publish": "valid",
+ "template:maintenance-complaint | no labels": [
+  {
+   "path": "fields.0.label",
+   "message": "\"name\" needs a label"
+  },
+  {
+   "path": "fields.1.label",
+   "message": "\"email\" needs a label"
+  },
+  {
+   "path": "fields.2.label",
+   "message": "\"phone\" needs a label"
+  },
+  {
+   "path": "fields.3.label",
+   "message": "\"property\" needs a label"
+  },
+  {
+   "path": "fields.4.label",
+   "message": "\"unit\" needs a label"
+  },
+  {
+   "path": "fields.5.label",
+   "message": "\"kind\" needs a label"
+  },
+  {
+   "path": "fields.6.label",
+   "message": "\"urgency\" needs a label"
+  },
+  {
+   "path": "fields.7.label",
+   "message": "\"description\" needs a label"
+  },
+  {
+   "path": "fields.8.label",
+   "message": "\"photo\" needs a label"
+  },
+  {
+   "path": "fields.9.label",
+   "message": "\"visit\" needs a label"
+  }
+ ],
+ "template:maintenance-complaint | a field twice": [
+  {
+   "path": "fields.10.id",
+   "message": "Duplicate field id \"m_name\""
+  },
+  {
+   "path": "fields.10.name",
+   "message": "Duplicate field name \"name\""
+  }
+ ],
+ "template:maintenance-complaint | bad field names": [
+  {
+   "path": "fields.0.name",
+   "message": "Field name must be letters, digits or _, not starting with a digit"
+  },
+  {
+   "path": "fields.2.name",
+   "message": "Field name must be letters, digits or _, not starting with a digit"
+  },
+  {
+   "path": "fields.4.name",
+   "message": "Field name must be letters, digits or _, not starting with a digit"
+  },
+  {
+   "path": "fields.6.name",
+   "message": "Field name must be letters, digits or _, not starting with a digit"
+  },
+  {
+   "path": "fields.8.name",
+   "message": "Field name must be letters, digits or _, not starting with a digit"
+  },
+  {
+   "path": "fields.2.name",
+   "message": "Duplicate field name \"1 bad name\""
+  },
+  {
+   "path": "fields.4.name",
+   "message": "Duplicate field name \"1 bad name\""
+  },
+  {
+   "path": "fields.6.name",
+   "message": "Duplicate field name \"1 bad name\""
+  },
+  {
+   "path": "fields.8.name",
+   "message": "Duplicate field name \"1 bad name\""
+  },
+  {
+   "path": "workflow.priority.rules.0",
+   "message": "Priority rule uses unknown field \"urgency\""
+  },
+  {
+   "path": "workflow.priority.rules.1",
+   "message": "Priority rule uses unknown field \"urgency\""
+  },
+  {
+   "path": "workflow.priority.rules.2",
+   "message": "Priority rule uses unknown field \"urgency\""
+  }
+ ],
+ "template:maintenance-complaint | rule on an unknown answer": [
+  {
+   "path": "rules.0.then.0",
+   "message": "Invalid input"
+  }
+ ],
+ "template:maintenance-complaint | event that does nothing known": [
+  {
+   "path": "events.0.on",
+   "message": "Invalid input"
+  },
+  {
+   "path": "events.0.do.0",
+   "message": "Invalid input"
+  }
+ ],
+ "template:maintenance-complaint | dates the wrong way round": [
+  {
+   "path": "closesAt",
+   "message": "The form must close after it opens"
+  },
+  {
+   "path": "timeZone",
+   "message": "\"Mars/Base\" is not a time zone. Use a name such as Asia/Kolkata"
+  }
+ ],
+ "template:maintenance-complaint | settings that do not fit": [
+  {
+   "path": "openWith",
+   "message": "Opens with a record: choose the field the record is found by"
+  },
+  {
+   "path": "openWith",
+   "message": "Opens with a record: \"nope\" is not a question of this form"
+  },
+  {
+   "path": "payment.amountField",
+   "message": "Choose the field that holds the amount to pay"
+  },
+  {
+   "path": "submission.mapping.nope",
+   "message": "Maps unknown field \"nope\""
+  },
+  {
+   "path": "captcha.mode",
+   "message": "Score-based checking is only offered by reCAPTCHA"
+  },
+  {
+   "path": "actions.cancel.redirectUrl",
+   "message": "Redirect cancel needs a redirectUrl"
+  },
+  {
+   "path": "theme.primaryColor",
+   "message": "primaryColor must be a hex colour like #1458e2"
+  },
+  {
+   "path": "theme.logoUrl",
+   "message": "Logo must be an https:// or site-relative (/…) URL"
+  },
+  {
+   "path": "submission.success.redirectUrl",
+   "message": "Redirect on success needs a redirectUrl"
+  }
+ ],
+ "template:maintenance-complaint | workflow pointing at nothing": [
+  {
+   "path": "workflow.workFields.1.prefill",
+   "message": "Invalid input: expected object, received string"
+  }
+ ],
+ "template:maintenance-complaint | automations pointing at nothing": [
+  {
+   "path": "automations.4.actions",
+   "message": "Too big: expected array to have <=10 items"
+  },
+  {
+   "path": "automations.4.name",
+   "message": "Give the automation a name"
+  },
+  {
+   "path": "automations.4.field",
+   "message": "Unknown work field \"nope\""
+  },
+  {
+   "path": "automations.4.toStatus",
+   "message": "Unknown status \"GONE\""
+  },
+  {
+   "path": "automations.4.if",
+   "message": "Condition uses unknown field \"$work.nope\""
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": add who it goes to"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": the email needs a subject and a message"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": two steps use the key \"a\""
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": the notification needs a message"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "Notifications, tasks and approvals go to Prism users (assignee, submitter or a chosen user)"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": choose who approves"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": the approval needs a title"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": each approval asked at the same time needs who approves and what they approve"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": choose who signs"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": say what is being signed"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": say what the signers must know before they can sign, and what to call it"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": choose the answer that decides who gets it"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": say who gets it for each answer"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": webhooks need a full https URL"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": that is not a Zapier address"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": choose a custom API"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": choose the earlier step to go back to"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": step 10's condition uses \"$steps.later.x\", which isn't an answer, the status or an earlier step's output"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "Unknown status \"GONE\""
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"\": the task needs a title"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "\"nope\" is not an email field"
+  },
+  {
+   "path": "automations.4.actions",
+   "message": "Notifications, tasks and approvals go to Prism users (assignee, submitter or a chosen user)"
+  }
+ ],
  "template:customer-complaint | as given | shape": "valid",
  "template:customer-complaint | as given | publish": "valid",
  "template:customer-complaint | no labels": [

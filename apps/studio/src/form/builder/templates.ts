@@ -12,7 +12,9 @@ export interface FormTemplate {
   description: string;
   /** What to set before publishing. */
   setup: string[];
-  definition: Pick<FormDefinition, 'fields' | 'workflow' | 'automations' | 'access' | 'description'>;
+  definition: Pick<FormDefinition, 'fields' | 'workflow' | 'automations' | 'access' | 'description' | 'recordAccess'>;
+  /** Saved inbox views made with the form (shared with the team), e.g. its overdue work. `formCode` is added. */
+  views?: { name: string; filters: Record<string, string> }[];
 }
 
 const opts = (...pairs: [string, string][]) => ({ type: 'STATIC' as const, options: pairs.map(([value, label]) => ({ value, label })) });
@@ -339,7 +341,154 @@ const lead: FormTemplate = {
   },
 };
 
-export const FORM_TEMPLATES: FormTemplate[] = [complaint, lead];
+/**
+ * A resident reports a problem, maintenance fixes it, a manager watches what is late: the whole process in one
+ * step. Who gets each kind of problem and the maintenance team are the organisation's to fill in.
+ */
+const maintenance: FormTemplate = {
+  key: 'maintenance-complaint',
+  name: 'Maintenance complaint (full process)',
+  description: 'Residents report a problem with a photo; it goes to whoever fixes that kind of problem, with deadlines by urgency, escalation to the manager, a photo of the repair before it is closed, and emails to the resident.',
+  setup: [
+    'Fill in your properties in "Which property?".',
+    'Under Assignment, choose who gets each kind of problem (left empty, it waits in the Maintenance team\'s queue).',
+    'Put your maintenance people in the "Maintenance" department (Members), or change the team under "Who works these records".',
+  ],
+  views: [{ name: 'Overdue maintenance', filters: { overdue: 'true', open: 'true', sort: 'due' } }],
+  definition: {
+    access: 'PUBLIC',
+    description: 'Tell us what needs fixing. We will let you know when someone is on it and when it is done.',
+    fields: [
+      { id: 'm_name', type: 'TEXT', name: 'name', label: 'Your name', required: true, prefill: { source: 'USER_NAME' } },
+      { id: 'm_email', type: 'EMAIL', name: 'email', label: 'Email', required: true, prefill: { source: 'USER_EMAIL' } },
+      { id: 'm_phone', type: 'PHONE', name: 'phone', label: 'Phone' },
+      { id: 'm_property', type: 'DROPDOWN', name: 'property', label: 'Which property?', required: true, dataSource: opts(['TOWER_A', 'Tower A'], ['TOWER_B', 'Tower B'], ['TOWER_C', 'Tower C']) },
+      { id: 'm_unit', type: 'TEXT', name: 'unit', label: 'Flat or unit', required: true },
+      {
+        id: 'm_kind',
+        type: 'DROPDOWN',
+        name: 'kind',
+        label: 'What kind of problem?',
+        required: true,
+        dataSource: opts(['LEAK', 'Leak or plumbing'], ['ELECTRICAL', 'Electrical'], ['LIFT', 'Lift'], ['HEATING', 'Heating or cooling'], ['PESTS', 'Pests'], ['OTHER', 'Something else']),
+      },
+      { id: 'm_urgency', type: 'RADIO', name: 'urgency', label: 'How urgent is it?', required: true, dataSource: opts(['EMERGENCY', 'Emergency: danger or damage now'], ['SOON', 'Today or tomorrow'], ['CAN_WAIT', 'It can wait a few days']) },
+      { id: 'm_desc', type: 'TEXTAREA', name: 'description', label: 'What is wrong?', required: true },
+      { id: 'm_photo', type: 'FILE', name: 'photo', label: 'A photo, if you can' },
+      { id: 'm_visit', type: 'DROPDOWN', name: 'visit', label: 'Best time to come in', dataSource: opts(['ANY', 'Any time'], ['MORNING', 'Mornings'], ['AFTERNOON', 'Afternoons'], ['EVENING', 'Evenings']) },
+    ],
+    recordAccess: { mode: 'TEAM', userIds: [], departments: ['Maintenance'] },
+    workflow: {
+      enabled: true,
+      refPrefix: 'MNT',
+      statuses: [
+        { key: 'NEW', label: 'New', category: 'OPEN' },
+        { key: 'IN_PROGRESS', label: 'Being fixed', category: 'IN_PROGRESS' },
+        { key: 'WAITING_PARTS', label: 'Waiting for parts', category: 'IN_PROGRESS' },
+        { key: 'FIXED', label: 'Fixed', category: 'DONE' },
+        { key: 'NOT_A_FAULT', label: 'Not a fault', category: 'DONE' },
+      ],
+      assignment: { type: 'BY_FIELD', field: 'kind', map: {} },
+      priority: {
+        default: 'MEDIUM',
+        rules: [
+          { if: { field: 'urgency', operator: 'equals', value: 'EMERGENCY' }, priority: 'CRITICAL' },
+          { if: { field: 'urgency', operator: 'equals', value: 'SOON' }, priority: 'HIGH' },
+          { if: { field: 'urgency', operator: 'equals', value: 'CAN_WAIT' }, priority: 'LOW' },
+        ],
+      },
+      actions: [
+        { key: 'start', label: 'Start work', from: ['NEW', 'WAITING_PARTS'], to: 'IN_PROGRESS' },
+        { key: 'parts', label: 'Waiting for parts', from: ['IN_PROGRESS'], to: 'WAITING_PARTS', requireComment: true },
+        {
+          key: 'fixed',
+          label: 'Fixed',
+          from: ['IN_PROGRESS'],
+          to: 'FIXED',
+          requireComment: true,
+          // A photo of the repair, where there is something to see.
+          requireFiles: { picturesOnly: true, if: { field: 'kind', operator: 'in', value: ['LEAK', 'ELECTRICAL', 'HEATING'] } },
+        },
+        { key: 'not_a_fault', label: 'Not a fault', from: ['NEW', 'IN_PROGRESS'], to: 'NOT_A_FAULT', requireComment: true },
+      ],
+      reopen: { to: 'IN_PROGRESS', withinDays: 14 },
+      sla: {
+        calendar: '24x7',
+        responseHours: 24,
+        resolutionHours: 120,
+        byPriority: { CRITICAL: { responseHours: 1, resolutionHours: 8 }, HIGH: { responseHours: 4, resolutionHours: 48 }, LOW: { resolutionHours: 240 } },
+        pauseIn: ['WAITING_PARTS'],
+        warnAtPercent: 75,
+      },
+      escalation: {
+        levels: [
+          { afterHours: 0, notify: [{ kind: 'MANAGER' }] },
+          { afterHours: 24, notify: [{ kind: 'MANAGER' }], raisePriority: true },
+        ],
+      },
+      contactEmailField: 'email',
+    },
+    automations: [
+      {
+        id: 'ack',
+        name: 'Tell the resident it arrived',
+        enabled: true,
+        when: 'SUBMITTED',
+        actions: [
+          {
+            id: 'ack_email',
+            type: 'EMAIL',
+            to: [{ kind: 'FIELD', field: 'email' }],
+            subject: 'We have your report {{$record.ref}}',
+            body: 'Dear {{name}},\n\nThank you. Your report about {{unit}} is {{$record.ref}}. We will let you know when someone is on it.',
+          },
+        ],
+      },
+      {
+        id: 'emergency',
+        name: 'Emergency alert',
+        enabled: true,
+        when: 'SUBMITTED',
+        if: { field: '$priority', operator: 'equals', value: 'CRITICAL' },
+        actions: [{ id: 'alert', type: 'NOTIFY', to: [{ kind: 'ASSIGNEE' }, { kind: 'MANAGER' }], message: 'Emergency {{$record.ref}} at {{unit}}: {{description}}' }],
+      },
+      {
+        id: 'started',
+        name: 'Tell the resident someone is on it',
+        enabled: true,
+        when: 'STATUS_CHANGED',
+        toStatus: 'IN_PROGRESS',
+        actions: [
+          {
+            id: 'started_email',
+            type: 'EMAIL',
+            to: [{ kind: 'FIELD', field: 'email' }],
+            subject: 'Someone is working on {{$record.ref}}',
+            body: 'Dear {{name}},\n\nSomeone from maintenance is now working on your report {{$record.ref}}.',
+          },
+        ],
+      },
+      {
+        id: 'fixed',
+        name: 'Tell the resident it is fixed',
+        enabled: true,
+        when: 'STATUS_CHANGED',
+        toStatus: 'FIXED',
+        actions: [
+          {
+            id: 'fixed_email',
+            type: 'EMAIL',
+            to: [{ kind: 'FIELD', field: 'email' }],
+            subject: '{{$record.ref}} is fixed',
+            body: 'Dear {{name}},\n\nYour report {{$record.ref}} has been fixed. If the problem comes back within 14 days, reply to this email and we will reopen it.',
+          },
+        ],
+      },
+    ],
+  },
+};
+
+export const FORM_TEMPLATES: FormTemplate[] = [maintenance, complaint, lead];
 
 /** A draft from the dialog's basics plus a template's form and process. */
 export function applyTemplate(draft: FormDefinition, template: FormTemplate): FormDefinition {

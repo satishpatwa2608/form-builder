@@ -113,10 +113,21 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
       add: (workflow) => api<{ id: string }>('/workflows', { method: 'POST', body: workflow }),
     });
     await api('/forms', { method: 'POST', body: { folderId, definition: { ...ready.definition, name: name.trim(), code: shownCode } } });
+    // Views of its work for the team, such as what is overdue. Not being able to make one does not undo the form.
+    const views: string[] = [];
+    const notMade: string[] = [];
+    for (const v of tpl.views ?? []) {
+      try {
+        await api('/work-views/new', { method: 'PUT', body: { name: v.name, shared: true, filters: { ...v.filters, formCode: shownCode } } });
+        views.push(v.name);
+      } catch {
+        notMade.push(v.name);
+      }
+    }
     onDone(
-      `"${name.trim()}" was created as a draft.${tpl.setup?.length ? ` Before publishing: ${tpl.setup.join(' ')}` : ''}${
+      `"${name.trim()}" was created as a draft.${views.length ? ` The inbox view ${views.map((n) => `"${n}"`).join(', ')} was made for your team.` : ''}${tpl.setup?.length ? ` Before publishing: ${tpl.setup.join(' ')}` : ''}${
         leftOut.length ? ` It was created without the style ${leftOut.map((n) => `"${n}"`).join(', ')}: only an admin can add styles to the library.` : ''
-      }`,
+      }${notMade.length ? ` The inbox view ${notMade.map((n) => `"${n}"`).join(', ')} was not made: only a Forms admin can save views for the team.` : ''}`,
     );
   });
 

@@ -36,7 +36,7 @@ export interface WorkViewDto {
 }
 
 /** Filters a view may keep (the Inbox query, minus paging). */
-const VIEW_KEYS = ['formCode', 'status', 'priority', 'assignee', 'waiting', 'overdue', 'open', 'q', 'ff', 'sort'] as const;
+const VIEW_KEYS = ['formCode', 'status', 'priority', 'assignee', 'waiting', 'overdue', 'open', 'q', 'ff', 'sort', 'team'] as const;
 
 const HOUR = 3_600_000;
 const round1 = (n: number) => Math.round(n * 10) / 10;

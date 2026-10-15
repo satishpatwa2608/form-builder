@@ -174,6 +174,37 @@ describe('studio', () => {
     expect(sent.definition.workflow.statuses).toHaveLength(6);
   });
 
+  it('forms: the maintenance process comes whole, with an overdue view for the team; without the right to save views it says so', async () => {
+    const user = userEvent.setup();
+    let viewsAllowed = true;
+    const { calls } = fakeApi({
+      ...signedIn(),
+      'GET /folders': () => ({ body: [{ id: 'f1', name: 'Quality', parentId: null, path: ['f1'] }] }),
+      'GET /forms': () => ({ body: [] }),
+      'GET /styles': () => ({ body: [] }),
+      'POST /forms': () => ({ status: 201, body: {} }),
+      'PUT /work-views/new': () => (viewsAllowed ? { body: [] } : { status: 403, body: { message: 'Only Form admins can save views' } }),
+    });
+    renderApp('/forms');
+    await user.click(await screen.findByRole('button', { name: /New form/ }));
+    await user.click(screen.getByText('Maintenance complaint (full process)'));
+    await user.click(screen.getByRole('button', { name: /Create draft/ }));
+    expect(await screen.findByText(/The inbox view "Overdue maintenance" was made for your team\. Before publishing: Fill in your properties/)).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === 'POST' && c.path === '/forms')!.body as { definition: { code: string; workflow: { actions: { key: string; requireFiles?: unknown }[]; escalation: unknown; assignment: unknown } } };
+    expect(sent.definition.code).toBe('MAINTENANCE_COMPLAINT_FULL_PROCESS');
+    expect(sent.definition.workflow.assignment).toEqual({ type: 'BY_FIELD', field: 'kind', map: {} });
+    expect(sent.definition.workflow.actions.find((a) => a.key === 'fixed')!.requireFiles).toMatchObject({ picturesOnly: true });
+    expect(calls.find((c) => c.path === '/work-views/new')!.body).toEqual({ name: 'Overdue maintenance', shared: true, filters: { overdue: 'true', open: 'true', sort: 'due', formCode: 'MAINTENANCE_COMPLAINT_FULL_PROCESS' } });
+
+    viewsAllowed = false;
+    await user.click(await screen.findByRole('button', { name: /New form/ }));
+    await user.click(screen.getByText('Maintenance complaint (full process)'));
+    await user.clear(screen.getByLabelText('Name'));
+    await user.type(screen.getByLabelText('Name'), 'Repairs');
+    await user.click(screen.getByRole('button', { name: /Create draft/ }));
+    expect(await screen.findByText(/The inbox view "Overdue maintenance" was not made: only a Forms admin can save views for the team\./)).toBeInTheDocument();
+  });
+
   it('forms: a long list is shown a page at a time, and a form is found by typing part of its name', async () => {
     const user = userEvent.setup();
     const many = Array.from({ length: 45 }, (_, i) => ({ id: `f${i}`, code: `FORM_${String(i + 1).padStart(2, '0')}`, name: `Form ${String(i + 1).padStart(2, '0')}`, folderId: 'f1', version: 1, status: 'PUBLISHED', publishedVersion: 1, publicLink: true, updatedAt: '2026-09-30T10:00:00Z', permissions: ['form.view'] }));
