@@ -41,6 +41,10 @@ export class Job {
   @Prop({ type: Date })
   lockedUntil?: Date;
 
+  /** While RUNNING: which taking of the job this is. Only the worker that holds it may renew it or write the result. */
+  @Prop({ type: String })
+  lease?: string;
+
   @Prop({ type: String, default: '' })
   lastError: string;
 

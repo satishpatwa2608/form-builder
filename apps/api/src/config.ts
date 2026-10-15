@@ -46,6 +46,12 @@ const schema = z.object({
    * tests drive the queue themselves; set it to force either way.
    */
   JOBS_POLL: z.enum(['true', 'false']).optional(),
+  /**
+   * How long a worker holds a job it took before another may assume it died. A worker renews it every third of
+   * this while the job runs, so a long job is never taken twice; a short value only makes a dead worker's job
+   * come back sooner.
+   */
+  JOBS_LEASE_MS: z.coerce.number().int().min(50).default(5 * 60_000),
   /** Plan for organisations billing hasn't set one on (see src/plans/plans.ts). */
   DEFAULT_PLAN: z.enum(['FREE', 'TEAM', 'BUSINESS', 'ENTERPRISE']).default('FREE'),
   /**

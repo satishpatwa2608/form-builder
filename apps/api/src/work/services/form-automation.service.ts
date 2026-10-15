@@ -7,7 +7,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectModel } from '@nestjs/mongoose';
 import { OnEvent } from '@nestjs/event-emitter';
 import { createHash } from 'node:crypto';
-import { JobQueue, type JobContext } from '../../jobs/job-queue.service';
+import { JobQueue, stillHeld, type JobContext } from '../../jobs/job-queue.service';
 import { Model } from 'mongoose';
 import { newId as uuidv4 } from '../../common/crypto';
 import { MailService } from './mail.service';
@@ -432,6 +432,8 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       resume ? this.runs.updateOne({ uuid: runId, orgId }, { $set: { status, steps } }) : Promise.resolve();
 
     for (let index = resume?.from ?? 0; index < automation.actions.length; index++) {
+      // A job that has gone to another worker starts no further step here: the new holder carries on from the timeline.
+      stillHeld();
       const action = automation.actions[index];
       const key = stepKey(action, index);
       const base = { stepKey: key, stepIndex: index, action: action.type };

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -22,11 +23,33 @@ export interface JobContext {
   id: string;
   /** 1 on the first try. */
   attempt: number;
+  /**
+   * Aborted when this worker no longer holds the job (its lease was taken over, say after a long pause). What it
+   * does from then on is not recorded; a handler with several steps checks it between them (see stillHeld).
+   */
+  signal: AbortSignal;
+}
+
+/** Thrown by stillHeld() when the job has gone to another worker. */
+export class LeaseLostError extends Error {
+  constructor(id: string) {
+    super(`job ${id} was taken over by another worker`);
+  }
+}
+
+const running = new AsyncLocalStorage<JobContext>();
+
+/** The job this code is running in, if any. */
+export const currentJob = (): JobContext | undefined => running.getStore();
+
+/** Throws when the job this code runs in has gone to another worker, so it starts nothing more. */
+export function stillHeld(): void {
+  const job = running.getStore();
+  if (job?.signal.aborted) throw new LeaseLostError(job.id);
 }
 
 type Handler = (payload: any, job: JobContext) => Promise<void>;
 
-const LOCK_MS = 5 * 60_000;
 const POLL_MS = 1_000;
 const CONCURRENCY = 5;
 const KEEP_DONE_MS = 7 * 86_400_000;
@@ -45,6 +68,10 @@ export const retryDelayMs = (attempt: number) => Math.min(30_000 * 2 ** (attempt
  *
  * Delivery is at-least-once: a handler may be started again after a crash, so
  * handlers must be safe to repeat.
+ *
+ * Each taking of a job has its own lease. The worker renews it while the handler runs, so a job longer than the
+ * lease is not taken by a second worker; and a worker that lost it (paused past the lease, say) cannot write
+ * the job's result over the new holder's, and its handler is told through JobContext.signal.
  */
 @Injectable()
 export class JobQueue implements OnModuleInit, OnModuleDestroy {
@@ -79,6 +106,10 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     await this.draining?.catch(() => undefined);
+  }
+
+  private get leaseMs(): number {
+    return this.config.JOBS_LEASE_MS;
   }
 
   register(type: string, run: Handler, options: JobHandlerOptions = {}) {
@@ -151,7 +182,7 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
             { status: 'RUNNING', lockedUntil: { $lte: now } },
           ],
         },
-        { $set: { status: 'RUNNING', lockedUntil: new Date(now.getTime() + LOCK_MS) }, $inc: { attempts: 1 } },
+        { $set: { status: 'RUNNING', lockedUntil: new Date(now.getTime() + this.leaseMs), lease: uuidv4() }, $inc: { attempts: 1 } },
         { sort: { runAt: 1 }, new: true },
       )
       .lean();
@@ -159,18 +190,39 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
 
   private async execute(job: Job) {
     const handler = this.handlers.get(job.type)!;
-    const finished = (set: Record<string, unknown>) =>
-      this.jobs.updateOne({ uuid: job.uuid, status: 'RUNNING' }, { $set: set, $unset: { lockedUntil: 1 } });
+    const held = { uuid: job.uuid, status: 'RUNNING', lease: job.lease };
+    const finished = async (set: Record<string, unknown>) => {
+      const res = await this.jobs.updateOne(held, { $set: set, $unset: { lockedUntil: 1, lease: 1 } });
+      if (!res.matchedCount) this.logger.warn(`job ${job.type} ${job.uuid}: another worker holds it now, so this one's result is not written`);
+    };
     const giveUp = (error: string) => {
       this.logger.error(`job ${job.type} ${job.uuid} failed for good after ${job.attempts} attempts: ${error}`);
       return finished({ status: 'FAILED', lastError: error, expireAt: new Date(Date.now() + KEEP_FAILED_MS) });
     };
     // Taken over from a dead worker once too often.
     if (job.attempts > job.maxAttempts) return giveUp(job.lastError || 'its worker stopped before finishing');
+
+    // Renew the lease while the handler runs; when it cannot be renewed, someone else has the job.
+    const lost = new AbortController();
+    const renew = async () => {
+      const res = await this.jobs.updateOne(held, { $set: { lockedUntil: new Date(Date.now() + this.leaseMs) } }).catch(() => undefined);
+      if (res && !res.matchedCount && !lost.signal.aborted) {
+        this.logger.warn(`job ${job.type} ${job.uuid} was taken over by another worker; stopping it here`);
+        lost.abort();
+      }
+    };
+    const beat = setInterval(() => void renew(), Math.max(Math.floor(this.leaseMs / 3), 20));
+    beat.unref?.();
+    const context: JobContext = { id: job.uuid, attempt: job.attempts, signal: lost.signal };
     try {
-      await handler.run(job.payload, { id: job.uuid, attempt: job.attempts });
+      await running.run(context, () => handler.run(job.payload, context));
+      clearInterval(beat);
+      if (lost.signal.aborted) return;
       await finished({ status: 'DONE', lastError: '', expireAt: new Date(Date.now() + KEEP_DONE_MS) });
     } catch (e) {
+      clearInterval(beat);
+      // The new holder runs it; this attempt is neither a success nor a failure of the job.
+      if (lost.signal.aborted) return;
       const error = ((e as Error).message ?? 'failed').slice(0, 500);
       if (job.attempts >= job.maxAttempts) return giveUp(error);
       this.logger.warn(`job ${job.type} ${job.uuid} attempt ${job.attempts} failed, will retry: ${error}`);

@@ -1,6 +1,7 @@
 import { getModelToken } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
-import { JobQueue, retryDelayMs } from '../src/jobs/job-queue.service';
+import { APP_CONFIG, type AppConfig } from '../src/config';
+import { JobQueue, retryDelayMs, stillHeld, type JobContext } from '../src/jobs/job-queue.service';
 import { Job } from '../src/jobs/job.schema';
 import { startApp, type Harness } from './harness';
 
@@ -147,6 +148,105 @@ describe('Job queue (e2e)', () => {
     expect((await jobs.findOne({ uuid: 'orphan-1' }).lean())!.status).toBe('DONE');
     expect((await jobs.findOne({ uuid: 'orphan-2' }).lean())!.status).toBe('RUNNING');
     expect(await jobs.findOne({ uuid: 'orphan-3' }).lean()).toMatchObject({ status: 'FAILED', lastError: 'its worker stopped before finishing' });
+  });
+});
+
+describe('Job queue: a job longer than its lease (e2e)', () => {
+  let h: Harness;
+  let jobs: Model<Job>;
+  let first: JobQueue;
+  let second: JobQueue;
+  const LEASE = 300;
+
+  beforeAll(async () => {
+    h = await startApp({ JOBS_LEASE_MS: String(LEASE) });
+    jobs = h.app.get(getModelToken(Job.name));
+    first = h.app.get(JobQueue);
+    // A second worker on the same queue, as a second process would be.
+    second = new JobQueue(jobs as never, h.app.get<AppConfig>(APP_CONFIG));
+  });
+  afterAll(async () => {
+    await second?.onModuleDestroy();
+    await h?.close();
+  });
+
+  it('two workers on one queue never run a job twice, however much longer than the lease it takes', async () => {
+    let runs = 0;
+    const slow = async () => {
+      runs++;
+      await new Promise((r) => setTimeout(r, LEASE * 4));
+    };
+    first.register('test.slow', slow);
+    second.register('test.slow', slow);
+    await jobs.create({ uuid: 'slow-1', type: 'test.slow', payload: {}, status: 'PENDING', runAt: new Date(), maxAttempts: 3 });
+    const running = first.drain();
+    // The other worker keeps looking while the first is busy, well past the lease.
+    for (let i = 0; i < 12; i++) {
+      await second.drain();
+      await new Promise((r) => setTimeout(r, LEASE / 3));
+    }
+    await running;
+    expect(runs).toBe(1);
+    expect(await jobs.findOne({ uuid: 'slow-1' }).lean()).toMatchObject({ status: 'DONE', attempts: 1 });
+  });
+
+  it('a worker whose job was taken over stops starting things, and does not write its result over the new holder\'s', async () => {
+    const seen: { aborted?: boolean; threw?: string } = {};
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    first.register('test.taken', async (_p: unknown, job: JobContext) => {
+      await gate;
+      // Give the renewal a moment to notice.
+      await new Promise((r) => setTimeout(r, LEASE));
+      seen.aborted = job.signal.aborted;
+      try {
+        stillHeld();
+      } catch (e) {
+        seen.threw = (e as Error).message;
+      }
+    });
+    await jobs.create({ uuid: 'taken-1', type: 'test.taken', payload: {}, status: 'PENDING', runAt: new Date(), maxAttempts: 3 });
+    const running = first.drain();
+    await waitFor(async () => (await jobs.findOne({ uuid: 'taken-1' }).lean())?.status === 'RUNNING');
+    // Another worker takes it over (as it would after this one stalled past the lease).
+    await jobs.updateOne({ uuid: 'taken-1' }, { $set: { lease: 'someone-else', lockedUntil: later() } });
+    release();
+    await running;
+    expect(seen).toEqual({ aborted: true, threw: 'job taken-1 was taken over by another worker' });
+    // Still the other worker's: not marked done or failed by this one.
+    expect(await jobs.findOne({ uuid: 'taken-1' }).lean()).toMatchObject({ status: 'RUNNING', lease: 'someone-else' });
+  });
+
+  it('an automation whose job was taken over starts no further step', async () => {
+    await h.signUp('Lease Owner', 'lease@acme.test', 'Lease Co');
+    const owner = (await h.login('lease@acme.test')).token;
+    const orgId = (await h.api().get('/auth/me').set(h.bearer(owner)).expect(200)).body.org.id;
+    const folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'F' }).expect(201)).body[0].id;
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: form('LEASE') }).expect(201)).body.definition.id;
+    await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+    // Hold the first email until the job has been taken over.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const send = h.mailer.send.bind(h.mailer);
+    h.mailer.send = async (m: Parameters<typeof send>[0]) => {
+      if (String(m.subject).startsWith('Got it')) {
+        await gate;
+        await new Promise((r) => setTimeout(r, LEASE));
+      }
+      return send(m);
+    };
+    try {
+      await h.api().post(`/public/forms/LEASE/submissions?org=${orgId}`).send({ values: { name: 'Lee', email: 'lee@customer.test' } }).expect(201);
+      await waitFor(async () => (await jobs.findOne({ type: 'automation.submitted', orgId }).lean())?.status === 'RUNNING');
+      await jobs.updateOne({ type: 'automation.submitted', orgId }, { $set: { lease: 'someone-else', lockedUntil: later() } });
+      release();
+      await waitFor(() => h.outbox.some((m) => m.to === 'lee@customer.test' && String(m.subject).startsWith('Got it')));
+      await new Promise((r) => setTimeout(r, LEASE * 2));
+      // The step in hand finished; the next one was left for the worker that holds the job now.
+      expect(h.outbox.filter((m) => m.to === 'lee@customer.test').map((m) => String(m.subject).split(' ')[0])).toEqual(['Got']);
+    } finally {
+      h.mailer.send = send;
+    }
   });
 });
 
