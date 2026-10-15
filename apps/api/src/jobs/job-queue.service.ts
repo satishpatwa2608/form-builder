@@ -82,6 +82,8 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private draining?: Promise<number>;
   private kicked = false;
+  /** Asked to run while a run was going: one more pass when it ends (its lanes take most new work as they go). */
+  private again = false;
   private closed = false;
 
   constructor(
@@ -100,7 +102,7 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
     // Tests run jobs as they are queued (see enqueue) and call drain() for retries, unless told to poll.
     const poll = this.config.JOBS_POLL ? this.config.JOBS_POLL === 'true' : this.config.NODE_ENV !== 'test';
     if (!this.runsJobs || !poll) return;
-    this.timer = setInterval(() => void this.drain().catch((e) => this.logger.error(`job poll failed: ${(e as Error).message}`)), POLL_MS);
+    this.timer = setInterval(() => this.kick(), POLL_MS);
     this.timer.unref?.();
   }
 
@@ -141,10 +143,24 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
       this.kicked = true;
       setImmediate(() => {
         this.kicked = false;
-        void this.drain().catch((err) => this.logger.error(`job run failed: ${(err as Error).message}`));
+        this.kick();
       });
     }
     return true;
+  }
+
+  /**
+   * Run what is due now. While a run is going this only notes that there may be more, rather than queuing
+   * another run behind it: under a steady stream of work, runs chained one behind another for every new job (and
+   * every poll) grew without end and held memory until the process ran out (found by infra/load).
+   */
+  private kick() {
+    if (this.closed) return;
+    if (this.draining) {
+      this.again = true;
+      return;
+    }
+    void this.drain().catch((err) => this.logger.error(`job run failed: ${(err as Error).message}`));
   }
 
   /**
@@ -169,6 +185,10 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
     })();
     this.draining = run.finally(() => {
       this.draining = undefined;
+      if (this.again) {
+        this.again = false;
+        setImmediate(() => this.kick());
+      }
     });
     return this.draining;
   }

@@ -135,6 +135,23 @@ describe('Job queue (e2e)', () => {
     expect(new Set(await statusOf('test.crowd'))).toEqual(new Set(['DONE']));
   });
 
+  it('new work queued while a run is going does not pile up runs behind it (that held memory until the process died)', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    queue.register('test.slowfirst', async () => void (await gate));
+    queue.register('test.many', async () => void count('many'));
+    const drains = jest.spyOn(queue, 'drain');
+    await queue.enqueue('test.slowfirst', {});
+    await waitFor(async () => (await jobs.findOne({ type: 'test.slowfirst' }).lean())?.status === 'RUNNING');
+    for (let i = 0; i < 200; i++) await queue.enqueue('test.many', { i });
+    release();
+    await waitFor(() => calls.many === 200, 10_000);
+    await new Promise((r) => setTimeout(r, 50));
+    // The running lanes took the new work; at most one more pass was asked for.
+    expect(drains.mock.calls.length).toBeLessThanOrEqual(3);
+    drains.mockRestore();
+  });
+
   it('takes over a job whose worker died, and gives up on one that keeps dying', async () => {
     queue.register('test.orphan', async (p: { key: string }) => void count(p.key));
     const past = new Date(Date.now() - 60_000);

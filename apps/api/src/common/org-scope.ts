@@ -1,5 +1,6 @@
 import { appendFileSync } from 'node:fs';
 import mongoose, { type Schema } from 'mongoose';
+import { counter } from './metrics';
 
 /**
  * One guard for the line between organisations. Every collection that holds an organisation's data has an `orgId`
@@ -59,22 +60,36 @@ const model = mongoose.Model as unknown as Record<string, (...args: unknown[]) =
 for (const op of ['find', 'findOne', 'countDocuments', 'distinct', 'updateOne', 'updateMany', 'replaceOne', 'deleteOne', 'deleteMany', 'findOneAndUpdate', 'findOneAndDelete', 'findOneAndReplace', 'exists', 'findById']) {
   const original = model[op]!;
   model[op] = function (this: unknown, ...args: unknown[]) {
-    const query = original.apply(this, args) as { _madeAt?: string };
-    if (mode !== 'off' && query && typeof query === 'object') query._madeAt = (new Error().stack ?? '').split('\n').find((l) => (l.includes('/src/') || l.includes('/test/')) && !l.includes('org-scope') && !l.includes('node_modules')) ?? '';
+    const query = original.apply(this, args) as { _made?: { stack?: string } };
+    // The stack is taken here but only turned into text if the query is found wanting: on every query that cost
+    // a sixth of the API's throughput.
+    if (mode !== 'off' && query && typeof query === 'object') {
+      const made: { stack?: string } = {};
+      Error.captureStackTrace(made);
+      query._made = made;
+    }
     return query;
   };
 }
 
 /** Places already reported, so a busy query is reported once, not on every call. */
 const reported = new Set<string>();
+/** In production the guard reports rather than refuses: a monitor sees it on /metrics. */
+const unscoped = counter('fb_unscoped_queries_total', 'Queries on an organisation\'s data that named no organisation (reported, not refused), by collection');
 
-function check(collection: string, op: string, filter: unknown, comment: unknown, madeAt = '') {
+/** The line of our own code a query was made on, from the stack taken when it was made. */
+const lineOf = (made: { stack?: string } | undefined) =>
+  (made?.stack ?? '').split('\n').find((l) => (l.includes('/src/') || l.includes('/test/')) && !l.includes('org-scope') && !l.includes('node_modules')) ?? '';
+
+function check(collection: string, op: string, filter: unknown, comment: unknown, made?: { stack?: string }) {
   if (mode === 'off' || collection in ACROSS_ORGS_COLLECTIONS || scoped(filter) || marked(comment)) return;
+  const madeAt = lineOf(made);
   if (madeAt.includes('/test/')) return;
   const problem = new OrgScopeError(collection, op);
   const where = madeAt.trim().replace(/^at /, '') || '?';
   if (process.env.ORG_SCOPE_REPORT) appendFileSync(process.env.ORG_SCOPE_REPORT, `${collection}\t${op}\t${where}\n`);
   if (mode === 'refuse') throw new OrgScopeError(collection, `${op} (${where})`);
+  unscoped.inc({ collection });
   if (!reported.has(where)) {
     reported.add(where);
     console.warn(JSON.stringify({ level: 'warn', msg: problem.message, collection, op, where }));
@@ -90,7 +105,7 @@ export function orgScopePlugin(schema: Schema) {
     schema.pre(op, function () {
       // `this` is the query.
       const q = this as unknown as { getFilter(): unknown; getOptions(): { comment?: unknown }; model: { collection: { collectionName: string } } };
-      check(q.model.collection.collectionName, op, q.getFilter(), q.getOptions().comment, (this as unknown as { _madeAt?: string })._madeAt);
+      check(q.model.collection.collectionName, op, q.getFilter(), q.getOptions().comment, (this as unknown as { _made?: { stack?: string } })._made);
     });
   }
   schema.pre('aggregate', function () {
