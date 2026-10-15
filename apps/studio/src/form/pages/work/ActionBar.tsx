@@ -67,6 +67,11 @@ export function ActionBar({ actions, busy, onAct }: ActionBarProps) {
             placeholder={open.requireComment ? 'Comment (required)' : 'Comment (optional)'}
             onChange={(e) => setComment(e.target.value)}
           />
+          {open.requireFiles && (
+            <p className="text-sm" style={{ margin: 0 }}>
+              {`Needs ${open.requireFiles.picturesOnly ? ((open.requireFiles.count ?? 1) === 1 ? 'a picture' : `${open.requireFiles.count} pictures`) : (open.requireFiles.count ?? 1) === 1 ? 'a file' : `${open.requireFiles.count} files`} added to the record while it is in this status${open.requireFiles.if ? ', for items like this one' : ''}. Add ${(open.requireFiles.count ?? 1) === 1 ? 'it' : 'them'} under Files first.`}
+            </p>
+          )}
           {errors.length > 0 && (
             <ul role="alert" style={{ margin: 0, paddingLeft: 18, color: 'var(--destructive)', fontSize: 13 }}>
               {errors.map((m) => (

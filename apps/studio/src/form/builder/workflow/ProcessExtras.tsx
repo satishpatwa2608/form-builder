@@ -157,6 +157,32 @@ export function ActionSettings({ form, wf, index: i, onChange, people = [], bare
       )}
       <SwitchSetting label="Ask for a comment" checked={!!a.requireComment} onChange={(on) => setAction(i, { requireComment: on || undefined })} />
       <SwitchSetting
+        label="A file must be added first"
+        checked={!!a.requireFiles}
+        hint="Evidence before the move, such as a photo of the repair. Only files added while the item is in its current status count."
+        onChange={(on) => setAction(i, { requireFiles: on ? {} : undefined })}
+      />
+      {a.requireFiles && (
+        <>
+          <SelectSetting
+            label="How many"
+            value={String(a.requireFiles.count ?? 1)}
+            options={['1', '2', '3', '4', '5'].map((n) => ({ label: n, value: n }))}
+            onChange={(n) => setAction(i, { requireFiles: { ...a.requireFiles!, count: n === '1' ? undefined : Number(n) } })}
+          />
+          <SwitchSetting label="Pictures only" checked={!!a.requireFiles.picturesOnly} onChange={(on) => setAction(i, { requireFiles: { ...a.requireFiles!, picturesOnly: on || undefined } })} />
+          <SwitchSetting
+            label="Only when… (files)"
+            checked={!!a.requireFiles.if}
+            hint="e.g. only for leak complaints - otherwise the button moves the item without a file."
+            onChange={(on) => setAction(i, { requireFiles: { ...a.requireFiles!, if: on ? defaultCondition(conditionCandidates(form)[0]) : undefined } })}
+          />
+          {a.requireFiles.if && (
+            <ConditionEditor condition={a.requireFiles.if} candidates={conditionCandidates(form)} onChange={(cond) => setAction(i, { requireFiles: { ...a.requireFiles!, if: cond } })} />
+          )}
+        </>
+      )}
+      <SwitchSetting
         label="Needs approval"
         checked={!!a.approval}
         hint="The move waits until an approver agrees (e.g. the assignee's manager approves Resolve)."

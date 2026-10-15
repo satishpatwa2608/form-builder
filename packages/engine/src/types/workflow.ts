@@ -54,6 +54,12 @@ export interface WorkflowAction {
   /** Ask for a reason / comment (logged on the timeline). */
   requireComment?: boolean;
   /**
+   * Files staff must add to the record before this move - evidence, such as a photo of the repair. Only files
+   * added while the record is in its current status count. `if`: only when this holds (one complaint type and
+   * not another).
+   */
+  requireFiles?: { count?: number; picturesOnly?: boolean; if?: Condition };
+  /**
    * Someone must approve the move first (e.g. the manager approves "Resolve").
    * Approved -> the item moves to `to`; rejected -> to `onReject` (or stays).
    */

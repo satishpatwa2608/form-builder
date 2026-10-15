@@ -40,6 +40,7 @@ export const workflowSchema = z.object({
         to: z.string(),
         requireFields: z.array(z.string()).max(30).optional(),
         requireComment: z.boolean().optional(),
+        requireFiles: z.object({ count: z.number().int().min(1).max(20).optional(), picturesOnly: z.boolean().optional(), if: conditionSchema.optional() }).optional(),
         approval: z.object({ to: recipients, onReject: z.string().optional(), if: conditionSchema.optional(), need: z.enum(['ANY', 'ALL']).optional(), dueInHours: z.number().positive().max(8760).optional(), whenLate: z.enum(['REMIND', 'MANAGER', 'REJECT']).optional(), byEmail: z.boolean().optional() }).optional(),
       }),
     )
@@ -170,6 +171,9 @@ export function checkWorkflow(def: FormDefinition, ctx: z.RefinementCtx) {
   (wf?.enabled ? wf.actions ?? [] : []).forEach((act, i) => {
     for (const ref of act.approval?.if ? conditionFields(act.approval.if) : []) {
       if (!knownRef(ref)) add(['workflow', 'actions', i], `"${act.label}": the approval condition uses unknown field "${ref}"`);
+    }
+    for (const ref of act.requireFiles?.if ? conditionFields(act.requireFiles.if) : []) {
+      if (!knownRef(ref)) add(['workflow', 'actions', i], `"${act.label}": the condition for asking for a file uses unknown field "${ref}"`);
     }
   });
 }

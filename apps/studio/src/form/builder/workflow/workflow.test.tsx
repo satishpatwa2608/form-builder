@@ -243,6 +243,17 @@ describe('Workflow dialog', () => {
     wf = spy.mock.lastCall![0].workflow;
     expect(wf.actions).toEqual([{ key: 'resolve', label: 'Resolve', to: 'CLOSED', requireFields: ['rootCause'], requireComment: true }]);
 
+    // Evidence before the move: two pictures, only for some records.
+    await user.click(within(action).getByRole('switch', { name: 'A file must be added first' }));
+    expect(spy.mock.lastCall![0].workflow.actions[0].requireFiles).toEqual({});
+    await user.click(within(action).getByRole('combobox', { name: 'How many' }));
+    await user.click(await screen.findByRole('option', { name: '2' }));
+    await user.click(within(action).getByRole('switch', { name: 'Pictures only' }));
+    await user.click(within(action).getByRole('switch', { name: 'Only when… (files)' }));
+    expect(spy.mock.lastCall![0].workflow.actions[0].requireFiles).toMatchObject({ count: 2, picturesOnly: true, if: { field: expect.any(String) } });
+    await user.click(within(action).getByRole('switch', { name: 'A file must be added first' }));
+    expect(spy.mock.lastCall![0].workflow.actions[0].requireFiles).toBeUndefined();
+
     await user.click(screen.getByRole('button', { name: /Add priority rule/ }));
     expect(spy.mock.lastCall![0].workflow.priority).toMatchObject({ default: 'MEDIUM', rules: [{ priority: 'HIGH' }] });
 

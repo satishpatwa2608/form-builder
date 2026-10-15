@@ -951,6 +951,18 @@ export class FormRecordService {
         missing.push({ field: name, message: `${label} is required to ${action.label}` });
       }
     }
+    const facts = () => conditionValues(valuesFromPayload(definition, record.payload as FormValues), record.status, {}, { priority: record.priority, work: record.work ?? {} });
+    const files = action.requireFiles;
+    if (files && (!files.if || evaluateCondition(files.if, facts()))) {
+      // Evidence for this move: files staff added while the record has been where it is now.
+      const since = (record.statusChangedAt ?? (record as { createdAt?: Date }).createdAt ?? new Date(0)).getTime();
+      const added = (record.files ?? []).filter(
+        (f) => f.fieldName === STAFF_FIELD && new Date((f as { addedAt?: Date }).addedAt ?? 0).getTime() >= since && (!files.picturesOnly || f.contentType.startsWith('image/')),
+      ).length;
+      const need = files.count ?? 1;
+      const what = files.picturesOnly ? (need === 1 ? 'a picture' : `${need} pictures`) : need === 1 ? 'a file' : `${need} files`;
+      if (added < need) missing.push({ field: 'files', message: `Add ${what} to the record before you ${action.label}${need > 1 ? ` (${added} so far)` : ''}` });
+    }
     if (missing.length) throw new FormFieldErrors(400, `Complete these to ${action.label}`, missing);
     if (await this.runs.exists({ orgId: user.orgId, recordId: id, kind: 'ACTION', status: 'WAITING' })) {
       throw new ConflictException('This item is waiting for an approval');

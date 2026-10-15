@@ -247,6 +247,23 @@ describe('Records inbox', () => {
     expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: /Run again/ })).not.toBeInTheDocument();
   });
 
+  it('a button that needs a file first says so before it is pressed, and shows why it was refused', async () => {
+    Object.assign(registry, { forms: [form] });
+    api.actions = [{ key: 'resolve', label: 'Resolve', to: 'DONE', requireFiles: { picturesOnly: true, if: { field: 'category', operator: 'equals', value: 'DELIVERY' } } }];
+    const refusal = Object.assign(new Error('Complete these to Resolve'), { status: 400, fields: [{ field: 'files', message: 'Add a picture to the record before you Resolve' }] });
+    api.mutate.mockRejectedValueOnce(refusal);
+    const user = userEvent.setup();
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    const drawer = await screen.findByRole('dialog');
+    await user.click(within(within(drawer).getByRole('group', { name: 'Actions' })).getByRole('button', { name: 'Resolve' }));
+    expect(within(drawer).getByText('Needs a picture added to the record while it is in this status, for items like this one. Add it under Files first.')).toBeInTheDocument();
+    const confirm = within(drawer).getAllByRole('button', { name: 'Resolve' }).find((b) => !b.closest('[role="group"]'))!;
+    await user.click(confirm);
+    expect(await within(drawer).findByRole('alert')).toHaveTextContent('Complete these to Resolve');
+    api.actions = [];
+  });
+
   it('work item: priority, named actions with a comment, work fields saved from the drawer', async () => {
     Object.assign(registry, {
       forms: [form] });

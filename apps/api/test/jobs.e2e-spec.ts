@@ -1,7 +1,7 @@
 import { getModelToken } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import { APP_CONFIG, type AppConfig } from '../src/config';
-import { JobQueue, retryDelayMs, stillHeld, type JobContext } from '../src/jobs/job-queue.service';
+import { JobQueue, currentJob, retryDelayMs, stillHeld, type JobContext } from '../src/jobs/job-queue.service';
 import { Job } from '../src/jobs/job.schema';
 import { startApp, type Harness } from './harness';
 
@@ -196,8 +196,8 @@ describe('Job queue: a job longer than its lease (e2e)', () => {
     const gate = new Promise<void>((r) => (release = r));
     first.register('test.taken', async (_p: unknown, job: JobContext) => {
       await gate;
-      // Give the renewal a moment to notice.
-      await new Promise((r) => setTimeout(r, LEASE));
+      // The renewal notices the lease has gone.
+      await waitFor(() => job.signal.aborted).catch(() => undefined);
       seen.aborted = job.signal.aborted;
       try {
         stillHeld();
@@ -231,7 +231,8 @@ describe('Job queue: a job longer than its lease (e2e)', () => {
     h.mailer.send = async (m: Parameters<typeof send>[0]) => {
       if (String(m.subject).startsWith('Got it')) {
         await gate;
-        await new Promise((r) => setTimeout(r, LEASE));
+        // Sent once the worker has noticed the job is no longer its own.
+        await waitFor(() => currentJob()?.signal.aborted === true).catch(() => undefined);
       }
       return send(m);
     };
