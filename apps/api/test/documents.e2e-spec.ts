@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { newSealIdentity } from '../src/documents/pdf-seal';
 import { OBJECT_STORE, type ObjectStore } from '../src/common/object-store';
 import { JobQueue } from '../src/jobs/job-queue.service';
+import { DocumentsService } from '../src/documents/documents.service';
 import { startApp, type Harness } from './harness';
 
 const levels = [{ label: 'Minor', value: 'LOW' }, { label: 'Serious', value: 'HIGH' }];
@@ -91,7 +92,7 @@ describe('Documents of record (e2e)', () => {
     const id = await publish(form('KEEP', { document: { keep: true, footer: 'Acme confidential' } }));
     const sub = await submit('KEEP', { customer: 'Asha Textiles', severity: 'HIGH', items: [{ item: 'Pen', qty: 2 }, { item: 'Ink', qty: 1 }] });
     await waitFor(() => stored('KEEP').length === 1, 'the stored document');
-    expect(stored('KEEP')).toEqual([`${sub.submissionId}.pdf`]);
+    expect(stored('KEEP')).toEqual([expect.stringMatching(new RegExp(`^${sub.submissionId}-[0-9a-f]{8}\\.pdf$`))]);
 
     const res = await download(id, sub.submissionId).expect(200);
     expect(res.headers['content-type']).toBe('application/pdf');
@@ -110,7 +111,7 @@ describe('Documents of record (e2e)', () => {
     await new Promise((r) => setTimeout(r, 150));
     expect(stored('LAZY')).toEqual([]);
     const first = await download(id, sub.submissionId).expect(200);
-    expect(stored('LAZY')).toEqual([`${sub.submissionId}.pdf`]);
+    expect(stored('LAZY')).toEqual([expect.stringMatching(new RegExp(`^${sub.submissionId}-[0-9a-f]{8}\\.pdf$`))]);
     // Asked again, the same stored document comes back, byte for byte.
     await new Promise((r) => setTimeout(r, 1100));
     const second = await download(id, sub.submissionId).expect(200);
@@ -162,7 +163,7 @@ describe('Documents of record (e2e)', () => {
       // The queue retries later; run it as if that time had come, twice over.
       await queue.drain(new Date(Date.now() + 3_600_000));
       await queue.drain(new Date(Date.now() + 7_200_000));
-      expect(stored('RETRY')).toEqual([`${sub.submissionId}.pdf`]);
+      expect(stored('RETRY')).toEqual([expect.stringMatching(new RegExp(`^${sub.submissionId}-[0-9a-f]{8}\\.pdf$`))]);
       expect(put.mock.calls.filter(([key]) => key.includes('/RETRY/'))).toHaveLength(3);
       expect((await pdfOf(await download(id, sub.submissionId).expect(200))).text).toContain('Unlucky');
       // A response is never refused or lost because its document could not be made.
@@ -327,6 +328,18 @@ describe('Documents of record (e2e)', () => {
       const plainId = await publish(form('UNSEALED', { document: { keep: true } }));
       const plain = await submit('UNSEALED', { customer: 'Ravi Traders', severity: 'LOW' });
       expect((await raw(await download(plainId, plain.submissionId).expect(200))).toString('latin1')).not.toContain('/DocMDP');
+    });
+
+    it('asked for several times at once (the job, a download, an email), there is still one document: the first made', async () => {
+      const id = await publish(form('SEALED_RACE', { document: { seal: true } }));
+      const sub = await submit('SEALED_RACE', { customer: 'Mira Mills', severity: 'LOW' });
+      const docs = h.app.get(DocumentsService);
+      const made = await Promise.all(Array.from({ length: 5 }, () => docs.forRecord(orgId, sub.submissionId)));
+      for (const m of made.slice(1)) expect(m.pdf.equals(made[0]!.pdf)).toBe(true);
+      expect((await raw(await download(id, sub.submissionId).expect(200))).equals(made[0]!.pdf)).toBe(true);
+      // The copies that lost were thrown away: one file for this response.
+      const files = readdirSync(join(dir, 'documents', orgId, 'SEALED_RACE')).filter((f) => f.startsWith(sub.submissionId));
+      expect(files).toHaveLength(1);
     });
 
     it('admins see whose certificate seals their PDFs, can add their own, and can go back; nobody is shown a key', async () => {

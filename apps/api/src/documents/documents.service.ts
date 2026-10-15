@@ -50,7 +50,7 @@ export class DocumentsService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.jobs.register(JOB_RECORD, (p: { orgId: string; submissionId: string }) => this.forRecord(p.orgId, p.submissionId, true).then(() => undefined), { maxAttempts: 5 });
+    this.jobs.register(JOB_RECORD, (p: { orgId: string; submissionId: string }) => this.forRecord(p.orgId, p.submissionId).then(() => undefined), { maxAttempts: 5 });
     this.jobs.register(
       JOB_BATCH_ITEM,
       async (p: { orgId: string; batchId: string; index: number; values: FormValues }, job) => {
@@ -123,20 +123,22 @@ export class DocumentsService implements OnModuleInit {
     return { pdf: await this.render(orgId, def, row.payload as FormValues, { ref: row.ref || undefined, submittedAt: (row as unknown as { createdAt: Date }).createdAt, status }), seal: true, archival };
   }
 
+  /** Each making of a response's document has a file of its own, so two made at once never overwrite each other. */
   private static keyOf(orgId: string, code: string, submissionId: string) {
-    return `documents/${orgId}/${code}/${submissionId}.pdf`;
+    return `documents/${orgId}/${code}/${submissionId}-${newId().slice(0, 8)}.pdf`;
   }
 
   /**
-   * The document of one response: the stored one, or made and stored now.
-   * `remake` makes it again over the old one (the job does, so a retry after
-   * a half-finished attempt ends with one good document).
+   * The document of one response: the stored one, or made and stored now. The first one made is the one kept,
+   * however many are asked for at once (the job that keeps it, someone downloading it, an email attaching it):
+   * a later one finds it was not first, throws its own copy away and gives the kept one. A sealed document is
+   * therefore always the same file. A half-finished attempt (made, not recorded) leaves nothing that counts.
    */
-  async forRecord(orgId: string, submissionId: string, remake = false): Promise<{ pdf: Buffer; fileName: string }> {
+  async forRecord(orgId: string, submissionId: string): Promise<{ pdf: Buffer; fileName: string }> {
     const row = await this.submissions.findOne({ orgId, uuid: submissionId }).lean();
     if (!row) throw new NotFoundException('Response not found');
     const fileName = `${row.ref || row.formCode}-${row.ref ? '' : row.uuid.slice(0, 8)}`.replace(/-$/, '') + '.pdf';
-    if (row.document?.key && !remake) {
+    if (row.document?.key) {
       const stored = await this.store.get(row.document.key);
       if (stored) return { pdf: stored, fileName };
     }
@@ -150,8 +152,13 @@ export class DocumentsService implements OnModuleInit {
     const pdf = await this.sealed(orgId, def, made);
     const key = DocumentsService.keyOf(orgId, row.formCode, row.uuid);
     await this.store.put(key, pdf, 'application/pdf');
-    await this.submissions.updateOne({ orgId, uuid: submissionId }, { $set: { document: { key, size: pdf.length, at: new Date() } } }, { timestamps: false });
-    return { pdf, fileName };
+    // Kept only if no other was kept meanwhile (or the one recorded is gone from the store).
+    const claimed = await this.submissions.updateOne({ orgId, uuid: submissionId, $or: [{ document: null }, { 'document.key': row.document?.key ?? null }] }, { $set: { document: { key, size: pdf.length, at: new Date() } } }, { timestamps: false });
+    if (claimed.modifiedCount) return { pdf, fileName };
+    await this.store.remove(key).catch(() => undefined);
+    const kept = (await this.submissions.findOne({ orgId, uuid: submissionId }).select('document').lean())?.document?.key;
+    const first = kept ? await this.store.get(kept) : null;
+    return { pdf: first ?? pdf, fileName };
   }
 
   /** For someone who may read a form's responses: the PDF of one of them. */
