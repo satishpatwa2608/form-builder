@@ -35,6 +35,10 @@ const HEADER = /^[A-Za-z0-9-]{1,60}$/;
 const FORBIDDEN = new Set(['host', 'content-length', 'transfer-encoding', 'connection']);
 const PHONE = /^\+?[0-9]{7,15}$/;
 const fault = (field: string, message: string) => new BadRequestException({ message, errors: [{ field, message }] });
+
+/** The organisation's text-message service, or its WhatsApp one: the same kind of settings, kept apart. */
+export type MessageChannel = 'sms' | 'whatsapp';
+const SERVICE: Record<MessageChannel, string> = { sms: 'SMS service', whatsapp: 'WhatsApp service' };
 export const DEFAULT_SMS_BODY = '{"to":"{{to}}","message":"{{message}}"}';
 
 /** {{to}} and {{message}} put into a template, each written the way the surrounding text needs (inside JSON, or in an address). */
@@ -73,20 +77,24 @@ export class SmsService {
     };
   }
 
-  async settings(auth: AuthContext) {
-    return this.view((await this.orgs.findOne({ id: auth.orgId }).select('sms').lean())?.sms as SmsSettings | undefined);
+  private async stored(orgId: string, channel: MessageChannel): Promise<SmsSettings | undefined> {
+    return ((await this.orgs.findOne({ id: orgId }).select(channel).lean()) as Record<string, unknown> | null)?.[channel] as SmsSettings | undefined;
+  }
+
+  async settings(auth: AuthContext, channel: MessageChannel = 'sms') {
+    return this.view(await this.stored(auth.orgId, channel));
   }
 
   /** Whether forms of this organisation can send a code to a phone. */
-  async ready(orgId: string) {
-    return !!((await this.orgs.findOne({ id: orgId }).select('sms').lean())?.sms as SmsSettings | undefined)?.enabled;
+  async ready(orgId: string, channel: MessageChannel = 'sms') {
+    return !!(await this.stored(orgId, channel))?.enabled;
   }
 
   /** Saves the settings. Any change means they are untested again, so they stop being used until a test passes. */
-  async update(auth: AuthContext, input: SmsInput) {
+  async update(auth: AuthContext, input: SmsInput, channel: MessageChannel = 'sms') {
     const org = await this.orgs.findOne({ id: auth.orgId });
     if (!org) throw new NotFoundException('Organisation not found');
-    const now = ((org.get('sms') as SmsSettings | undefined) ?? {}) as SmsSettings;
+    const now = ((org.get(channel) as SmsSettings | undefined) ?? {}) as SmsSettings;
     const next: SmsSettings = { ...now };
     if (input.url !== undefined) {
       const url = input.url.trim();
@@ -97,7 +105,7 @@ export class SmsService {
         } catch {
           parsed = undefined;
         }
-        if (!parsed || !(parsed.protocol === 'https:' || (parsed.protocol === 'http:' && this.privateAllowed)) || parsed.username || parsed.password) throw fault('url', 'Enter the https:// address your SMS service is called at');
+        if (!parsed || !(parsed.protocol === 'https:' || (parsed.protocol === 'http:' && this.privateAllowed)) || parsed.username || parsed.password) throw fault('url', `Enter the https:// address your ${SERVICE[channel]} is called at`);
       }
       next.url = url.slice(0, 1000);
     }
@@ -118,10 +126,10 @@ export class SmsService {
         });
     }
     Object.assign(next, { enabled: false, testedAt: null, lastError: '' });
-    org.set('sms', next);
-    org.markModified('sms');
+    org.set(channel, next);
+    org.markModified(channel);
     await org.save();
-    await this.audit.record(actorOf(auth), { action: 'org.sms_updated', targetType: 'organization', targetId: auth.orgId, after: { url: (next.url ?? '').split('?')[0], method: next.method ?? 'POST', headers: (next.headers ?? []).map((h) => h.name) } });
+    await this.audit.record(actorOf(auth), { action: `org.${channel}_updated`, targetType: 'organization', targetId: auth.orgId, after: { url: (next.url ?? '').split('?')[0], method: next.method ?? 'POST', headers: (next.headers ?? []).map((h) => h.name) } });
     return this.view(next);
   }
 
@@ -129,8 +137,8 @@ export class SmsService {
     return this.config.NODE_ENV !== 'production' && process.env.SMS_ALLOW_PRIVATE === 'true';
   }
 
-  private async deliver(s: SmsSettings, to: string, message: string) {
-    if (!s.url) throw new BadRequestException('Enter the address your SMS service is called at first');
+  private async deliver(s: SmsSettings, to: string, message: string, channel: MessageChannel = 'sms') {
+    if (!s.url) throw new BadRequestException(`Enter the address your ${SERVICE[channel]} is called at first`);
     const method = s.method ?? 'POST';
     const format = s.format ?? 'JSON';
     const headers: Record<string, string> = {};
@@ -141,27 +149,47 @@ export class SmsService {
       init.body = fillSms(s.body ?? DEFAULT_SMS_BODY, to, message, format === 'JSON' ? 'JSON' : 'URL');
     }
     const res = await safeFetch({ connector: { allowedHosts: [] } as never, secrets: {}, signal: AbortSignal.timeout(10_000), allowPrivateNetwork: this.privateAllowed }, fillSms(s.url, to, message, 'URL'), init);
-    if (res.status < 200 || res.status >= 300) throw new Error(`Your SMS service answered ${res.status}${res.text ? `: ${res.text.replace(/\s+/g, ' ').slice(0, 200)}` : ''}`);
+    if (res.status < 200 || res.status >= 300) throw new Error(`Your ${SERVICE[channel]} answered ${res.status}${res.text ? `: ${res.text.replace(/\s+/g, ' ').slice(0, 200)}` : ''}`);
   }
 
   /** Sends a test message with the settings as they stand; when it goes through, the settings start being used. */
-  async test(auth: AuthContext, to: string) {
+  async test(auth: AuthContext, to: string, channel: MessageChannel = 'sms') {
     const number = to.replace(/[\s()-]/g, '');
     if (!PHONE.test(number)) throw fault('to', 'Enter a mobile number with its country code, for example +919812345678');
     const org = await this.orgs.findOne({ id: auth.orgId });
     if (!org) throw new NotFoundException('Organisation not found');
-    const s = ((org.get('sms') as SmsSettings | undefined) ?? {}) as SmsSettings;
+    const s = ((org.get(channel) as SmsSettings | undefined) ?? {}) as SmsSettings;
     try {
-      await this.deliver(s, number, 'This is a test message from Form Builder. Your SMS settings work.');
-      org.set('sms', { ...s, enabled: true, testedAt: new Date(), lastError: '' });
+      await this.deliver(s, number, `This is a test message from Form Builder. Your ${channel === 'sms' ? 'SMS' : 'WhatsApp'} settings work.`, channel);
+      org.set(channel, { ...s, enabled: true, testedAt: new Date(), lastError: '' });
     } catch (e) {
       const message = e instanceof BadRequestException ? e.message : (e as Error).message.slice(0, 300);
-      org.set('sms', { ...s, enabled: false, testedAt: null, lastError: message });
+      org.set(channel, { ...s, enabled: false, testedAt: null, lastError: message });
     }
-    org.markModified('sms');
+    org.markModified(channel);
     await org.save();
-    await this.audit.record(actorOf(auth), { action: 'org.sms_tested', targetType: 'organization', targetId: auth.orgId, after: { ok: !!(org.get('sms') as SmsSettings).enabled } });
-    return this.view(org.get('sms') as SmsSettings);
+    await this.audit.record(actorOf(auth), { action: `org.${channel}_tested`, targetType: 'organization', targetId: auth.orgId, after: { ok: !!(org.get(channel) as SmsSettings).enabled } });
+    return this.view(org.get(channel) as SmsSettings);
+  }
+
+  /**
+   * A message from an automation step. Throws with the reason, in words for the record's timeline: not set up,
+   * or what the service answered.
+   */
+  async sendFromStep(orgId: string, to: string, message: string, channel: MessageChannel) {
+    const number = to.replace(/[\s()-]/g, '');
+    if (!PHONE.test(number)) throw new Error(`"${to.slice(0, 30)}" is not a phone number with its country code`);
+    const s = await this.stored(orgId, channel);
+    if (!s?.enabled) throw new Error(`the organisation's ${SERVICE[channel]} is not set up and tested yet (Organisation settings)`);
+    try {
+      await this.deliver(s, number, message.slice(0, 1000), channel);
+      orgLog.info(orgId, 'mail', channel === 'sms' ? 'Text message sent' : 'WhatsApp message sent', { to: `…${number.slice(-4)}` });
+    } catch (e) {
+      const why = (e as Error).message.slice(0, 300);
+      orgLog.error(orgId, 'mail', `${channel === 'sms' ? 'Text' : 'WhatsApp'} message not sent: ${why}`, { to: `…${number.slice(-4)}` });
+      await this.orgs.updateOne({ id: orgId }, { $set: { [`${channel}.lastError`]: why } });
+      throw new Error(why);
+    }
   }
 
   /** A message to someone filling in a form. Fails loudly: a code that did not go out must not look as if it did. */

@@ -12,6 +12,7 @@ import { ACTION_KEY } from '../../connectors/connectors.service';
 import { Model } from 'mongoose';
 import { newId as uuidv4 } from '../../common/crypto';
 import { MailService } from './mail.service';
+import { SmsService } from '../../verify/sms.service';
 import { postJson } from './webhook-client';
 import type { Automation, AutomationAction, AutomationTrigger, FormDefinition, FormValues, RecipientRef } from '@fb/engine';
 import {
@@ -42,6 +43,8 @@ type StepResult = string | { summary: string; data?: Record<string, unknown> };
 const STEP_NAME: Record<AutomationAction['type'], string> = {
   EMAIL: 'Email',
   NOTIFY: 'Notification',
+  SMS: 'Text message',
+  WHATSAPP: 'WhatsApp message',
   CREATE_TASK: 'Task',
   ASSIGN: 'Assign',
   SET_STATUS: 'Status change',
@@ -77,7 +80,7 @@ function stableId(a: string, b: string): string {
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
 /** Steps that reach another system or a person outside, so a second try must not simply do them again. */
-const OUTSIDE = new Set<AutomationAction['type']>(['EMAIL', 'WEBHOOK', 'FLOW', 'HANDLER']);
+const OUTSIDE = new Set<AutomationAction['type']>(['EMAIL', 'WEBHOOK', 'FLOW', 'HANDLER', 'SMS', 'WHATSAPP']);
 const MARK_KEEP_MS = 30 * 86_400_000;
 export const MAY_HAVE_RUN =
   'this may have been done already, before the work was interrupted. Check the other system for this response; if it is not there, run the flow again from this step';
@@ -143,6 +146,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     @InjectModel(FormStepMark.name) private readonly marks: Model<FormStepMarkDocument>,
     private readonly records: FormRecordService,
     private readonly mail: MailService,
+    private readonly sms: SmsService,
     private readonly handlers: FormHandlerRegistry,
     private readonly jobs: JobQueue,
     private readonly documents: DocumentsService,
@@ -1014,6 +1018,17 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         }
         const already = before ? ` (${before} of them before an interruption, not sent again)` : '';
         return { summary: `emailed ${to.length} recipient${to.length === 1 ? '' : 's'}${document ? ' with the PDF' : ''}${already}`, data: { sent: to.length } };
+      }
+
+      case 'SMS':
+      case 'WHATSAPP': {
+        const to = typeof ctx.values[action.field] === 'string' ? (ctx.values[action.field] as string).trim() : '';
+        if (!to) throw new Error(`there is no phone number in "${action.field}"`);
+        // Tried again after an interruption: not sent twice to the same number.
+        if (sentTo?.has(to)) return { summary: `${action.type === 'SMS' ? 'text message' : 'WhatsApp message'} already sent before an interruption, not sent again`, data: { sent: 1 } };
+        await this.sms.sendFromStep(orgId, to, renderTemplate(action.message, tctx, false), action.type === 'SMS' ? 'sms' : 'whatsapp');
+        await sentTo?.add(to);
+        return { summary: `${action.type === 'SMS' ? 'text message' : 'WhatsApp message'} sent to …${to.replace(/\D/g, '').slice(-4)}`, data: { sent: 1 } };
       }
 
       case 'NOTIFY': {

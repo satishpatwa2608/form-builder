@@ -23,6 +23,7 @@ const stepMeta = {
 const actionSchema = z.union([
   z.object({ ...stepMeta, type: z.literal('EMAIL'), to: recipients, subject: z.string().max(200), body: z.string().max(10_000), attachDocument: z.boolean().optional() }),
   z.object({ ...stepMeta, type: z.literal('NOTIFY'), to: recipients, message: z.string().max(500) }),
+  z.object({ ...stepMeta, type: z.enum(['SMS', 'WHATSAPP']), field: z.string().max(100), message: z.string().max(1000) }),
   z.object({
     ...stepMeta,
     type: z.literal('CREATE_TASK'),
@@ -122,6 +123,11 @@ export function checkAutomations(def: FormDefinition, ctx: z.RefinementCtx) {
       if (action.type === 'SIGN' && action.confirm === 'KNOWN' && (!action.known?.trim() || !action.knownLabel?.trim())) missing('say what the signers must know before they can sign, and what to call it');
       if (action.type === 'EMAIL' && (!action.subject.trim() || !action.body.trim())) missing('the email needs a subject and a message');
       if (action.type === 'NOTIFY' && !action.message.trim()) missing('the notification needs a message');
+      if (action.type === 'SMS' || action.type === 'WHATSAPP') {
+        const kind = action.type === 'SMS' ? 'the text message' : 'the WhatsApp message';
+        if (!action.message.trim()) missing(`${kind} needs a message`);
+        if (fields.get(action.field)?.type !== 'PHONE') missing(`${kind} goes to a phone number: choose the phone question it goes to`);
+      }
       if (action.type === 'CREATE_TASK' && !action.title.trim()) missing('the task needs a title');
       if (action.type === 'ASSIGN' && wf?.enabled) {
         const by = action.by ?? 'PERSON';

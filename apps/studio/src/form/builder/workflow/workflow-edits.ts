@@ -20,6 +20,8 @@ export const ACTION_LABEL: Record<AutomationAction['type'], string> = {
   APPROVAL: 'Wait for approval',
   SIGN: 'Send for signature',
   NOTIFY: 'Notify in Form Builder',
+  SMS: 'Send a text message',
+  WHATSAPP: 'Send a WhatsApp message',
   CREATE_TASK: 'Create a task',
   ASSIGN: 'Assign to someone',
   SET_STATUS: 'Change the status',
@@ -199,6 +201,8 @@ const STEP_ID_BASE: Record<AutomationAction['type'], string> = {
   APPROVAL: 'approval',
   SIGN: 'sign',
   NOTIFY: 'notify',
+  SMS: 'text',
+  WHATSAPP: 'whatsapp',
   CREATE_TASK: 'task',
   ASSIGN: 'assign',
   SET_STATUS: 'status',
@@ -342,6 +346,9 @@ export function stepSummary(s: AutomationAction, form: FormDefinition, people: P
       return `To ${who(s.to)}${s.subject ? ` · "${s.subject}"` : ''}`;
     case 'NOTIFY':
       return `To ${who(s.to)}`;
+    case 'SMS':
+    case 'WHATSAPP':
+      return s.field ? `To answer "${form.fields.find((f) => f.name === s.field)?.label ?? s.field}"` : 'Choose the phone question';
     case 'CREATE_TASK':
       return `"${s.title || 'Untitled'}" for ${who(s.to)}`;
     case 'ASSIGN':
@@ -378,6 +385,13 @@ export function newAction(type: AutomationAction['type'], form: FormDefinition):
       };
     case 'NOTIFY':
       return { type, to: tracked ? [{ kind: 'ASSIGNEE' }] : [], message: `New ${form.name}${tracked ? ' {{$record.ref}}' : ''}` };
+    case 'SMS':
+    case 'WHATSAPP':
+      return {
+        type,
+        field: form.fields.find((f) => f.type === 'PHONE')?.name ?? '',
+        message: `We received your ${form.name}${tracked ? ' (reference {{$record.ref}})' : ''}. Thank you.`,
+      };
     case 'CREATE_TASK':
       return { type, to: tracked ? [{ kind: 'ASSIGNEE' }] : [], title: `Follow up ${form.name}${tracked ? ' {{$record.ref}}' : ''}`, dueInHours: 48 };
     case 'SIGN':

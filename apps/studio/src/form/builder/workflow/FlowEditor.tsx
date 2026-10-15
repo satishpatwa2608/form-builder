@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowRightLeft, ArrowUp, Bell, Code2, Flag, ListChecks, Mail, Play, Plus, Trash2, UserCheck, UserPlus, Webhook, X, PenLine, Workflow, Undo2 } from 'lucide-react';
+import { ArrowDown, ArrowRightLeft, ArrowUp, Bell, Code2, Flag, ListChecks, Mail, MessageCircle, PenLine, Play, Plus, Smartphone, Trash2, Undo2, UserCheck, UserPlus, Webhook, Workflow, X } from 'lucide-react';
 import { Button } from '@ui/button';
 import { Input } from '@ui/input';
 import type { Automation, AutomationAction, AutomationTrigger, FormDefinition } from '../../types';
@@ -44,6 +44,8 @@ export const STEP_ICON: Record<AutomationAction['type'], ReactNode> = {
   APPROVAL: <UserCheck size={16} />,
   SIGN: <PenLine size={16} />,
   NOTIFY: <Bell size={16} />,
+  SMS: <Smartphone size={16} />,
+  WHATSAPP: <MessageCircle size={16} />,
   CREATE_TASK: <ListChecks size={16} />,
   ASSIGN: <UserPlus size={16} />,
   SET_STATUS: <ArrowRightLeft size={16} />,

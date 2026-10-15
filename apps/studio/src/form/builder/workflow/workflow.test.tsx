@@ -108,6 +108,23 @@ describe('Workflow dialog', () => {
     expect(spy.mock.lastCall![0].automations[0].actions.map((a: { id: string }) => a.id)).toEqual(['email', 'api']);
   });
 
+  it('a text message or WhatsApp step goes to a phone question, with words that may use the answers', async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    const phone = basic.fields.find((f) => f.type === 'PHONE')!;
+    render(<Harness initial={basic} spy={spy} />);
+    await user.click(screen.getByRole('tab', { name: /Automations/ }));
+    await user.click(screen.getByRole('button', { name: /New automation/ }));
+    await user.click(screen.getByRole('button', { name: 'Add a step at the start' }));
+    await user.click(within(screen.getByRole('group', { name: 'Choose a step' })).getByRole('button', { name: /Send a text message/ }));
+    expect(spy.mock.lastCall![0].automations[0].actions[0]).toMatchObject({ id: 'text', type: 'SMS', field: phone.name });
+    expect(screen.getByText(/Sent through your organisation's own SMS service/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add a step after step 1' }));
+    await user.click(within(screen.getByRole('group', { name: 'Choose a step' })).getByRole('button', { name: /Send a WhatsApp message/ }));
+    expect(spy.mock.lastCall![0].automations[0].actions[1]).toMatchObject({ id: 'whatsapp', type: 'WHATSAPP', field: phone.name });
+    expect(within(screen.getByLabelText('Automation 1 flow')).getAllByText(`To answer "${phone.label}"`)).toHaveLength(2);
+  });
+
   it('approval step: later steps branch on its decision (Approved / Rejected)', async () => {
     const user = userEvent.setup();
     const spy = vi.fn();

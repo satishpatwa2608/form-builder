@@ -117,3 +117,15 @@ describe('Text messages', () => {
     expect(screen.queryByLabelText('What is sent is written as')).not.toBeInTheDocument();
   });
 });
+
+describe('WhatsApp', () => {
+  it('is set up like text messages, at its own address, and says WhatsApp needs approved templates', async () => {
+    show(<SmsCard channel="whatsapp" />);
+    expect(await screen.findByText('WhatsApp messages')).toBeTruthy();
+    expect(screen.getByText(/delivers only messages made from a template it has approved/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Where your WhatsApp service is called'), { target: { value: 'https://wa.example/messages' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(sent('/org/whatsapp', 'PUT')).toMatchObject({ url: 'https://wa.example/messages' }));
+    expect(state.calls.some((c) => c.path === '/org/sms' && c.method === 'PUT')).toBe(false);
+  });
+});

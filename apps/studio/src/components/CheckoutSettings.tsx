@@ -95,9 +95,31 @@ interface SmsSettings {
  * The organisation's own SMS service, whichever it is: where it is called and what is sent, as that service's
  * documentation describes. Used to send the codes that confirm a phone number on a form. Tested before it is used.
  */
-export function SmsCard() {
+const CHANNEL = {
+  sms: {
+    title: 'Text messages',
+    subtitle:
+      'Your own SMS service, for the codes that confirm a phone number on a form and for automation steps that send a text message. Any service that is called over the web works: say where it is called and what to send, as its documentation describes.',
+    where: 'Where your SMS service is called',
+    placeholder: 'https://api.your-sms-service.com/messages',
+    works: 'The test message went through. Forms can now send codes by text message.',
+    last: 'The last text message did not go',
+  },
+  whatsapp: {
+    title: 'WhatsApp messages',
+    subtitle:
+      'Your own WhatsApp service (a WhatsApp Business provider), for automation steps that tell people where their request is. WhatsApp delivers only messages made from a template it has approved: put the template in what is sent as your provider describes, with {{message}} where its text goes.',
+    where: 'Where your WhatsApp service is called',
+    placeholder: 'https://api.your-whatsapp-provider.com/messages',
+    works: 'The test message went through. Automation steps can now send WhatsApp messages.',
+    last: 'The last WhatsApp message did not go',
+  },
+} as const;
+
+export function SmsCard({ channel = 'sms' }: { channel?: 'sms' | 'whatsapp' }) {
+  const words = CHANNEL[channel];
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ['org-sms'], queryFn: () => api<SmsSettings>('/org/sms') });
+  const { data } = useQuery({ queryKey: [`org-${channel}`], queryFn: () => api<SmsSettings>(`/org/${channel}`) });
   const [form, setForm] = useState({ url: '', method: 'POST' as SmsSettings['method'], format: 'JSON' as SmsSettings['format'], body: '', headerName: '', headerValue: '' });
   const [to, setTo] = useState('');
   const [note, setNote] = useState<string>();
@@ -105,32 +127,32 @@ export function SmsCard() {
     if (data) setForm({ url: data.url, method: data.method, format: data.format, body: data.body, headerName: data.headers[0]?.name ?? '', headerValue: '' });
   }, [data]);
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const took = (next: SmsSettings) => qc.setQueryData(['org-sms'], next);
+  const took = (next: SmsSettings) => qc.setQueryData([`org-${channel}`], next);
   const save = useSubmit(async () => {
     const headers = form.headerName.trim() ? [{ name: form.headerName.trim(), ...(form.headerValue ? { value: form.headerValue } : {}) }] : [];
-    took(await api<SmsSettings>('/org/sms', { method: 'PUT', body: { url: form.url.trim(), method: form.method, format: form.format, body: form.body, headers } }));
+    took(await api<SmsSettings>(`/org/${channel}`, { method: 'PUT', body: { url: form.url.trim(), method: form.method, format: form.format, body: form.body, headers } }));
     setNote('Saved. Now send a test message to your own phone.');
   });
   const test = useSubmit(async () => {
     setNote(undefined);
-    const next = await api<SmsSettings>('/org/sms/test', { method: 'POST', body: { to } });
+    const next = await api<SmsSettings>(`/org/${channel}/test`, { method: 'POST', body: { to } });
     took(next);
-    if (next.enabled) setNote('The test message went through. Forms can now send codes by text message.');
+    if (next.enabled) setNote(words.works);
   });
   if (!data) return null;
   const unchanged = form.url === data.url && form.method === data.method && form.format === data.format && form.body === data.body && form.headerName === (data.headers[0]?.name ?? '') && !form.headerValue;
   const error = save.error ?? test.error;
   return (
     <Card
-      title="Text messages"
-      subtitle="Your own SMS service, for the codes that confirm a phone number on a form. Any service that is called over the web works: say where it is called and what to send, as its documentation describes."
+      title={words.title}
+      subtitle={words.subtitle}
       actions={!data.url ? undefined : data.enabled ? <Badge tone="success">On</Badge> : <Badge tone="warn">Not tested</Badge>}
     >
       <form className="st-stack" onSubmit={save.submit} noValidate>
         {note && <Alert tone="success">{note}</Alert>}
         {error && !Object.keys(save.fields).length && !Object.keys(test.fields).length && <Alert tone="error">{error}</Alert>}
-        {data.lastError && !error && <Alert tone="warn">The last text message did not go: {data.lastError}</Alert>}
-        <TextField label="Where your SMS service is called" placeholder="https://api.your-sms-service.com/messages" value={form.url} onChange={(e) => set('url', e.target.value)} error={save.fields.url} hint="An https:// address. It may itself contain {{to}} and {{message}}." />
+        {data.lastError && !error && <Alert tone="warn">{words.last}: {data.lastError}</Alert>}
+        <TextField label={words.where} placeholder={words.placeholder} value={form.url} onChange={(e) => set('url', e.target.value)} error={save.fields.url} hint="An https:// address. It may itself contain {{to}} and {{message}}." />
         <div className="st-grid-2">
           <SelectField label="How it is called" value={form.method} onChange={(e) => set('method', e.target.value as SmsSettings['method'])}>
             <option value="POST">POST (most services)</option>
@@ -145,8 +167,8 @@ export function SmsCard() {
         </div>
         {form.method === 'POST' && (
           <div className="st-field">
-            <label htmlFor="sms-body">What is sent</label>
-            <textarea id="sms-body" className="st-input" style={{ height: 96, padding: 10, fontFamily: 'var(--fb-font-mono, monospace)' }} value={form.body} onChange={(e) => set('body', e.target.value)} />
+            <label htmlFor={`${channel}-body`}>What is sent</label>
+            <textarea id={`${channel}-body`} className="st-input" style={{ height: 96, padding: 10, fontFamily: 'var(--fb-font-mono, monospace)' }} value={form.body} onChange={(e) => set('body', e.target.value)} />
             <span className="st-field__hint">
               Put <code>{'{{to}}'}</code> where the phone number goes and <code>{'{{message}}'}</code> where the text goes.
             </span>

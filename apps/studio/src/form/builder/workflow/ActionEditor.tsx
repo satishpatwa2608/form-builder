@@ -154,6 +154,25 @@ export function ActionEditor({ form, action, people, customWorkflows, onChange }
             <TextSetting label="Message" value={action.message} hint="Insert data from the list below, e.g. {{$record.ref}}" onChange={(message) => onChange({ ...action, message })} />
           </>
         );
+      case 'SMS':
+      case 'WHATSAPP': {
+        const phones = form.fields.filter((f) => f.type === 'PHONE');
+        return (
+          <>
+            <SelectSetting
+              label="To the phone number in"
+              value={action.field || undefined}
+              options={phones.map((f) => ({ label: f.label || f.name, value: f.name }))}
+              hint={phones.length ? undefined : 'Add a phone question to the form first.'}
+              onChange={(field) => onChange({ ...action, field })}
+            />
+            <TextSetting label="Message" multiline value={action.message} hint="Insert data from the list below, e.g. {{$record.ref}}. Keep it short." onChange={(message) => onChange({ ...action, message })} />
+            <span className="fb-setting__hint">
+              {action.type === 'SMS' ? 'Sent through your organisation\'s own SMS service' : 'Sent through your organisation\'s own WhatsApp service (with the approved template it needs)'}, set up under Organisation settings. Each message costs whatever that service charges.
+            </span>
+          </>
+        );
+      }
       case 'CREATE_TASK':
         return (
           <>

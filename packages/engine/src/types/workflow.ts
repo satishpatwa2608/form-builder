@@ -217,6 +217,11 @@ export type AutomationAction = StepMeta &
   | { type: 'EMAIL'; to: RecipientRef[]; subject: string; body: string; attachDocument?: boolean }
   | { type: 'NOTIFY'; to: RecipientRef[]; message: string }
   /**
+   * A text message, or a WhatsApp message, to the phone number in an answer (`field`, a phone question), through
+   * the organisation's own service for it (Organisation settings). `message` may use {{fieldName}} and the rest.
+   */
+  | { type: 'SMS' | 'WHATSAPP'; field: string; message: string }
+  /**
    * Pause the flow until one of `to` approves or rejects (AEM participant
    * step), or all of them when `need` is ALL. When `dueInHours` runs out, `whenLate` happens (left out: the
    * approvers are reminded). Output: { decision: 'APPROVED' | 'REJECTED', decidedBy, comment }.

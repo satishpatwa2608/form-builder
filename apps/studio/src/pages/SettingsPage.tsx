@@ -63,6 +63,7 @@ export default function SettingsPage() {
         <MailCard />
         <SealCard />
         <SmsCard />
+        <SmsCard channel="whatsapp" />
         <PaymentsCard />
         <Card title="Security" subtitle="Protect every account in the organisation.">
           <div className="st-stack">

@@ -65,6 +65,27 @@ export class CheckoutSettingsController {
   testSms(@Auth() auth: AuthContext, @Body(new ZodBody(smsTestBody)) body: z.infer<typeof smsTestBody>) {
     return this.sms.test(auth, body.to);
   }
+
+  /** The organisation's WhatsApp service, set up like its SMS one (for automation steps). */
+  @Get('whatsapp')
+  @RequirePermission('org.manage')
+  whatsappSettings(@Auth() auth: AuthContext) {
+    return this.sms.settings(auth, 'whatsapp');
+  }
+
+  @Put('whatsapp')
+  @RequirePermission('org.manage')
+  updateWhatsapp(@Auth() auth: AuthContext, @Body(new ZodBody(smsBody)) body: z.infer<typeof smsBody>) {
+    return this.sms.update(auth, body, 'whatsapp');
+  }
+
+  @Post('whatsapp/test')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
+  @RequirePermission('org.manage')
+  testWhatsapp(@Auth() auth: AuthContext, @Body(new ZodBody(smsTestBody)) body: z.infer<typeof smsTestBody>) {
+    return this.sms.test(auth, body.to, 'whatsapp');
+  }
 }
 
 /** What the public form page uses to confirm an address with a code and to pay. No session is needed for a public form. */
