@@ -308,6 +308,10 @@ code in that image. Measured 16 October 2026 (60 s of submissions from 20 client
 | Making and keeping PDFs, 2,000 queued | 12 a second |
 | API memory after all of it | 166 MB of 900 |
 
+Not doing an outside step twice has a price: marking each one before it runs (an email, a webhook, a message)
+costs about an eighth of the responses a second at this size (195 without the marks, 170 with). The version before
+those safeguards took 206.
+
 It found one fault, fixed the same night: while the queue was working, every new job (and every poll) queued a
 whole run behind it; under steady use those runs piled up and held memory until the API ran out (it reached its
 limit after about 7,000 responses). Now a request to run while one is going only asks for one more pass.

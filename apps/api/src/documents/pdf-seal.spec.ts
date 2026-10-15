@@ -3,6 +3,7 @@ import { createPrivateKey } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as asn1js from 'asn1js';
 import * as pkijs from 'pkijs';
 import { PDFDocument } from 'pdf-lib';
 import { readPdf } from '../../test/read-pdf';
@@ -31,9 +32,13 @@ async function sealHolds(pdf: Buffer): Promise<boolean> {
   if (!range) return false;
   const [a, b, c, d] = range.slice(1).map(Number) as [number, number, number, number];
   const signed = Buffer.concat([pdf.subarray(a, a + b), pdf.subarray(c, c + d)]);
-  const hex = pdf.subarray(a + b + 1, c - 1).toString('latin1').replace(/(00)+$/, '');
+  // The signature is padded with zeros to the space kept for it. Read as a structure, it ends where it ends: cutting
+  // the zeros off cut the signature too whenever its own last byte was zero (one seal in a couple of hundred).
+  const der = Buffer.from(pdf.subarray(a + b + 1, c - 1).toString('latin1'), 'hex');
   try {
-    const content = pkijs.ContentInfo.fromBER(new Uint8Array(Buffer.from(hex, 'hex')).buffer);
+    const asn = asn1js.fromBER(new Uint8Array(der).buffer);
+    if (asn.offset === -1) return false;
+    const content = new pkijs.ContentInfo({ schema: asn.result });
     const data = new pkijs.SignedData({ schema: content.content });
     return await data.verify({ signer: 0, data: new Uint8Array(signed).buffer, checkChain: false });
   } catch {
