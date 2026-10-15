@@ -7,7 +7,7 @@ import { FormWorkSettings, FormWorkSettingsDocument, FormWorkView, FormWorkViewD
 import { FormSubmission, FormSubmissionDocument } from '../schemas/form-submission.schema';
 import { FormRecordService, isRecordAdmin, openCondition, type InboxQuery } from './form-record.service';
 import { FormDefinitionService } from './form-definition.service';
-import { formShape } from '@fb/engine';
+import { formShape, workflowOf } from '@fb/engine';
 import { FormCalendarService } from './form-calendar.service';
 import { PeopleService } from './people.service';
 
@@ -143,88 +143,105 @@ export class WorkPortalService {
     const base = { formCode: query.formCode || undefined, team: query.team || undefined };
 
     const { filter: all, waiting } = await this.recordsService.inboxFilter(user, base);
-    const open = { $and: [all, openCondition(await this.definitions.latestByCode(user.orgId))] };
-    const mineOpen = { $and: [open, { assigneeId: user.uuid }] };
-    const overdueCond = {
-      $or: [{ dueAt: { $lte: now } }, { resolutionDueAt: { $lte: now } }, { responseDueAt: { $lte: now }, respondedAt: null }],
-    };
-    const count = (f: object) => this.records.countDocuments(f);
-
-    const [myOpen, myOverdue, myDueToday, myResolvedToday, openTotal, unassigned, overdue, escalated] = await Promise.all([
-      count(mineOpen),
-      count({ $and: [mineOpen, overdueCond] }),
-      count({ $and: [mineOpen, { $or: [{ resolutionDueAt: { $gte: now, $lt: endOfDay } }, { dueAt: { $gte: now, $lt: endOfDay } }] }] }),
-      count({ $and: [all, { assigneeId: user.uuid, resolvedAt: { $gte: startOfDay } }] }),
-      count(open),
-      count({ $and: [open, { assigneeId: '' }] }),
-      count({ $and: [open, overdueCond] }),
-      count({ $and: [open, { escalationStep: { $gt: 1 } }] }),
-    ]);
-
-    const group = async (key: string) =>
-      (await this.records.aggregate([{ $match: open }, { $group: { _id: `$${key}`, open: { $sum: 1 } } }, { $sort: { open: -1 } }, { $limit: 20 }])) as { _id: string; open: number }[];
-
-    // Overdue per assignee needs null-safe comparisons: nulls are "not overdue".
-    const byAssignee = (await this.records.aggregate([
-      { $match: open },
-      {
-        $group: {
-          _id: '$assigneeId',
-          open: { $sum: 1 },
-          overdue: {
-            $sum: {
-              $cond: [
-                {
-                  $or: [
-                    // Only real dates count (older items may not have these fields at all).
-                    { $and: [{ $eq: [{ $type: '$dueAt' }, 'date'] }, { $lte: ['$dueAt', now] }] },
-                    { $and: [{ $eq: [{ $type: '$resolutionDueAt' }, 'date'] }, { $lte: ['$resolutionDueAt', now] }] },
-                  ],
-                },
-                1,
-                0,
-              ],
-            },
-          },
-        },
-      },
-      { $sort: { open: -1 } },
-      { $limit: 20 },
-    ])) as { _id: string; open: number; overdue: number }[];
-    const [byForm, byPriority] = await Promise.all([group('formCode'), group('priority')]);
-
-    // Performance over the period: items resolved since `since`.
-    const perf = (
-      await this.records.aggregate([
-        { $match: { $and: [all, { resolvedAt: { $gte: since } }] } },
-        {
-          $group: {
-            _id: null,
-            resolved: { $sum: 1 },
-            withTarget: { $sum: { $cond: [{ $ne: ['$resolutionDueAt', null] }, 1, 0] } },
-            onTime: { $sum: { $cond: [{ $and: [{ $ne: ['$resolutionDueAt', null] }, { $eq: ['$resolutionBreachedAt', null] }] }, 1, 0] } },
-            reopened: { $sum: { $cond: [{ $gt: ['$reopenCount', 0] }, 1, 0] } },
-            resolutionMs: { $avg: { $subtract: ['$resolvedAt', '$createdAt'] } },
-            responseMs: { $avg: { $cond: [{ $ne: ['$respondedAt', null] }, { $subtract: ['$respondedAt', '$createdAt'] }, null] } },
-          },
-        },
-      ])
-    )[0] as { resolved: number; withTarget: number; onTime: number; reopened: number; resolutionMs: number | null; responseMs: number | null } | undefined;
-    const created = await count({ $and: [all, { createdAt: { $gte: since } }] });
-
-    // Raised / resolved per day (the org's time zone), every day of the period, zeros included.
+    const latest = await this.definitions.latestByCode(user.orgId);
     const offset = (await this.calendars.get(user.orgId)).utcOffsetMinutes;
     const timezone = `${offset < 0 ? '-' : '+'}${String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0')}:${String(Math.abs(offset) % 60).padStart(2, '0')}`;
-    const perDay = async (field: 'createdAt' | 'resolvedAt') =>
-      new Map(
-        (
-          (await this.records.aggregate([
-            { $match: { $and: [all, { [field]: { $gte: since } }] } },
-            { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: `$${field}`, timezone } }, n: { $sum: 1 } } },
-          ])) as { _id: string; n: number }[]
-        ).map((r) => [r._id, r.n]),
-      );
-    const [raisedByDay, resolvedByDay] = await Promise.all([perDay('createdAt'), perDay('resolvedAt')]);
+
+    // Everything below is one pass over the records that matter (open, or made or resolved in the period), each
+    // number a sum of those that fit: it was a dozen queries, each walking the records again (infra/load).
+    const done = [...latest.entries()]
+      .map(([code, def]) => ({ code, keys: workflowOf(def).statuses.filter((st: { category: string }) => st.category === 'DONE').map((st: { key: string }) => st.key) }))
+      .filter((d) => d.keys.length);
+    const isDate = (f: string) => ({ $eq: [{ $type: f }, 'date'] });
+    const isOpen = {
+      $and: [{ $eq: [{ $ifNull: ['$resolvedAt', null] }, null] }, { $not: [{ $or: [false, ...done.map((d) => ({ $and: [{ $eq: ['$formCode', d.code] }, { $in: ['$status', d.keys] }] }))] }] }],
+    };
+    const isOverdue = {
+      $or: [
+        { $and: [isDate('$dueAt'), { $lte: ['$dueAt', now] }] },
+        { $and: [isDate('$resolutionDueAt'), { $lte: ['$resolutionDueAt', now] }] },
+        { $and: [isDate('$responseDueAt'), { $lte: ['$responseDueAt', now] }, { $eq: [{ $ifNull: ['$respondedAt', null] }, null] }] },
+      ],
+    };
+    const isDueToday = {
+      $or: ['$resolutionDueAt', '$dueAt'].map((f) => ({ $and: [isDate(f), { $gte: [f, now] }, { $lt: [f, endOfDay] }] })),
+    };
+    const mine = { $eq: ['$assigneeId', user.uuid] };
+    const count = (...when: object[]) => ({ $sum: { $cond: [{ $and: when }, 1, 0] } });
+    const top = (key: string) => [{ $match: { $expr: isOpen } }, { $group: { _id: `$${key}`, open: { $sum: 1 } } }, { $sort: { open: -1, _id: 1 } }, { $limit: 20 }];
+    const perDay = (field: 'createdAt' | 'resolvedAt') => [
+      { $match: { [field]: { $gte: since } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: `$${field}`, timezone } }, n: { $sum: 1 } } },
+    ];
+    const [facets] = (await this.records.aggregate([
+      { $match: { $and: [all, { $or: [{ resolvedAt: null }, { resolvedAt: { $gte: since } }, { createdAt: { $gte: since } }] }] } },
+      {
+        $facet: {
+          counts: [
+            {
+              $group: {
+                _id: null,
+                myOpen: count(isOpen, mine),
+                myOverdue: count(isOpen, mine, isOverdue),
+                myDueToday: count(isOpen, mine, isDueToday),
+                myResolvedToday: count(mine, isDate('$resolvedAt'), { $gte: ['$resolvedAt', startOfDay] }),
+                openTotal: count(isOpen),
+                unassigned: count(isOpen, { $eq: ['$assigneeId', ''] }),
+                overdue: count(isOpen, isOverdue),
+                escalated: count(isOpen, { $gt: ['$escalationStep', 1] }),
+                created: count(isDate('$createdAt'), { $gte: ['$createdAt', since] }),
+              },
+            },
+          ],
+          byForm: top('formCode'),
+          byPriority: top('priority'),
+          // Overdue per assignee needs null-safe comparisons: nulls are "not overdue".
+          byAssignee: [
+            { $match: { $expr: isOpen } },
+            {
+              $group: {
+                _id: '$assigneeId',
+                open: { $sum: 1 },
+                overdue: count({ $or: [{ $and: [isDate('$dueAt'), { $lte: ['$dueAt', now] }] }, { $and: [isDate('$resolutionDueAt'), { $lte: ['$resolutionDueAt', now] }] }] }),
+              },
+            },
+            { $sort: { open: -1, _id: 1 } },
+            { $limit: 20 },
+          ],
+          // Performance over the period: items resolved since `since`.
+          perf: [
+            { $match: { resolvedAt: { $gte: since } } },
+            {
+              $group: {
+                _id: null,
+                resolved: { $sum: 1 },
+                withTarget: { $sum: { $cond: [{ $ne: ['$resolutionDueAt', null] }, 1, 0] } },
+                onTime: { $sum: { $cond: [{ $and: [{ $ne: ['$resolutionDueAt', null] }, { $eq: ['$resolutionBreachedAt', null] }] }, 1, 0] } },
+                reopened: { $sum: { $cond: [{ $gt: ['$reopenCount', 0] }, 1, 0] } },
+                resolutionMs: { $avg: { $subtract: ['$resolvedAt', '$createdAt'] } },
+                responseMs: { $avg: { $cond: [{ $ne: ['$respondedAt', null] }, { $subtract: ['$respondedAt', '$createdAt'] }, null] } },
+              },
+            },
+          ],
+          raisedByDay: perDay('createdAt'),
+          resolvedByDay: perDay('resolvedAt'),
+        },
+      },
+    ] as never)) as {
+      counts: Record<'myOpen' | 'myOverdue' | 'myDueToday' | 'myResolvedToday' | 'openTotal' | 'unassigned' | 'overdue' | 'escalated' | 'created', number>[];
+      byForm: { _id: string; open: number }[];
+      byPriority: { _id: string; open: number }[];
+      byAssignee: { _id: string; open: number; overdue: number }[];
+      perf: { resolved: number; withTarget: number; onTime: number; reopened: number; resolutionMs: number | null; responseMs: number | null }[];
+      raisedByDay: { _id: string; n: number }[];
+      resolvedByDay: { _id: string; n: number }[];
+    }[];
+    const c = facets!.counts[0] ?? { myOpen: 0, myOverdue: 0, myDueToday: 0, myResolvedToday: 0, openTotal: 0, unassigned: 0, overdue: 0, escalated: 0, created: 0 };
+    const { myOpen, myOverdue, myDueToday, myResolvedToday, openTotal, unassigned, overdue, escalated, created } = c;
+    const { byForm, byPriority, byAssignee } = facets!;
+    const perf = facets!.perf[0];
+    const raisedByDay = new Map(facets!.raisedByDay.map((r) => [r._id, r.n]));
+    const resolvedByDay = new Map(facets!.resolvedByDay.map((r) => [r._id, r.n]));
     const dayKey = (d: Date) => new Date(d.getTime() + offset * 60_000).toISOString().slice(0, 10);
     const trend = Array.from({ length: days }, (_, i) => dayKey(new Date(now.getTime() - (days - 1 - i) * 24 * HOUR))).map((date) => ({
       date,
