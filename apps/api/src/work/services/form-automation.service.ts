@@ -92,6 +92,19 @@ interface RunAgain {
   by: string;
 }
 
+/** A paused flow with its answer (an approval decided, a signature finished), to carry on from the step after. */
+interface Resume {
+  orgId: string;
+  recordId: string;
+  runId: string;
+  automationId: string;
+  trigger: AutomationTrigger;
+  depth: number;
+  actor: string;
+  from: number;
+  steps: Record<string, unknown>;
+}
+
 /** For an email step tried again: who it already went to. */
 interface SentTo {
   has(email: string): boolean;
@@ -187,6 +200,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     this.jobs.register('automation.fields', (e: RecordFieldsEvent, job) => this.run('FIELD_UPDATED', e.orgId, e.recordId, 0, e.by, e.fields, undefined, job.id));
     this.jobs.register('automation.status', (e: RecordStatusEvent, job) => this.run('STATUS_CHANGED', e.orgId, e.recordId, e.depth, e.by, [], undefined, job.id));
     this.jobs.register('automation.again', (p: RunAgain) => this.runFromStop(p));
+    this.jobs.register('automation.resume', (p: Resume) => this.resume(p));
     // The sweep belongs to whichever process runs jobs. FORM_WORKFLOW_SWEEP=false turns it off (tests call sweep() directly).
     if (!this.jobs.runsJobs || process.env.FORM_WORKFLOW_SWEEP === 'false' || process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => void this.sweep(), WORKFLOW.sweepEveryMs);
@@ -815,7 +829,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
   private async carryOn(run: FormFlowRun & { approval: FlowApproval }, decision: 'APPROVED' | 'REJECTED', user: { uuid: string; orgId: string; name?: string }, comment: string, decidedAt: Date) {
     const runId = run.uuid;
     const recordId = run.recordId;
-    const { record, definition } = await this.records.load(user.orgId, recordId);
+    const { definition } = await this.records.load(user.orgId, recordId);
     const automation = (definition.automations ?? []).find((a) => a.id === run.automationId);
     const output = { decision, decidedBy: user.uuid, decidedByName: user.name ?? '', comment, decidedAt: decidedAt.toISOString() };
     await this.records.log(user.orgId, recordId, 'AUTOMATION', user.uuid, `${automation?.name ?? 'Automation'}: ${decision === 'APPROVED' ? 'approved' : 'rejected'}${comment ? ` - "${comment}"` : ''}`, {
@@ -831,14 +845,25 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       await this.runs.updateOne({ uuid: runId, orgId: user.orgId }, { $set: { status: 'STOPPED' } });
       return;
     }
-    // Carry on in the background, like after a submission.
-    void this.runFlow(
-      automation,
-      { orgId: user.orgId, trigger: run.trigger as AutomationTrigger, definition, values: valuesFromPayload(definition, record.payload as FormValues), recordId },
-      run.depth,
-      user.uuid,
-      { runId, from: run.stepIndex + 1, steps: { ...(run.steps ?? {}), [run.approval.stepKey]: output } },
-    ).catch((err) => this.logger.error(`resuming flow ${runId} failed: ${(err as Error).message}`));
+    // Carry on in the background, through the queue like after a submission, so a restart does not lose the rest.
+    await this.resumeLater({ orgId: user.orgId, recordId, runId, automationId: automation.id, trigger: run.trigger as AutomationTrigger, depth: run.depth, actor: user.uuid, from: run.stepIndex + 1, steps: { ...(run.steps ?? {}), [run.approval.stepKey]: output } });
+  }
+
+  private async resumeLater(p: Resume) {
+    const round = await this.records.timesWentBack(p.orgId, p.recordId, p.runId);
+    await this.jobs.enqueue('automation.resume', { ...p }, { orgId: p.orgId, dedupeKey: `resume:${p.runId}:${p.from}:${round}` });
+  }
+
+  private async resume(p: Resume) {
+    const { record, definition } = await this.records.load(p.orgId, p.recordId);
+    const automation = (definition.automations ?? []).find((a) => a.id === p.automationId);
+    if (!automation) {
+      await this.runs.updateOne({ uuid: p.runId, orgId: p.orgId }, { $set: { status: 'STOPPED' } });
+      return;
+    }
+    const values = valuesFromPayload(definition, record.payload as FormValues);
+    // The run's own id is the job's: started again after a crash, it carries on after the steps already on the timeline.
+    await this.runFlow(automation, { orgId: p.orgId, trigger: p.trigger, definition, values, recordId: p.recordId }, p.depth, p.actor, { runId: p.runId, from: p.from, steps: p.steps }, p.runId);
   }
 
   /** The waiting approval a key from an email opens, and whose key it is; nothing when it is used up, out of date or not one of ours. */
@@ -887,7 +912,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       // can answer before the request's id has been noted on it: asking for that id here lost such an answer.
       const run = await this.runs.findOneAndUpdate({ uuid: e.runId, orgId: e.orgId, status: 'WAITING' }, { $set: { status: 'RUNNING' } }).lean();
       if (!run) return;
-      const { record, definition } = await this.records.load(e.orgId, e.recordId);
+      const { definition } = await this.records.load(e.orgId, e.recordId);
       const automation = (definition.automations ?? []).find((a) => a.id === run.automationId);
       const said = e.output.status === 'SIGNED' ? `signed by ${e.output.signers === 1 ? 'the signer' : `all ${e.output.signers} signers`}` : e.output.status === 'DECLINED' ? `declined by ${e.output.declinedBy}` : 'not signed in time';
       await this.records.log(e.orgId, e.recordId, 'AUTOMATION', '', `${automation?.name ?? 'Automation'}: ${said}`, { runId: e.runId, automationId: run.automationId, stepKey: e.stepKey, stepIndex: run.stepIndex, action: 'SIGN', ok: e.output.status === 'SIGNED', output: e.output });
@@ -895,13 +920,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         await this.runs.updateOne({ uuid: e.runId, orgId: e.orgId }, { $set: { status: 'STOPPED' } });
         return;
       }
-      await this.runFlow(
-        automation,
-        { orgId: e.orgId, trigger: run.trigger as AutomationTrigger, definition, values: valuesFromPayload(definition, record.payload as FormValues), recordId: e.recordId },
-        run.depth,
-        run.actor,
-        { runId: e.runId, from: run.stepIndex + 1, steps: { ...(run.steps ?? {}), [e.stepKey]: e.output } },
-      );
+      await this.resumeLater({ orgId: e.orgId, recordId: e.recordId, runId: e.runId, automationId: automation.id, trigger: run.trigger as AutomationTrigger, depth: run.depth, actor: run.actor, from: run.stepIndex + 1, steps: { ...(run.steps ?? {}), [e.stepKey]: e.output } });
     } catch (err) {
       this.logger.error(`resuming flow ${e.runId} after signature failed: ${(err as Error).message}`);
     }

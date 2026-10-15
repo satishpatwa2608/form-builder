@@ -359,6 +359,43 @@ describe('Automations and webhooks on the queue (e2e)', () => {
     expect(other).not.toBe(a);
   });
 
+  it('after an approval the flow carries on through the queue, and a crash there does not repeat a step', async () => {
+    const me = (await h.api().get('/auth/me').set(h.bearer(owner))).body.user.id;
+    const folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Approvals' }).expect(201)).body[0].id;
+    const def = {
+      ...form('APPROVED'),
+      automations: [
+        {
+          id: 'a1',
+          name: 'Approve then tell',
+          enabled: true,
+          when: 'SUBMITTED',
+          actions: [
+            { id: 'ok', type: 'APPROVAL', to: [{ kind: 'USER', userId: me }], title: 'Approve it' },
+            { id: 'tell', type: 'EMAIL', to: [{ kind: 'FIELD', field: 'email' }], subject: 'Approved', body: 'Yes' },
+          ],
+        },
+      ],
+    };
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: def }).expect(201)).body.definition.id;
+    await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+    const sent = (await h.api().post(`/public/forms/APPROVED/submissions?org=${orgId}`).send({ values: { name: 'Ravi', email: 'six@customer.test' } }).expect(201)).body;
+    let runId = '';
+    await waitFor(async () => !!(runId = ((await h.api().get(`/records/${sent.submissionId}`).set(h.bearer(owner))).body.approvals ?? [])[0]?.runId ?? ''));
+    await h.api().post(`/records/${sent.submissionId}/approvals/${runId}`).set(h.bearer(owner)).send({ decision: 'APPROVED' }).expect(200);
+    await waitFor(() => mailsTo('six@customer.test').length === 1);
+    const job = (await jobs.findOne({ type: 'automation.resume', 'payload.runId': runId }).lean())!;
+    await waitFor(async () => (await jobs.findOne({ uuid: job.uuid }).lean())!.status === 'DONE');
+
+    // As if the worker died after sending, before writing that it had: taken again, it does not send it twice.
+    const events = h.app.get(getModelToken('FormRecordEvent')) as Model<{ recordId: string; type: string; data: { stepIndex?: number } }>;
+    expect((await events.deleteOne({ recordId: sent.submissionId, type: 'AUTOMATION', 'data.stepIndex': 1 })).deletedCount).toBe(1);
+    await jobs.updateOne({ uuid: job.uuid }, { $set: { status: 'RUNNING', lockedUntil: new Date(Date.now() - 1000) } });
+    await queue.drain();
+    expect(mailsTo('six@customer.test')).toEqual(['Approved']);
+    expect((await timeline(sent.submissionId)).at(-1)).toBe('AUTOMATION: Approve then tell: emailed 1 recipient (1 of them before an interruption, not sent again)');
+  });
+
   it('a webhook receiver that is down is tried again later', async () => {
     await h.api().put('/webhooks/new').set(h.bearer(owner)).send({ name: 'CRM', url: 'https://hooks.example.com/in', events: ['record.created'] }).expect(200);
     failNext = 1;
