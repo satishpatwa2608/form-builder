@@ -66,12 +66,12 @@ Almost everything is driven by one JSON document, the **form definition** (`pack
 - **fields** (questions, sections, repeating sections, tabs, steps), each with its validation, options, data source and translations;
 - **rules** (show, require, calculate) and **events** (on open, on a button, when an answer changes: fill, look up, move, save, send);
 - **workflow** (statuses, the buttons that move a record, approvals, time limits, escalation, work fields);
-- **automations** (a trigger and a list of steps: email, notify, approval, signature, assign, status, webhook, custom step, go back);
+- **automations** (a trigger and a list of steps: email, text message, WhatsApp message, notify, approval, signature, assign, status, webhook, custom step, go back);
 - **document** (the PDF: title, what to leave out, archival, sealed, the organisation's own PDF);
 - **openWith** (the form opens filled from a record the server reads);
 - access, opening and closing times, payment, languages, look.
 
-A definition is validated by one Zod schema (`definition.schema.ts`) when it is saved and again, more strictly, when it is published. Versions are kept: a published version never changes; editing makes a new draft above it, and a record is always shown and re-rendered against the version it was submitted to.
+A definition is validated when it is saved and again, more strictly, when it is published: `definition.schema.ts` puts together four modules under `schema/` that match its parts (form, workflow, automation, document) and one for what they share; each says at its top what it may refer to in the others. Versions are kept: a published version never changes; editing makes a new draft above it, and a record is always shown and re-rendered against the version it was submitted to.
 
 What the public page receives is a **public copy** (`public-copy.ts`): the definition with everything that only the server acts on removed (workflow, automations, who is emailed, which systems are called, where opening answers come from).
 
@@ -100,7 +100,7 @@ sequenceDiagram
 
 The checks on the server are the browser's own, run again (`buildZodSchema` in the engine), plus the ones only a server can make: values the system supplies, answers locked to the signed-in person or to a record, options that come from a data source, the row count of a section that follows an answer, a human check, and the customer's own "submit checks" in their extension. A response is idempotent by key: a double click returns the first result.
 
-Automations run from a durable queue, so a restart loses nothing: a job that is retried finds what its earlier attempt already did, step by step, on the record's timeline, and carries on from there. A flow that pauses (an approval, a signature) is stored as a **flow run** and resumed by the decision.
+Automations run from a durable queue, so a restart loses nothing: a job that is retried finds what its earlier attempt already did, step by step, on the record's timeline, and carries on from there. A worker holds a job by a lease it renews while it works; one that lost the lease writes nothing. A step that reaches outside is marked before it starts, so a retry after a crash does not silently repeat it: webhooks carry the same Idempotency-Key, emails and messages skip whoever already got them, and a connector write that may have happened is stopped for a person, who can run the flow again from that step ("Work that failed"). A flow that pauses (an approval, a signature) is stored as a **flow run** and resumed by the decision, through the queue as well.
 
 ## 5. Inside the API
 
@@ -121,11 +121,16 @@ One NestJS module, organised by folder:
 | Plans and usage | `plans`, `operator` | What each plan includes, monthly usage, operator commands. |
 | Logs and audit | `logs`, `audit` | An organisation's own log of what its workflows and connectors did; an audit trail of who changed what. |
 | Mail | `mail` | The product's own mail, or the organisation's own server (SMTP or Microsoft 365). |
+| Drafting with AI | `ai` | A form drafted from a description: off unless the installation has an AI service and the organisation turned it on; only the description is sent; the answer is read as questions only and checked like any form. |
 | Storage and keys | `common` | An object store (S3, or a local folder), a key provider (KMS, or a local key), a virus scanner (ClamAV, optional). |
 
 ### Tenancy
 
-One installation serves many organisations. Separation is by `orgId` on every document and every query; there is no shared row. An organisation that needs more than that is given an installation of its own (see hosting).
+One installation serves many organisations. Separation is by `orgId` on every document and every query; there is no shared row. A Mongoose plugin on the connection (`common/org-scope.ts`) checks every query on an organisation's data names its organisation, or is marked as working across them and why; tests refuse one that does not, production reports it (log and `/metrics`). A test walks every API route as a second organisation with the first's ids. An organisation that needs more than that is given an installation of its own (see hosting).
+
+### Seeing what is happening
+
+Every request has an ID (`x-request-id`), carried into the jobs it queues and the calls they make, and on every log line; logs are one JSON line each in production. `/health` checks the database, the queue and the gateways; `/metrics` (behind a token) has request times by route, submissions, jobs, connector and extension errors. See operations.md.
 
 ### Secrets
 

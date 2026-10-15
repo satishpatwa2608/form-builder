@@ -291,6 +291,27 @@ dropped and said so), checked like any form, and becomes a draft to read and cha
 empty, or a service that fails or takes over a minute, does not count. Each use is in the audit trail
 (`form.ai_drafted`, with the description).
 
+## Measured limits
+
+`infra/load/run.sh [seconds] [clients] [records]` runs the load test (`infra/load/load.mjs`) against the API and
+database in containers held to the pilot server's size (API with its jobs: 1 processor, 900 MB; database: 0.75
+processor, 700 MB). When images cannot be fetched, `FB_LOAD_BASE=<an earlier API image>` runs this checkout's
+code in that image. Measured 16 October 2026 (60 s of submissions from 20 clients, then 100,000 records):
+
+| What | Result |
+|---|---|
+| Responses, each starting an automation (an email and a notification) | 112 a second; half answered within 165 ms, 99% within 350 ms; none refused or failed |
+| The queue behind them | caught up 35 s after the burst ended; no job failed |
+| Inbox over 107,000 records (newest, open and overdue, by priority, search by reference or in answers) | 0.6 to 0.9 s, worst 1.1 s |
+| Report by a question, 90 days | 1.6 s |
+| Dashboard, 30 days | 3.5 s (the slowest page: worth an index or a cache when someone has this much) |
+| Making and keeping PDFs, 2,000 queued | 12 a second |
+| API memory after all of it | 166 MB of 900 |
+
+It found one fault, fixed the same night: while the queue was working, every new job (and every poll) queued a
+whole run behind it; under steady use those runs piled up and held memory until the API ran out (it reached its
+limit after about 7,000 responses). Now a request to run while one is going only asks for one more pass.
+
 ## Data retention
 
 - Drafts (save & resume): deleted 30 days after the last save (TTL index), or on submit.

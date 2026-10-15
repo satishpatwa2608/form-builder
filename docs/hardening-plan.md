@@ -2,6 +2,20 @@
 
 _11 October 2026. Written after an outside review of [architecture.md](architecture.md). Each point of the review was checked against the code; this says what is already true, what is not, and what to do about it, in order._
 
+## Progress (16 October 2026, overnight)
+
+| Phase | Done | Left |
+|---|---|---|
+| 1. Tenant isolation | A guard on every query that names no organisation (refuses in tests, reports in production); a test that walks every API route as another organisation and checks nothing of the first comes back or changes; links and files tried across organisations. | Business level: your decision (item 4). |
+| 2. Jobs and side effects | A lease renewed while a job runs, and a worker that lost it writes nothing; outside steps not silently done twice (Idempotency-Key on webhooks, emails and messages not re-sent, connector writes stopped for a person); "Work that failed" with Run again (a stopped flow from its failed step); approvals and signatures carry on through the queue. Gateway steps from the worker already worked (the relay), now tested; the gap below was wrong. | |
+| 3. Seeing what is happening | Request IDs end to end, JSON logs, `/health` that looks, `/metrics` behind a token. | Alerts on the pilot: your decision (spend). |
+| 4. Getting it back | A restore drill, run on last night's real backup; the keys written down; a rollback command. | The drill with the real keys, together; key rotation. |
+| 5. Retention | | Your decision first. |
+| 6. Load | A repeatable load test at the pilot's size; results in operations.md. | |
+| 7. The definition's parts | Four modules and a document type, checked against a record of 550 validation results made before the move. | |
+| 8. Complaint customer | A file required before a move; QR codes; Reports and a team filter; the staff side on a phone, with a browser test. | Business and location levels and the timed setup by a newcomer: yours. |
+| 9. Standing out | The maintenance process as one template with an overdue view; AI drafting (off, no key: which service and who pays are yours); text-message and WhatsApp steps through each organisation's own service. | |
+
 ## 1. The review, point by point
 
 | The review says | What the code does today | Verdict |
@@ -20,7 +34,7 @@ _11 October 2026. Written after an outside review of [architecture.md](architect
 
 Two things the review did not find, which the check did:
 
-- **A gateway step does not work from the worker.** A gateway connects to the API process; an automation step that calls a connector through a gateway only works if the job runs in that same process. The pilot runs a separate worker, and Db2 only works through a gateway. Today that combination fails.
+- ~~**A gateway step does not work from the worker.**~~ Wrong: a call for a gateway connected to another process is already handed over through the database (`gateway_calls`). Now shown by a test (a worker with no connection of its own runs a gateway step).
 - **A job that runs longer than five minutes can be started twice.** The lease is fixed at five minutes and is never extended while the job is still working.
 
 ## 2. The plan
