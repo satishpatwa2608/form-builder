@@ -1249,6 +1249,34 @@
   .fb-record__side {
     overflow: visible;
   }
+  /* One column on a phone: each part as tall as it needs, and the dialog scrolls (squeezed, they overlapped). */
+  .fb-record,
+  .fb-record__main,
+  .fb-record__side,
+  .fb-record__tab {
+    flex: none;
+    min-height: auto;
+  }
+  .fb-record__dialog {
+    max-height: 100dvh;
+    width: 100vw;
+    max-width: 100vw;
+  }
+}
+
+/* On a touch screen, what is pressed in a record or the inbox is big enough for a thumb. */
+@media (pointer: coarse) {
+  .fb-record__dialog button,
+  .fb-record__dialog [role='tab'],
+  .fb-record__dialog [role='combobox'],
+  .wi button,
+  .wi [role='combobox'] {
+    min-height: 40px;
+  }
+  .fb-record__dialog a,
+  .fb-record__dialog label {
+    min-height: 32px;
+  }
 }
 
 .fb-list-items {
