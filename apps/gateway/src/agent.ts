@@ -105,6 +105,8 @@ export async function startAgent(opts: AgentOptions): Promise<Agent> {
         // Re-read each time so credentials can be changed without a restart.
         const creds = loadCredentials(opts.credentialsFile, () => undefined);
         const reply = await handleGatewayRequest(registry, (ref) => creds[ref], msg);
+        // Named by the API request it was part of, so it can be followed from the API's log to here.
+        if (!reply.ok) log(`${msg.op} for ${msg.connector?.ref ?? '?'} failed: ${reply.error}${msg.requestId ? ` (request ${msg.requestId})` : ''}`);
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(reply));
       })();
     });

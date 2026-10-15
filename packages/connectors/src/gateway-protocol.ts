@@ -15,6 +15,8 @@ export interface GatewayRequest {
   /** Non-secret connector settings; `ref` names the credentials in the agent's local config. */
   connector: ConnectorRecord & { ref: string };
   request?: OperationRequest;
+  /** The API request (or job) this call is part of: the agent names it when the call fails, to follow it end to end. */
+  requestId?: string;
 }
 
 export type GatewayResponse = { id: string; ok: true; result: unknown } | { id: string; ok: false; error: string; code?: string };

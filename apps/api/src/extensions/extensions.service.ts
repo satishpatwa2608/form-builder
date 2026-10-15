@@ -10,6 +10,8 @@ import { newId, randomToken } from '../common/crypto';
 import { KEY_PROVIDER, openWith, sealWith, type KeyProvider } from '../common/key-provider';
 import { PlansService } from '../plans/plans.service';
 import { ExtensionRow, type ExtensionDocument } from './extension.schema';
+import { metrics } from '../common/metrics';
+import { currentRequestId } from '../common/request-context';
 
 /** A workflow step an extension offers, as a form stores it: x-<ref>-<step>. A submission check has the same shape. */
 export const EXT_STEP_KEY = /^x-([a-z0-9]{8})-([a-z0-9-]{1,40})$/;
@@ -149,7 +151,7 @@ export class ExtensionsService {
     try {
       res = await fetch(new URL(path, row.url), {
         method,
-        headers: { 'content-type': 'application/json', [SIGNATURE_HEADER]: sign(secret, { method, path, body }) },
+        headers: { 'content-type': 'application/json', [SIGNATURE_HEADER]: sign(secret, { method, path, body }), ...(currentRequestId() ? { 'x-request-id': currentRequestId()! } : {}) },
         ...(method === 'GET' ? {} : { body }),
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
@@ -158,6 +160,7 @@ export class ExtensionsService {
       raw = await res.arrayBuffer();
     } catch (e) {
       const why = e instanceof Error && e.name === 'TimeoutError' ? `did not answer within ${timeoutMs / 1000} seconds` : 'could not be reached';
+      metrics.extensionErrors.inc({ why: e instanceof Error && e.name === 'TimeoutError' ? 'timeout' : 'unreachable' });
       // Recorded before the caller hears of it, so the admins' page never lags behind what just happened.
       await this.note(row, `The extension ${why}`, true);
       throw new ExtensionFailure(`The extension ${why}`, true);
@@ -174,6 +177,7 @@ export class ExtensionsService {
       const said = text(data?.error, 300);
       const message = res.status === 401 ? 'The extension refused our signature: its secret does not match the one issued' : said || `The extension answered ${res.status}`;
       if (res.status === 401) await this.note(row, message, true);
+      metrics.extensionErrors.inc({ why: String(res.status) });
       throw new ExtensionFailure(message);
     }
     if (!data) throw new ExtensionFailure('The extension did not send back JSON');

@@ -41,6 +41,10 @@ export class Job {
   @Prop({ type: Date })
   lockedUntil?: Date;
 
+  /** The request that queued it: its log lines carry the same ID. */
+  @Prop({ type: String })
+  requestId?: string;
+
   /** While RUNNING: which taking of the job this is. Only the worker that holds it may renew it or write the result. */
   @Prop({ type: String })
   lease?: string;

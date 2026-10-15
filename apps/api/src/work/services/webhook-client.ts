@@ -1,5 +1,6 @@
 import { createHmac } from 'crypto';
 import { WORKFLOW } from '../constants';
+import { currentRequestId } from '../../common/request-context';
 
 /** Hosts webhooks may call (https only). */
 export function webhookAllowed(url: string): { ok: true; target: URL } | { ok: false; error: string } {
@@ -42,6 +43,8 @@ export async function postJson(target: URL, payload: unknown, secret?: string, k
   const body = JSON.stringify(payload);
   const headers: Record<string, string> = { 'content-type': 'application/json', 'user-agent': 'form-builder-webhook' };
   if (key) headers['idempotency-key'] = key;
+  const requestId = currentRequestId();
+  if (requestId) headers['x-request-id'] = requestId;
   if (secret) headers['x-fb-signature'] = `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
   const res = await fetch(target, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(WORKFLOW.webhookTimeoutMs) }).catch(() => {
     throw new Error(`${target.hostname} did not answer`);

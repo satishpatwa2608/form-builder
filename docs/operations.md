@@ -12,7 +12,7 @@ For whoever runs the hosted platform. Nothing here is provisioned yet — see
 | Runtime | `pnpm --filter @fb/runtime build` | static `dist/` | `VITE_API_URL`, `VITE_STUDIO_URL`; serve `index.html` for every path (SPA) |
 | Gateway agent | `pnpm --filter @fb/gateway build` | customer-side | `apps/gateway/README.md` |
 
-Health: `GET /health`.
+Health: `GET /health` (see "Seeing what is happening" below).
 
 ## Configuration (API)
 
@@ -229,13 +229,56 @@ The worker is the same build as the API, started with `node dist/worker`
 (`pnpm dev:worker` locally). It has no HTTP port. It also runs the SLA sweep.
 Several workers can run at once; each job is claimed by one of them.
 
-Before splitting the API and the worker, note one limit: an automation step
-that calls a connector through a gateway only works in the process the
-gateway is connected to, which is the API. Until gateway calls are routed
-between processes, keep `JOBS_ROLE=all` if any form uses such a step.
+A worker holds a job it took for `JOBS_LEASE_MS` (five minutes by default)
+and renews that every third of it while the job runs, so a long job is never
+started by a second worker; a worker that lost its lease (paused too long,
+say) writes no result and starts no further automation step.
 
-To see what is stuck: `db.jobs.find({ status: 'FAILED' })`. To run one again,
-set its `status` to `PENDING`, `attempts` to 0 and `runAt` to now.
+A gateway step works from the worker too: a call for a gateway connected to
+another process is handed over through the database (`gateway_calls`).
+
+Outside steps are not silently done twice when a job is taken again after its
+worker died between doing a step and recording it: webhook and automation-tool
+steps send the same `Idempotency-Key` on every try, an email step skips whoever
+it already went to, and a connector write stops with "this may have been done
+already" for a person to check (steps are marked in `form_step_marks`, kept 30
+days).
+
+**Failed work.** Forms admins see what failed in the last 30 days on the
+Overview page ("Work that failed"): jobs that gave up after their tries and
+flows that stopped on a failed step, each with "Run again" (a stopped flow
+runs again from the step that failed). Operators see a count per customer on
+the Customers page. From the shell: `db.jobs.find({ status: 'FAILED' })`.
+
+## Seeing what is happening
+
+**Request IDs.** Every answer carries `x-request-id` (the caller's own when it
+sent a sensible one, else a new one). The same ID is stored on the jobs a
+request queues, sent on the webhooks, extension calls and gateway calls they
+make, and written on every log line, so one response can be followed end to
+end. The gateway agent names it when a call fails.
+
+**Logs.** `LOG_FORMAT=json` (the default in production) writes one JSON line
+per entry from the API and the worker: `at`, `level`, `service`, `context`,
+`message`, `requestId`, `orgId`, plus one `request` line per request with the
+method, the route as written in the code (never the address itself: some carry
+a token), the status and the time taken. The gateway agent does the same with
+`FB_LOG_FORMAT=json`.
+
+**`GET /health`** looks before it answers: the database, how long the oldest
+due job has waited, jobs that gave up in the last hour, gateways connected.
+It answers 503 only when the database cannot be reached; the rest is reported
+for a person or an alert. Counts only, nothing of any organisation's.
+
+**`GET /metrics`** (Prometheus text) needs `Authorization: Bearer
+<METRICS_TOKEN>`; without the setting there is no such page. Request times by
+method, route and status; responses accepted and refused (and why); jobs by
+state, finished by type and outcome, the oldest waiting, failed in the last
+hour; connector and extension errors; gateways connected. Labels are fixed
+words, never customer data. Counters are per process.
+
+What to alert on first: `/health` not answering or 503; the oldest waiting job
+above a few minutes; jobs failing in the last hour.
 
 ## Data retention
 

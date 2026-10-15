@@ -51,6 +51,10 @@ const schema = z.object({
    * this while the job runs, so a long job is never taken twice; a short value only makes a dead worker's job
    * come back sooner.
    */
+  /** json: one JSON line per log entry, request IDs included (the default in production); text: Nest's own. */
+  LOG_FORMAT: z.enum(['json', 'text']).optional(),
+  /** Bearer token for GET /metrics. Unset, there is no metrics page. */
+  METRICS_TOKEN: z.string().min(16, 'METRICS_TOKEN must be at least 16 characters').optional(),
   JOBS_LEASE_MS: z.coerce.number().int().min(50).default(5 * 60_000),
   /** Plan for organisations billing hasn't set one on (see src/plans/plans.ts). */
   DEFAULT_PLAN: z.enum(['FREE', 'TEAM', 'BUSINESS', 'ENTERPRISE']).default('FREE'),

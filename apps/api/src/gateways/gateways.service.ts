@@ -13,6 +13,7 @@ import type { AuthContext } from '../auth/auth-context';
 import { hashToken, newId, randomToken } from '../common/crypto';
 import { PlansService } from '../plans/plans.service';
 import { Gateway, GatewayCall, type GatewayCallDocument, type GatewayDocument } from './gateway.schema';
+import { currentRequestId } from '../common/request-context';
 
 const REGISTRATION_TTL_MS = 24 * 3600_000;
 const CALL_TIMEOUT_MS = 30_000;
@@ -127,7 +128,7 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
     if (this.live.get(gatewayId)?.orgId === orgId) return this.callLocal(orgId, gatewayId, { op, connector, request });
     if (!(await this.connectedElsewhere(orgId, gatewayId))) throw new ServiceUnavailableException("The connector's gateway is not connected");
     const id = newId();
-    await this.calls.create({ id, orgId, gatewayId, request: { op, connector, request } });
+    await this.calls.create({ id, orgId, gatewayId, request: { op, connector, request, requestId: currentRequestId() } });
     const until = Date.now() + CALL_TIMEOUT_MS + 2_000;
     try {
       while (Date.now() < until) {
@@ -143,7 +144,7 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   /** Down the connection this process holds. */
-  private async callLocal(orgId: string, gatewayId: string, body: Pick<GatewayRequest, 'op' | 'connector' | 'request'>): Promise<GatewayResponse> {
+  private async callLocal(orgId: string, gatewayId: string, body: Pick<GatewayRequest, 'op' | 'connector' | 'request' | 'requestId'>): Promise<GatewayResponse> {
     const g = this.live.get(gatewayId);
     if (!g || g.orgId !== orgId) return { id: '', ok: false, error: "The connector's gateway is not connected", code: 'FAILED' };
     // Revoked on another API instance: that one closed its socket, this one learns it here.
@@ -159,7 +160,7 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
         resolve({ id, ok: false, error: 'The gateway did not answer in time', code: 'TIMEOUT' });
       }, CALL_TIMEOUT_MS);
       g.pending.set(id, { resolve, timer });
-      g.ws.send(JSON.stringify({ id, ...body } satisfies GatewayRequest));
+      g.ws.send(JSON.stringify({ id, requestId: currentRequestId(), ...body } satisfies GatewayRequest));
     });
   }
 
@@ -172,7 +173,7 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
         const job = await this.calls.findOneAndUpdate({ gatewayId: { $in: [...this.live.keys()] }, status: 'PENDING' }, { $set: { status: 'RUNNING' } }).lean();
         if (!job) return;
         // Not awaited one by one: a slow database behind one gateway must not hold up another.
-        void this.callLocal(job.orgId, job.gatewayId, job.request as unknown as Pick<GatewayRequest, 'op' | 'connector' | 'request'>)
+        void this.callLocal(job.orgId, job.gatewayId, job.request as unknown as Pick<GatewayRequest, 'op' | 'connector' | 'request' | 'requestId'>)
           .catch((e: Error): GatewayResponse => ({ id: '', ok: false, error: e.message, code: 'FAILED' }))
           .then((response) => this.calls.updateOne({ id: job.id }, { $set: { status: 'DONE', response } }))
           .catch((e: Error) => this.logger.warn(`could not answer relayed call ${job.id}: ${e.message}`));
@@ -185,6 +186,11 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
   /** Held by another process that has been heard from lately. */
   private async connectedElsewhere(orgId: string, gatewayId: string): Promise<boolean> {
     return !!(await this.gateways.exists({ id: gatewayId, orgId, revokedAt: null, instanceId: { $nin: ['', this.instanceId] }, lastSeenAt: { $gt: new Date(Date.now() - STALE_MS) } }));
+  }
+
+  /** Gateways connected to any server and heard from lately, every organisation's (a count, for health and metrics). */
+  async connectedCount(): Promise<number> {
+    return this.gateways.countDocuments({ revokedAt: null, instanceId: { $ne: '' }, lastSeenAt: { $gt: new Date(Date.now() - STALE_MS) } }, { comment: 'across-orgs: a count of connected gateways for the health check' });
   }
 
   /** Connected to this process or to another one. */

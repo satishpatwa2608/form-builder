@@ -4,6 +4,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { newId as uuidv4 } from '../common/crypto';
 import { APP_CONFIG, type AppConfig } from '../config';
+import { metrics } from '../common/metrics';
+import { currentRequestId, withRequest } from '../common/request-context';
 import { Job, JobDocument } from './job.schema';
 
 export interface JobHandlerOptions {
@@ -127,6 +129,7 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
         status: 'PENDING',
         maxAttempts: this.handlers.get(type)?.maxAttempts ?? 3,
         runAt: options.runAt ?? new Date(),
+        ...(currentRequestId() ? { requestId: currentRequestId() } : {}),
         ...(options.dedupeKey ? { dedupeKey: options.dedupeKey } : {}),
       });
     } catch (e) {
@@ -215,15 +218,18 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
     beat.unref?.();
     const context: JobContext = { id: job.uuid, attempt: job.attempts, signal: lost.signal };
     try {
-      await running.run(context, () => handler.run(job.payload, context));
+      // Logged under the request that queued it, so a response can be followed into its background work.
+      await withRequest({ requestId: job.requestId || `job-${job.uuid}`, orgId: job.orgId || undefined }, () => running.run(context, () => handler.run(job.payload, context)));
       clearInterval(beat);
       if (lost.signal.aborted) return;
+      metrics.jobsFinished.inc({ type: job.type, outcome: 'done' });
       await finished({ status: 'DONE', lastError: '', expireAt: new Date(Date.now() + KEEP_DONE_MS) });
     } catch (e) {
       clearInterval(beat);
       // The new holder runs it; this attempt is neither a success nor a failure of the job.
       if (lost.signal.aborted) return;
       const error = ((e as Error).message ?? 'failed').slice(0, 500);
+      metrics.jobsFinished.inc({ type: job.type, outcome: job.attempts >= job.maxAttempts ? 'failed' : 'retry' });
       if (job.attempts >= job.maxAttempts) return giveUp(error);
       this.logger.warn(`job ${job.type} ${job.uuid} attempt ${job.attempts} failed, will retry: ${error}`);
       await finished({ status: 'PENDING', lastError: error, runAt: new Date(Date.now() + retryDelayMs(job.attempts)) });
@@ -241,6 +247,17 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
   /** What failed for good lately, newest first. */
   async failed(orgId: string, since: Date, limit = 50) {
     return this.jobs.find({ orgId, status: 'FAILED', updatedAt: { $gte: since } }).sort({ updatedAt: -1 }).limit(limit).select('uuid type payload attempts lastError updatedAt').lean<(Job & { updatedAt: Date })[]>();
+  }
+
+  /** How long the oldest job that is due has been waiting, in seconds (0 when none is). */
+  async oldestWaitingSeconds(now = new Date()): Promise<number> {
+    const oldest = await this.jobs.findOne({ status: 'PENDING', runAt: { $lte: now } }).sort({ runAt: 1 }).select('runAt').lean();
+    return oldest ? Math.max(0, Math.round((now.getTime() - oldest.runAt.getTime()) / 1000)) : 0;
+  }
+
+  /** Jobs that gave up in the last `ms`, every organisation's. */
+  async failedSince(ms: number): Promise<number> {
+    return this.jobs.countDocuments({ status: 'FAILED', updatedAt: { $gte: new Date(Date.now() - ms) } });
   }
 
   /** Counts by status, for the health page and tests. */

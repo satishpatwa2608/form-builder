@@ -9,6 +9,7 @@ import { clientIp } from '../common/request-meta';
 import { Membership, Organization, type MembershipDocument, type OrganizationDocument } from '../orgs/org.schemas';
 import type { AuthContext } from './auth-context';
 import { Session, type SessionDocument } from './auth.schemas';
+import { noteOrg } from '../common/request-context';
 
 const PUBLIC = 'fb:public';
 const WITHOUT_MFA = 'fb:without-mfa';
@@ -80,6 +81,7 @@ export class AuthGuard implements CanActivate {
       ip: clientIp(req.ip),
       userAgent: String(req.headers['user-agent'] ?? '').slice(0, 300),
     };
+    noteOrg(session.orgId);
     // The ported Sangam work code reads `req.user` in its own shape.
     req.user = { uuid: session.userId, orgId: session.orgId, modules: legacyModules(membership.role) };
     return true;

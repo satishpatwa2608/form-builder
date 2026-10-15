@@ -28,6 +28,7 @@ import { APP_CONFIG, type AppConfig } from '../config';
 import { PlansService } from '../plans/plans.service';
 import { GatewaysService } from '../gateways/gateways.service';
 import { Connector, ConnectorCall, type ConnectorCallDocument, type ConnectorDocument, type ExposedEntity } from './connector.schema';
+import { metrics } from '../common/metrics';
 
 /** What the API returns about a connector - never the credentials. */
 export interface ConnectorView {
@@ -388,6 +389,7 @@ export class ConnectorsService implements OnModuleDestroy {
       return res;
     } catch (e) {
       const msg = e instanceof ConnectorError ? e.message : e instanceof HttpException ? e.message : 'failed';
+      metrics.connectorErrors.inc({ type: c.type, kind });
       await this.calls.create({ orgId: c.orgId, connectorId: c.id, entity: entity.key, kind, actor, ok: false, durationMs: Date.now() - start, error: msg.slice(0, 200) });
       orgLog.error(c.orgId, 'connectors', `${c.name}: ${kind} ${entity.label} failed - ${msg.slice(0, 200)}`, { connector: c.name, type: c.type, table: entity.key, kind, ms: Date.now() - start, by: actor });
       if (e instanceof HttpException) throw e; // e.g. 503 when the gateway is offline

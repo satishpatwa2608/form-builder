@@ -18,6 +18,7 @@ import { FormThrottlerGuard } from './form-throttler.guard';
 import { PlansService } from '../../plans/plans.service';
 import { DraftsService } from '../../drafts/drafts.service';
 import { PortalService } from '../../portal/portal.service';
+import { metrics } from '../../common/metrics';
 
 /**
  * Endpoints the public form page uses. No AuthGuard: anonymous callers are
@@ -137,6 +138,7 @@ export class FormPublicController {
     try {
       const result = await this.submissions.submit(orgId, code, isPlainObject(body) ? body : {}, user, ip);
       await this.plans.recordSubmission(orgId, code);
+      metrics.submissionsAccepted.inc();
       return result;
     } catch (e) {
       await this.plans.releaseSubmission(orgId, reserved);
@@ -146,6 +148,7 @@ export class FormPublicController {
       if (Array.isArray(faults)) orgLog.debug(orgId, 'submissions', 'Response sent back with mistakes', { form: code, mistakes: faults.length, fields: [...new Set(faults.map((f) => f.field))].slice(0, 10).join(', ') });
       else if (!status || status >= 500) orgLog.error(orgId, 'submissions', 'A response could not be stored', { form: code });
       else orgLog.debug(orgId, 'submissions', 'Response refused', { form: code, status });
+      metrics.submissionsRefused.inc({ why: Array.isArray(faults) ? 'mistakes' : !status || status >= 500 ? 'error' : String(status) });
       throw e;
     }
   }

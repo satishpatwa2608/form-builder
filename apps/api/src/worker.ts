@@ -4,6 +4,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { loadConfig } from './config';
 import { JobQueue } from './jobs/job-queue.service';
+import { logsAsJson } from './bootstrap';
+import { JsonLogger } from './common/json-logger';
 
 /**
  * The worker: the same application as the API, without an HTTP server. It
@@ -13,7 +15,8 @@ import { JobQueue } from './jobs/job-queue.service';
  */
 async function bootstrap() {
   const config = loadConfig({ ...process.env, JOBS_ROLE: 'run' });
-  const app = await NestFactory.createApplicationContext(AppModule.forRoot(config));
+  const app = await NestFactory.createApplicationContext(AppModule.forRoot(config), { bufferLogs: true });
+  if (logsAsJson(config)) app.useLogger(new JsonLogger('worker'));
   app.enableShutdownHooks();
   const waiting = await app.get(JobQueue).counts();
   new Logger('Worker').log(`Worker started - ${waiting.PENDING ?? 0} job(s) waiting`);
