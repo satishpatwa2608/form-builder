@@ -9,6 +9,14 @@ const schema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   /** base64 of 32 random bytes: encrypts TOTP secrets now, connector credentials until KMS is wired. */
   SECRET_KEY: z.string().refine((v) => Buffer.from(v, 'base64').length === 32, 'SECRET_KEY must be base64 of 32 bytes'),
+  /**
+   * While SECRET_KEY is being changed: the keys it replaces, comma-separated. What they sealed still opens;
+   * `rotate-secrets` seals it again with SECRET_KEY, after which they can be removed.
+   */
+  SECRET_KEY_PREVIOUS: z
+    .string()
+    .refine((v) => v.split(',').every((k) => !k.trim() || Buffer.from(k.trim(), 'base64').length === 32), 'Each key in SECRET_KEY_PREVIOUS must be base64 of 32 bytes')
+    .optional(),
   /** Studio URL, used in email links. */
   APP_URL: z.string().url().default('http://localhost:5173'),
   CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:5174'),

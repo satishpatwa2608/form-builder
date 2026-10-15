@@ -341,8 +341,16 @@ handle them), then open a connector and test it, and sign in with two-factor.
 
 Keep a copy of `SECRET_KEY` and `JWT_SECRET` outside the account (a password manager two people can open). A KMS
 key cannot be copied: AWS keeps it, and deleting it waits at least 7 days, so a mistaken deletion can be
-cancelled. Changing `SECRET_KEY` (rotation) needs everything it seals opened with the old and sealed with the new;
-that is not built yet.
+cancelled. Changing `SECRET_KEY` (rotation, or after it may have leaked):
+
+1. Make a new key (`openssl rand -base64 32`). Put it in `SECRET_KEY`, and the old one in `SECRET_KEY_PREVIOUS`
+   (several, comma-separated, if an earlier rotation was not finished). Restart the API and the worker: what the
+   old key sealed still opens; everything new is sealed with the new one.
+2. Run `node dist/cli/rotate-secrets.js` in the API container (it reads `MONGODB_URL`, `SECRET_KEY`,
+   `SECRET_KEY_PREVIOUS`). It finds every value in the database that only an old key opens, whatever field it
+   is in, and seals it again with the new key; a value changed meanwhile is left, and it says to run it again.
+   Values sealed by KMS data keys are not this key's, and are left alone.
+3. `rotate-secrets.js --check` says when nothing is left. Then remove `SECRET_KEY_PREVIOUS` and restart.
 
 **Rollback.** `infra/pilot/rollback.sh` puts the pilot back on the version released before the one running
 (or on a tag given), from the images already in the image store: nothing is built, about a minute. The database

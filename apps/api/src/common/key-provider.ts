@@ -19,8 +19,8 @@ export const KEY_PROVIDER = Symbol('KEY_PROVIDER');
 export class LocalKeyProvider implements KeyProvider {
   readonly name = 'local' as const;
   private readonly box: SecretBox;
-  constructor(masterKey: Buffer) {
-    this.box = new SecretBox(masterKey);
+  constructor(masterKey: Buffer, previous: Buffer[] = []) {
+    this.box = new SecretBox(masterKey, previous);
   }
   async newDataKey(context: Record<string, string>) {
     const plain = randomBytes(32);

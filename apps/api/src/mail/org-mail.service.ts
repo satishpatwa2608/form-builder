@@ -6,7 +6,7 @@ import type { Model } from 'mongoose';
 import { actorOf, AuditService } from '../audit/audit.service';
 import type { AuthContext } from '../auth/auth-context';
 import { User, type UserDocument } from '../auth/auth.schemas';
-import { SecretBox } from '../common/crypto';
+import { SecretBox, installationBox } from '../common/crypto';
 import { MAILER, type Mail, type Mailer } from '../common/mailer';
 import { APP_CONFIG, type AppConfig } from '../config';
 import { Organization, type OrganizationDocument } from '../orgs/org.schemas';
@@ -47,7 +47,7 @@ export class OrgMailService {
     @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
     @InjectModel(User.name) private readonly users: Model<UserDocument>,
   ) {
-    this.box = new SecretBox(Buffer.from(config.SECRET_KEY, 'base64'));
+    this.box = installationBox(config);
   }
 
   /** Development and tests only: a mail server on this machine, with a certificate nobody vouches for. */

@@ -10,7 +10,7 @@ import { User, type UserDocument } from '../auth/auth.schemas';
 import type { AuthContext } from '../auth/auth-context';
 import { AuthService, type SignedIn } from '../auth/auth.service';
 import { APP_CONFIG, type AppConfig } from '../config';
-import { hashToken, newId, randomToken, SecretBox } from '../common/crypto';
+import { hashToken, newId, randomToken, SecretBox, installationBox } from '../common/crypto';
 import type { RequestMeta } from '../common/request-meta';
 import { Membership, Organization, type MembershipDocument, type OrganizationDocument } from '../orgs/org.schemas';
 import { PlansService } from '../plans/plans.service';
@@ -76,7 +76,7 @@ export class SsoService {
     @InjectModel(User.name) private readonly users: Model<UserDocument>,
     @InjectModel(SsoState.name) private readonly states: Model<SsoStateDocument>,
   ) {
-    this.box = new SecretBox(Buffer.from(config.SECRET_KEY, 'base64'));
+    this.box = installationBox(config);
   }
 
   get callbackUrl() {

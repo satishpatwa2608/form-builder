@@ -6,7 +6,7 @@ import type { Model } from 'mongoose';
 import { permissionsOf } from '../access/roles';
 import { actorOf, AuditService } from '../audit/audit.service';
 import { APP_CONFIG, isOperator, type AppConfig } from '../config';
-import { hashToken, newId, randomToken, SecretBox } from '../common/crypto';
+import { hashToken, newId, randomToken, SecretBox, installationBox } from '../common/crypto';
 import { MAILER, type Mailer } from '../common/mailer';
 import type { RequestMeta } from '../common/request-meta';
 import { newTotpSecret, otpauthUrl, verifyTotp } from '../common/totp';
@@ -57,7 +57,7 @@ export class AuthService implements OnModuleInit {
     @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
     @InjectModel(Membership.name) private readonly memberships: Model<MembershipDocument>,
   ) {
-    this.box = new SecretBox(Buffer.from(config.SECRET_KEY, 'base64'));
+    this.box = installationBox(config);
   }
 
   async onModuleInit() {

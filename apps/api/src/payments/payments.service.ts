@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import { actorOf, AuditService } from '../audit/audit.service';
 import type { AuthContext } from '../auth/auth-context';
-import { newId, SecretBox } from '../common/crypto';
+import { newId, SecretBox, installationBox } from '../common/crypto';
 import { APP_CONFIG, type AppConfig } from '../config';
 import { orgLog } from '../logs/org-log';
 import { Organization, type OrganizationDocument } from '../orgs/org.schemas';
@@ -38,7 +38,7 @@ export class PaymentsService {
     @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
     @InjectModel(Payment.name) private readonly payments: Model<PaymentDocument>,
   ) {
-    this.box = new SecretBox(Buffer.from(config.SECRET_KEY, 'base64'));
+    this.box = installationBox(config);
   }
 
   // ── The organisation's setting ───────────────────────────────────────────

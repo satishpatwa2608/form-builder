@@ -32,7 +32,7 @@ import {
 } from '@fb/engine';
 import { CHANNELS, FORM_SUBMITTED_EVENT, LIMITS } from '../constants';
 import { sealedKeys, useSealingKey } from '../sealed-answers';
-import { SecretBox } from '../../common/crypto';
+import { installationBox } from '../../common/crypto';
 import { APP_CONFIG, type AppConfig } from '../../config';
 import { checkSubmissionShape, isPlainObject } from '../../forms/payload-guard';
 import { FormFieldErrors } from '../security/form-http';
@@ -111,7 +111,7 @@ export class FormSubmissionService {
     private readonly openWith: OpenWithService,
   ) {
     // Sensitive answers are sealed with the installation's key as they are saved, and opened as they are read.
-    useSealingKey(new SecretBox(Buffer.from(config.SECRET_KEY, 'base64')));
+    useSealingKey(installationBox(config));
   }
 
   /** The published form a public caller may open (sign-in-only forms need a user of the same org). */

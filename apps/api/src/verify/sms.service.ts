@@ -4,7 +4,7 @@ import { safeFetch } from '@fb/connectors';
 import type { Model } from 'mongoose';
 import { actorOf, AuditService } from '../audit/audit.service';
 import type { AuthContext } from '../auth/auth-context';
-import { SecretBox } from '../common/crypto';
+import { SecretBox, installationBox } from '../common/crypto';
 import { APP_CONFIG, type AppConfig } from '../config';
 import { orgLog } from '../logs/org-log';
 import { Organization, type OrganizationDocument } from '../orgs/org.schemas';
@@ -61,7 +61,7 @@ export class SmsService {
     private readonly audit: AuditService,
     @InjectModel(Organization.name) private readonly orgs: Model<OrganizationDocument>,
   ) {
-    this.box = new SecretBox(Buffer.from(config.SECRET_KEY, 'base64'));
+    this.box = installationBox(config);
   }
 
   private view(s: SmsSettings | undefined) {

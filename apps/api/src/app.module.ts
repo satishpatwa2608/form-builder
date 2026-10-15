@@ -34,6 +34,7 @@ import { Form, FormSchema } from './forms/form.schema';
 import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
 import { HealthController } from './health.controller';
+import { previousKeys } from './common/crypto';
 import { AiController } from './ai/ai.controller';
 import { AiService } from './ai/ai.service';
 import { drafterFor, FORM_DRAFTER } from './ai/drafter';
@@ -287,7 +288,7 @@ export class AppModule {
         { provide: MAILER, useValue: mailerFor(config) },
         {
           provide: KEY_PROVIDER,
-          useValue: config.KMS_KEY_ID ? new KmsKeyProvider(config.KMS_KEY_ID, config.AWS_REGION) : new LocalKeyProvider(Buffer.from(config.SECRET_KEY, 'base64')),
+          useValue: config.KMS_KEY_ID ? new KmsKeyProvider(config.KMS_KEY_ID, config.AWS_REGION) : new LocalKeyProvider(Buffer.from(config.SECRET_KEY, 'base64'), previousKeys(config)),
         },
         {
           provide: OBJECT_STORE,
