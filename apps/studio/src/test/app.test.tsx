@@ -205,6 +205,53 @@ describe('studio', () => {
     expect(await screen.findByText(/The inbox view "Overdue maintenance" was not made: only a Forms admin can save views for the team\./)).toBeInTheDocument();
   });
 
+  it('forms: described in plain words, the questions are drafted to read before the draft is made; not offered unless switched on', async () => {
+    const user = userEvent.setup();
+    let status = { available: true, enabled: true, used: 3, limit: 50 };
+    const { calls } = fakeApi({
+      ...signedIn(),
+      'GET /folders': () => ({ body: [{ id: 'f1', name: 'Quality', parentId: null, path: ['f1'] }] }),
+      'GET /forms': () => ({ body: [] }),
+      'GET /ai/status': () => ({ body: status }),
+      'POST /ai/form-drafts': () => ({
+        body: {
+          name: 'Maintenance complaint',
+          description: 'Tell us what needs fixing.',
+          fields: [
+            { id: 'ai_1', type: 'RADIO', name: 'whichProperty', label: 'Which property?', dataSource: { type: 'STATIC', options: [{ label: 'Tower A', value: 'TOWER_A' }, { label: 'Tower B', value: 'TOWER_B' }] } },
+            { id: 'ai_2', type: 'FILE', name: 'aPhoto', label: 'A photo' },
+          ],
+          leftOut: ['"workflow" in the answer: only questions are drafted'],
+          used: 4,
+          limit: 50,
+        },
+      }),
+      'POST /forms': () => ({ status: 201, body: {} }),
+    });
+    renderApp('/forms');
+    await user.click(await screen.findByRole('button', { name: /New form/ }));
+    await user.click(await screen.findByText('Describe it (AI)'));
+    expect(screen.getByText('47 of 50 drafts left this month')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Create draft/ })).toBeDisabled();
+    await user.type(screen.getByRole('textbox', { name: 'What is the form for?' }), 'A maintenance complaint: which property and a photo');
+    await user.click(screen.getByRole('button', { name: 'Draft it' }));
+    expect(calls.find((c) => c.path === '/ai/form-drafts')!.body).toEqual({ description: 'A maintenance complaint: which property and a photo', folderId: 'f1' });
+    const found = await screen.findByRole('status');
+    expect(found).toHaveTextContent('2 fields found in your description: Which property?, A photo');
+    expect(found).toHaveTextContent('"workflow" in the answer: only questions are drafted');
+    expect(screen.getByLabelText('Name')).toHaveValue('Maintenance complaint');
+    await user.click(screen.getByRole('button', { name: /Create draft/ }));
+    expect(await screen.findByText(/created as a draft with 2 questions drafted from your description\. Read them and change what you need/)).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === 'POST' && c.path === '/forms')!.body as { definition: { fields: unknown[]; description: string } };
+    expect(sent.definition.fields).toHaveLength(2);
+    expect(sent.definition.description).toBe('Tell us what needs fixing.');
+
+    // Not switched on: not offered.
+    status = { ...status, enabled: false };
+    await user.click(await screen.findByRole('button', { name: /New form/ }));
+    expect(screen.queryByText('Describe it (AI)')).toBeNull();
+  });
+
   it('forms: a long list is shown a page at a time, and a form is found by typing part of its name', async () => {
     const user = userEvent.setup();
     const many = Array.from({ length: 45 }, (_, i) => ({ id: `f${i}`, code: `FORM_${String(i + 1).padStart(2, '0')}`, name: `Form ${String(i + 1).padStart(2, '0')}`, folderId: 'f1', version: 1, status: 'PUBLISHED', publishedVersion: 1, publicLink: true, updatedAt: '2026-09-30T10:00:00Z', permissions: ['form.view'] }));

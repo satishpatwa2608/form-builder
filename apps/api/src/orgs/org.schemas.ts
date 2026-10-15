@@ -102,6 +102,13 @@ export class OrgPortal {
   @Prop({ type: String, default: '' }) intro: string;
 }
 
+/** What the organisation lets AI do for it: each is off until an admin turns it on. */
+@Schema({ _id: false })
+export class OrgAi {
+  /** Draft a new form from a description (only the description is sent to the AI service). */
+  @Prop({ type: Boolean, default: false }) drafting: boolean;
+}
+
 @Schema({ timestamps: true, collection: 'organizations' })
 export class Organization {
   @Prop({ required: true, unique: true }) id: string;
@@ -114,6 +121,7 @@ export class Organization {
   @Prop({ type: [OrgDomain], default: [] }) domains: OrgDomain[];
   @Prop({ type: OrgSso, default: () => ({}) }) sso: OrgSso;
   @Prop({ type: OrgPortal, default: () => ({}) }) portal: OrgPortal;
+  @Prop({ type: OrgAi, default: () => ({}) }) ai: OrgAi;
   @Prop({ type: OrgMail, default: () => ({}) }) mail: OrgMail;
   /** The organisation's own SMS service (verify/sms.service.ts) and its payment service (payments/payments.service.ts). Secrets in them are sealed. */
   @Prop({ type: MongooseSchema.Types.Mixed, default: () => ({}) }) sms: Record<string, unknown>;

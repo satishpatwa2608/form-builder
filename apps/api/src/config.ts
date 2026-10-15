@@ -51,6 +51,13 @@ const schema = z.object({
    * this while the job runs, so a long job is never taken twice; a short value only makes a dead worker's job
    * come back sooner.
    */
+  /**
+   * The AI service that drafts a form from a description: none (the default: the box is not shown), or
+   * anthropic (Claude, with ANTHROPIC_API_KEY). Only the description is ever sent.
+   */
+  AI_DRAFT_PROVIDER: z.enum(['none', 'anthropic']).default('none'),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  AI_DRAFT_MODEL: z.string().default('claude-opus-5-5'),
   /** json: one JSON line per log entry, request IDs included (the default in production); text: Nest's own. */
   LOG_FORMAT: z.enum(['json', 'text']).optional(),
   /** Bearer token for GET /metrics. Unset, there is no metrics page. */

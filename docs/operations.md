@@ -280,6 +280,17 @@ words, never customer data. Counters are per process.
 What to alert on first: `/health` not answering or 503; the oldest waiting job
 above a few minutes; jobs failing in the last hour.
 
+## Drafting forms with AI
+
+Off unless the installation sets `AI_DRAFT_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` (kept with the other
+secrets); without them the choice is not shown anywhere. `AI_DRAFT_MODEL` picks the model (default
+`claude-opus-5-5`; a smaller model costs less per draft). Then each organisation's admin turns it on under
+Organisation settings, and the plan sets a monthly allowance (`aiDraftsPerMonth` in `plans.ts`, placeholder
+numbers). Only the description someone types is sent; the answer is read as questions only (anything else is
+dropped and said so), checked like any form, and becomes a draft to read and change. A draft that comes back
+empty, or a service that fails or takes over a minute, does not count. Each use is in the audit trail
+(`form.ai_drafted`, with the description).
+
 ## Data retention
 
 - Drafts (save & resume): deleted 30 days after the last save (TTL index), or on submit.

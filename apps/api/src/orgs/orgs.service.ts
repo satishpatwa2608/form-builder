@@ -52,12 +52,13 @@ export class OrgsService {
       name: org!.name,
       security: { require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, idleMinutes: idleMinutesOf(org!.security) },
       portal: { enabled: !!org!.portal?.enabled, title: org!.portal?.title ?? '', intro: org!.portal?.intro ?? '' },
+      ai: { drafting: !!org!.ai?.drafting },
     };
   }
 
-  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean; requireReview?: boolean; idleMinutes?: number }; portal?: { enabled?: boolean; title?: string; intro?: string } }) {
+  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean; requireReview?: boolean; idleMinutes?: number }; portal?: { enabled?: boolean; title?: string; intro?: string }; ai?: { drafting?: boolean } }) {
     const org = await this.orgs.findOne({ id: auth.orgId });
-    const before = { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled };
+    const before = { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled, aiDrafting: !!org!.ai?.drafting };
     if (body.security?.require2fa === true && !auth.mfa) {
       // Otherwise the admin locks themselves out on the next request.
       throw new BadRequestException('Turn on two-factor sign-in for yourself first');
@@ -69,13 +70,14 @@ export class OrgsService {
     if (body.portal?.enabled !== undefined) org!.set({ 'portal.enabled': body.portal.enabled });
     if (body.portal?.title !== undefined) org!.set({ 'portal.title': body.portal.title });
     if (body.portal?.intro !== undefined) org!.set({ 'portal.intro': body.portal.intro });
+    if (body.ai?.drafting !== undefined) org!.set({ 'ai.drafting': body.ai.drafting });
     await org!.save();
     await this.audit.record(actorOf(auth), {
       action: 'org.updated',
       targetType: 'organization',
       targetId: auth.orgId,
       before,
-      after: { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled },
+      after: { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled, aiDrafting: !!org!.ai?.drafting },
     });
     return this.get(auth);
   }

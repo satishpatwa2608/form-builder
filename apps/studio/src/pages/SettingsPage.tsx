@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 import { Alert, Button, Card, PageHead, SelectField, TextField, useSubmit } from '../components/ui';
 import { PlanUsageCard } from '../components/PlanUsage';
 import { BrandingCard, DomainsCard, PortalCard } from '../components/SiteSettings';
+import { AiCard } from '../components/AiCard';
 import { SsoCard } from '../components/SsoSettings';
 import { MailCard } from '../components/MailSettings';
 import { SealCard } from '../components/SealSettings';
@@ -58,6 +59,7 @@ export default function SettingsPage() {
         <BrandingCard />
         <DomainsCard />
         <PortalCard />
+        <AiCard />
         <MailCard />
         <SealCard />
         <SmsCard />

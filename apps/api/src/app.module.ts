@@ -34,6 +34,9 @@ import { Form, FormSchema } from './forms/form.schema';
 import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
 import { HealthController } from './health.controller';
+import { AiController } from './ai/ai.controller';
+import { AiService } from './ai/ai.service';
+import { drafterFor, FORM_DRAFTER } from './ai/drafter';
 import { Connector, ConnectorCall, ConnectorCallSchema, ConnectorSchema } from './connectors/connector.schema';
 import { ConnectorsController, ConnectorSignInController } from './connectors/connectors.controller';
 import { ConnectorsService } from './connectors/connectors.service';
@@ -237,6 +240,7 @@ export class AppModule {
       ],
       controllers: [
         HealthController,
+        AiController,
         AuthController,
         SsoController,
         // Before OrgsController: /org/usage is a static route.
@@ -293,6 +297,8 @@ export class AppModule {
               : new LocalObjectStore(config.LOCAL_STORAGE_DIR, config.API_URL, Buffer.from(config.SECRET_KEY, 'base64')),
         },
         { provide: FILE_SCANNER, useValue: config.FILE_SCANNER === 'clamav' ? new ClamAvScanner(config.CLAMAV_HOST, config.CLAMAV_PORT) : new NoFileScanner() },
+        { provide: FORM_DRAFTER, useValue: drafterFor(config) },
+        AiService,
         // Order matters: rate limit first, then authentication.
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: AuthGuard },

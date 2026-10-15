@@ -54,6 +54,30 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
   /** Tables the signed-in person may use from the organisation's connectors, asked for when that way of starting is chosen. */
   const [tables, setTables] = useState<{ key: string; name: string; fields: (string | TableField)[] }[]>();
   const fromTable = template === 'connector';
+  // Drafting from a description: offered only where the installation has an AI service and an admin turned it on.
+  const describing = template === 'describe';
+  const [ai, setAi] = useState<{ available: boolean; enabled: boolean; used: number; limit: number | null }>();
+  useEffect(() => {
+    api<{ available: boolean; enabled: boolean; used: number; limit: number | null }>('/ai/status').then(setAi, () => setAi(undefined));
+  }, []);
+  const [what, setWhat] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const [draftedAbout, setDraftedAbout] = useState('');
+  const draftIt = async () => {
+    setDrafting(true);
+    setImported(undefined);
+    try {
+      const d = await api<{ name: string; description: string; fields: ImportedFields['fields']; leftOut: string[]; used: number; limit: number | null }>('/ai/form-drafts', { method: 'POST', body: { description: what.trim(), folderId } });
+      setImported({ file: 'your description', result: { fields: d.fields, notes: d.leftOut } });
+      setDraftedAbout(d.description);
+      setAi((a) => (a ? { ...a, used: d.used } : a));
+      if (!name && d.name) setName(d.name);
+    } catch (e) {
+      setImported({ file: 'your description', result: { fields: [], notes: [] }, error: errorMessage(e) });
+    } finally {
+      setDrafting(false);
+    }
+  };
   useEffect(() => {
     if (!fromTable || tables) return;
     api<{ id: string; name: string; permissions: { use: boolean }; entities: { key: string; label: string; fields: string[]; about?: TableField[] }[] }[]>('/connectors')
@@ -91,10 +115,14 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
     }
   };
   const create = useSubmit(async () => {
-    if (source || fromTable) {
+    if (source || fromTable || describing) {
       const fields = imported?.result.fields ?? [];
-      await api('/forms', { method: 'POST', body: { folderId, definition: { ...FORM_TEMPLATES[0].definition, fields, name: name.trim(), code: shownCode, ...(fromTable && imported?.table ? { startedFrom: { table: imported.table, name: imported.file } } : {}) } } });
-      return onDone(`"${name.trim()}" was created as a draft with ${fields.length} field${fields.length === 1 ? '' : 's'} from ${imported?.file}. Check them in the builder before publishing.`);
+      await api('/forms', { method: 'POST', body: { folderId, definition: { ...FORM_TEMPLATES[0].definition, fields, name: name.trim(), code: shownCode, ...(describing && draftedAbout ? { description: draftedAbout } : {}), ...(fromTable && imported?.table ? { startedFrom: { table: imported.table, name: imported.file } } : {}) } } });
+      return onDone(
+        describing
+          ? `"${name.trim()}" was created as a draft with ${fields.length} question${fields.length === 1 ? '' : 's'} drafted from your description. Read them and change what you need: nothing is published until you publish it.`
+          : `"${name.trim()}" was created as a draft with ${fields.length} field${fields.length === 1 ? '' : 's'} from ${imported?.file}. Check them in the builder before publishing.`,
+      );
     }
     const tpl = FORM_TEMPLATES.find((t) => t.key === template)!;
     // A template's own styles go into the library first, so the form can be published as it comes.
@@ -186,6 +214,25 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
               </div>
             </label>
           ))}
+          {!industry && ai?.available && ai.enabled && (
+            <label className="st-card" style={{ flex: '1 1 200px', padding: 14, cursor: 'pointer', borderColor: describing ? 'var(--fb-accent)' : undefined, boxShadow: describing ? 'var(--fb-ring)' : undefined, position: 'relative' }}>
+              <input
+                type="radio"
+                name="template"
+                value="describe"
+                checked={describing}
+                onChange={() => {
+                  setTemplate('describe');
+                  setImported(undefined);
+                }}
+                style={{ position: 'absolute', opacity: 0 }}
+              />
+              <strong>Describe it (AI)</strong>
+              <div className="st-muted" style={{ fontSize: 12 }}>
+                Say in plain words what the form is for, and its questions are drafted for you to read and change. Only what you write here is sent to the AI service.
+              </div>
+            </label>
+          )}
           <label className="st-card" style={{ flex: '1 1 200px', padding: 14, cursor: 'pointer', borderColor: fromTable ? 'var(--fb-accent)' : undefined, boxShadow: fromTable ? 'var(--fb-ring)' : undefined, position: 'relative' }}>
             <input
               type="radio"
@@ -204,8 +251,28 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
             </div>
           </label>
         </div>
-        {(source || fromTable) && (
+        {(source || fromTable || describing) && (
           <div className="st-stack" style={{ gap: 8 }}>
+            {describing && (
+              <label className="st-stack" style={{ gap: 4 }}>
+                <strong>What is the form for?</strong>
+                <textarea
+                  className="st-input"
+                  rows={4}
+                  maxLength={2000}
+                  aria-label="What is the form for?"
+                  placeholder="e.g. A maintenance complaint for our properties: which property, what kind of problem, a photo, how urgent"
+                  value={what}
+                  onChange={(e) => setWhat(e.target.value)}
+                />
+                <span className="st-row" style={{ gap: 8 }}>
+                  <Button type="button" variant="secondary" size="sm" busy={drafting} disabled={what.trim().length < 10 || drafting || !folderId} onClick={() => void draftIt()}>
+                    Draft it
+                  </Button>
+                  {ai && <span className="st-muted" style={{ fontSize: 12 }}>{ai.limit === null ? `${ai.used} drafted this month` : `${Math.max(0, ai.limit - ai.used)} of ${ai.limit} drafts left this month`}</span>}
+                </span>
+              </label>
+            )}
             {source && (
               <label className="st-stack" style={{ gap: 4 }}>
                 <strong>{source.fileLabel}</strong>
@@ -261,7 +328,7 @@ function NewFormCard({ folders, onDone, onCancel }: { folders: Folder[]; onDone:
           ))}
         </SelectField>
         <div className="st-row">
-          <Button type="submit" busy={create.busy} disabled={!name.trim() || !shownCode || !folderId || ((!!source || fromTable) && !imported?.result.fields.length)}>
+          <Button type="submit" busy={create.busy} disabled={!name.trim() || !shownCode || !folderId || ((!!source || fromTable || describing) && !imported?.result.fields.length)}>
             <FilePlus2 size={16} /> Create draft
           </Button>
           <Button variant="ghost" onClick={onCancel}>

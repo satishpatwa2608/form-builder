@@ -8,6 +8,8 @@ export class UsageMonth {
   /** YYYY-MM (UTC). */
   @Prop({ required: true }) month: string;
   @Prop({ type: Number, default: 0 }) submissions: number;
+  /** Forms drafted by the AI service this month. */
+  @Prop({ type: Number, default: 0 }) aiDrafts: number;
 }
 export type UsageMonthDocument = HydratedDocument<UsageMonth>;
 export const UsageMonthSchema = SchemaFactory.createForClass(UsageMonth);

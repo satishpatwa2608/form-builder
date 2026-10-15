@@ -110,6 +110,24 @@ export class PlansService {
     return m;
   }
 
+  /** One AI draft out of this month's allowance; false when it is used up. Returns the month to give it back to. */
+  async reserveAiDraft(orgId: string): Promise<{ month: string; used: number; limit: number | null } | null> {
+    const m = month();
+    const limit = (await this.limitsOf(orgId)).aiDraftsPerMonth;
+    await this.months.updateOne({ orgId, month: m }, { $setOnInsert: { submissions: 0, aiDrafts: 0 } }, { upsert: true }).catch(() => undefined);
+    const row = await this.months.findOneAndUpdate({ orgId, month: m, ...(limit === null ? {} : { aiDrafts: { $lt: limit } }) }, { $inc: { aiDrafts: 1 } }, { new: true }).lean();
+    return row ? { month: m, used: row.aiDrafts ?? 0, limit } : null;
+  }
+
+  async releaseAiDraft(orgId: string, reservedMonth: string) {
+    await this.months.updateOne({ orgId, month: reservedMonth, aiDrafts: { $gt: 0 } }, { $inc: { aiDrafts: -1 } });
+  }
+
+  async aiDraftsUsed(orgId: string): Promise<{ used: number; limit: number | null }> {
+    const row = await this.months.findOne({ orgId, month: month() }).select('aiDrafts').lean();
+    return { used: row?.aiDrafts ?? 0, limit: (await this.limitsOf(orgId)).aiDraftsPerMonth };
+  }
+
   async releaseSubmission(orgId: string, reservedMonth: string) {
     await this.months.updateOne({ orgId, month: reservedMonth, submissions: { $gt: 0 } }, { $inc: { submissions: -1 } });
   }
