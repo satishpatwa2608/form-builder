@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { MongoClient } from 'mongodb';
 import { startAgent, type Agent } from '@fb/gateway';
+import { JobQueue } from '../src/jobs/job-queue.service';
 import { startApp, type Harness } from './harness';
 
 /** A database only the gateway can reach: the API never sees its address or credentials. */
@@ -149,6 +150,50 @@ describe('Gateways: connectors inside a customer network (e2e)', () => {
       agent = await startAgent({ apiUrl: h.base, allowInsecure: true, secretFile: join(dir, 'gateway.secret'), credentialsFile: join(dir, 'connectors.json'), log: (m) => logs.push(m) });
       await agent.ready;
     });
+  });
+
+  it('a worker, which holds no gateway connection, runs an automation step through the gateway', async () => {
+    // The API takes the response and only stores the job; a worker on the same database runs it. The agent is
+    // connected to the first server, so the worker's call goes there through the database.
+    const front = await startApp({ MONGODB_URL: h.config.MONGODB_URL, JWT_SECRET: h.config.JWT_SECRET, SECRET_KEY: h.config.SECRET_KEY, JOBS_ROLE: 'enqueue' });
+    const worker = await startApp({ MONGODB_URL: h.config.MONGODB_URL, JWT_SECRET: h.config.JWT_SECRET, SECRET_KEY: h.config.SECRET_KEY, JOBS_ROLE: 'run' });
+    try {
+      await h.api().patch(`/connectors/${connectorId}`).set(h.bearer(owner)).send({ writable: true }).expect(200);
+      await h.api()
+        .put(`/connectors/${connectorId}/entities`)
+        .set(h.bearer(owner))
+        .send({ entities: [{ key: 'vendors', label: 'Vendors', fields: ['code', 'name'], keyField: 'code', operations: ['list', 'insert'], valueField: 'code', labelField: 'name' }] })
+        .expect(200);
+      const insert = (await h.api().get('/custom-workflows').set(h.bearer(owner)).expect(200)).body.find((a: { label: string }) => a.label === 'ERP: insert Vendors');
+      const orgId = (await h.api().get('/auth/me').set(h.bearer(owner))).body.org.id;
+      const folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Vendors' }).expect(201)).body[0].id;
+      const definition = {
+        name: 'New vendor',
+        code: 'NEW_VENDOR',
+        businessId: '',
+        access: 'PUBLIC',
+        submission: { method: 'POST', endpointId: 'default-submit' },
+        fields: [
+          { id: 'f1', type: 'TEXT', name: 'code', label: 'Code', required: true },
+          { id: 'f2', type: 'TEXT', name: 'name', label: 'Name', required: true },
+        ],
+        automations: [{ id: 'a1', name: 'Save vendor', enabled: true, when: 'SUBMITTED', actions: [{ id: 's1', type: 'HANDLER', key: insert.key }] }],
+      };
+      const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition }).expect(201)).body.definition.id;
+      await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+
+      await front.api().post(`/public/forms/NEW_VENDOR/submissions?org=${orgId}`).send({ values: { code: 'V3', name: 'Glass Co' } }).expect(201);
+      expect(await worker.app.get(JobQueue).drain()).toBeGreaterThan(0);
+      const c = await MongoClient.connect(privateDb.getUri());
+      try {
+        expect(await c.db('erp').collection('vendors').findOne({ code: 'V3' })).toMatchObject({ name: 'Glass Co' });
+      } finally {
+        await c.close();
+      }
+    } finally {
+      await front.close();
+      await worker.close();
+    }
   });
 
   it('revoking the gateway disconnects the agent and stops its connectors', async () => {
