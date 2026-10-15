@@ -298,6 +298,36 @@ empty, or a service that fails or takes over a minute, does not count. Each use 
 - Usage and analytics: daily counts only, no personal data.
 - Submissions and audit log: kept until a retention policy is decided (open question in docs/plan.md).
 
+## Getting it back
+
+**Restore drill.** `infra/pilot/restore-drill.sh` (on the Mac) takes the pilot's newest nightly backup (or one
+named), restores it into a clean throwaway database, starts the product on it and opens a published form as the
+public sees it, then removes everything it made. Nothing on the pilot is touched. First run, 16 October 2026,
+on the backup of the 15th: 2 organisations, 4 people, 180 form versions, 45 responses came back; the product
+started; "Workshop booking" opened; 15 seconds. Run it monthly, and after any change to backups.
+
+It starts the product with throwaway keys, so it shows the data comes back, not that sealed values open. To
+show those too, run it with `DRILL_SECRET_KEY` and `DRILL_KMS_KEY_ID` set to the pilot's own (someone who may
+handle them), then open a connector and test it, and sign in with two-factor.
+
+**Keys.** What each one protects, and what losing it costs:
+
+| Key | Where it is kept | Protects | If it is lost |
+|---|---|---|---|
+| `SECRET_KEY` | parameter store `/fb-pilot/SECRET_KEY` (encrypted) | two-factor secrets, sealed answers, the organisation's SMS / WhatsApp / mail / payment / single-sign-on secrets | all of those are unreadable: people set up two-factor again, admins re-enter those secrets, sealed answers are gone |
+| KMS key `alias/fb-pilot` | AWS KMS (cannot be exported) | connector credentials, extension secrets, the certificates that seal PDFs | connector credentials are entered again, extensions get new secrets, PDFs are sealed with new certificates (old ones still verify) |
+| `JWT_SECRET` | parameter store | sign-ins (and short-lived code proofs) | everyone signs in again; nothing is lost |
+
+Keep a copy of `SECRET_KEY` and `JWT_SECRET` outside the account (a password manager two people can open). A KMS
+key cannot be copied: AWS keeps it, and deleting it waits at least 7 days, so a mistaken deletion can be
+cancelled. Changing `SECRET_KEY` (rotation) needs everything it seals opened with the old and sealed with the new;
+that is not built yet.
+
+**Rollback.** `infra/pilot/rollback.sh` puts the pilot back on the version released before the one running
+(or on a tag given), from the images already in the image store: nothing is built, about a minute. The database
+is not rolled back: each version only adds to what is stored, so an older one reads it as before. Work queued by
+a newer version for a kind of job an older one does not know waits until the newer version is back.
+
 ## Incident basics
 
 - Suspected credential leak for a connector: rotate it in the customer's

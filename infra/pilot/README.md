@@ -39,6 +39,8 @@ files, runs `deploy.sh` on the server and checks the API answers.
 
 The builder and form app have their addresses built in, so a change of host names means building them again.
 
+To go back to the version before: `infra/pilot/rollback.sh` (or `infra/pilot/rollback.sh <tag>`).
+
 ## Looking at it
 
 `aws ssm start-session --profile formbuilder --region ap-south-1 --target i-08cd40934729c192b`, then
@@ -77,6 +79,9 @@ A build's full log is in CloudWatch, log group `/aws/codebuild/fb-pilot-ext-buil
 `backup.sh` runs nightly (20:15 UTC) and writes the whole database to `backups/` in the bucket. Uploaded
 files are already in the bucket, which keeps earlier versions. To restore: copy an archive to the server and
 `docker compose exec -T mongo mongorestore --archive --gzip --drop < file`.
+
+To check a backup really restores, without touching the server: `infra/pilot/restore-drill.sh` (see
+docs/operations.md, "Getting it back").
 
 ## Taking it all away
 
