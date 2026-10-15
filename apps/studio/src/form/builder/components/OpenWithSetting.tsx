@@ -10,6 +10,7 @@ import { useDataSources } from '../../adapters/data-source/data-source-adapter';
 import { publicFormUrl } from '../../links';
 import { VISIBLE_BORDER } from '../../runtime/styles';
 import { ChoiceSelect, SelectSetting, Setting, SwitchSetting } from './settings';
+import { QrCodeDialog } from '../../../components/QrCode';
 
 type Open = NonNullable<FormDefinition['openWith']>;
 
@@ -202,6 +203,7 @@ export function MakeRecordLink({ form, what }: { form: { id: string; orgId: stri
   const [made, setMade] = useState<{ url: string; until: string }>();
   const [problem, setProblem] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [qr, setQr] = useState(false);
   const make = async () => {
     setBusy(true);
     setProblem(undefined);
@@ -240,7 +242,19 @@ export function MakeRecordLink({ form, what }: { form: { id: string; orgId: stri
           <Button type="button" variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(made.url)}>
             Copy
           </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setQr(true)}>
+            QR code
+          </Button>
         </div>
+      )}
+      {made && qr && (
+        <QrCodeDialog
+          open
+          url={made.url}
+          title={`${value.trim()}`}
+          note={`Opens the form already knowing this record. Works until ${made.until}: print a new code then. Anyone who scans it sees this record's answers.`}
+          onClose={() => setQr(false)}
+        />
       )}
       {made && <span className="fb-setting__hint">Good until {made.until}. Anyone who has the link sees this record's answers, so send it only to the person it is for.</span>}
     </div>

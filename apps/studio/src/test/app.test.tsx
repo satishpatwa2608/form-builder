@@ -134,6 +134,13 @@ describe('studio', () => {
     expect(screen.queryByRole('button', { name: 'Copy the embed code for Staff only' })).toBeNull();
     // One not yet published has no address to hand out.
     expect(screen.queryByRole('button', { name: 'Copy the link to Drafted' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'QR code for Drafted' })).toBeNull();
+    // A QR code of the same address, for a poster or a door; for a sign-in-only form it says who can open it.
+    await user.click(screen.getByRole('button', { name: 'QR code for Staff only' }));
+    const qr = await screen.findByRole('dialog');
+    expect(within(qr).getByText(new RegExp(`/f/${ME.org.id}/STAFF_ONLY$`))).toBeInTheDocument();
+    expect(within(qr).getByText('Only people signed in to your organisation can open this form.')).toBeInTheDocument();
+    expect(await within(qr).findByRole('img', { name: 'QR code that opens Staff only' })).toBeInTheDocument();
   });
 
   it('forms: the long forms of an industry are offered by industry, and one becomes a draft in steps with its rules and workflow', async () => {

@@ -3,9 +3,10 @@ import { copyEmbedCode, copyPublicFormLink, publicFormUrl } from '../form/links'
 import { MakeRecordLink } from '../form/builder/components/OpenWithSetting';
 import { fieldsFromCsv, fieldsFromEntity, fieldsFromJsonSchema, fieldsFromPdfFields, type ImportedFields, type SourceField } from '@fb/engine';
 import { FormVersions } from '../components/FormVersions';
+import { QrCodeDialog } from '../components/QrCode';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Archive, Code2, Download, ExternalLink, FileKey2, FilePlus2, FolderInput, GitBranchPlus, History, Inbox, Link2, Rocket, Trash2, Upload, X } from 'lucide-react';
+import { Archive, Code2, Download, ExternalLink, FileKey2, FilePlus2, FolderInput, GitBranchPlus, History, Inbox, Link2, QrCode, Rocket, Trash2, Upload, X } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAction, useFolders, useForms } from '../lib/queries';
 import type { Folder, FormStatus, FormSummary } from '../lib/types';
@@ -298,6 +299,7 @@ export default function FormsPage() {
   const [creating, setCreating] = useState(false);
   // By form code, not version id: restoring or publishing gives the form a new latest version, and the panel should stay open.
   const [openVersions, setOpenVersions] = useState<string>();
+  const [qrFor, setQrFor] = useState<{ url: string; title: string; note?: string }>();
   const [linkFor, setLinkFor] = useState<string>();
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string }>();
   const feedback = (text: string) => ({ onSuccess: () => setMessage({ tone: 'success', text }), onError: (e: Error) => setMessage({ tone: 'error', text: errorMessage(e) }) });
@@ -473,6 +475,9 @@ export default function FormsPage() {
                                 >
                                   <Link2 size={14} /> Copy link
                                 </Button>
+                                <Button variant="ghost" size="sm" aria-label={`QR code for ${f.name}`} title="A QR code that opens the form: for a poster, a door or a machine" onClick={() => setQrFor({ url: publicFormUrl(me?.org.id ?? '', f.code), title: f.name, note: f.publicLink ? undefined : 'Only people signed in to your organisation can open this form.' })}>
+                                  <QrCode size={14} />
+                                </Button>
                                 <a className="st-btn st-btn--ghost st-btn--sm" href={publicFormUrl(me?.org.id ?? '', f.code)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${f.name} as people see it`} title="Open the form as people see it">
                                   <ExternalLink size={14} />
                                 </a>
@@ -581,6 +586,7 @@ export default function FormsPage() {
           <FolderInput size={12} style={{ verticalAlign: -2 }} /> Click a form to open it in the builder.
         </p>
       </div>
+      {qrFor && <QrCodeDialog open url={qrFor.url} title={qrFor.title} note={qrFor.note} onClose={() => setQrFor(undefined)} />}
     </>
   );
 }
