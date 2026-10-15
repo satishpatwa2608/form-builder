@@ -181,6 +181,40 @@ FormFlowRunSchema.index({ orgId: 1, recordId: 1 });
 FormFlowRunSchema.index({ parentRunId: 1, status: 1 }, { partialFilterExpression: { parentRunId: { $gt: '' } } });
 FormFlowRunSchema.index({ orgId: 1, status: 1, 'approval.approvers': 1 });
 
+/**
+ * A step that reaches outside (an email, a webhook, a connector write) was started by a job. Written before the
+ * step runs, so when the job is started again after its worker died, a step with a mark and no outcome on the
+ * timeline is known to have maybe happened: an email is not sent again to whoever it already went to, a webhook
+ * is sent again with the same Idempotency-Key, and a connector write is stopped for a person to check.
+ */
+@Schema({ timestamps: true, collection: 'form_step_marks' })
+export class FormStepMark {
+  @Prop({ required: true, type: String })
+  orgId: string;
+
+  @Prop({ required: true, type: String })
+  runId: string;
+
+  @Prop({ required: true, type: Number })
+  stepIndex: number;
+
+  /** How many times the flow had gone back before this step ran: each round is a fresh run of the step. */
+  @Prop({ type: Number, default: 0 })
+  round: number;
+
+  /** For an email step: the addresses it has gone to. */
+  @Prop({ type: [String], default: [] })
+  sentTo: string[];
+
+  @Prop({ required: true, type: Date })
+  expireAt: Date;
+}
+
+export type FormStepMarkDocument = HydratedDocument<FormStepMark>;
+export const FormStepMarkSchema = SchemaFactory.createForClass(FormStepMark);
+FormStepMarkSchema.index({ orgId: 1, runId: 1, stepIndex: 1, round: 1 }, { unique: true });
+FormStepMarkSchema.index({ expireAt: 1 }, { expireAfterSeconds: 0 });
+
 /** The org's working time for SLAs (one per org; absent = Mon-Fri 09:00-18:00 IST). */
 @Schema({ timestamps: true, collection: 'form_calendars' })
 export class FormCalendar {

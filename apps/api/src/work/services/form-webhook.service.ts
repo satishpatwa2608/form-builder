@@ -7,6 +7,7 @@ import apiResponse from '../response';
 import { WORK_EVENT } from '../constants';
 import { FormWebhook, FormWebhookDocument } from '../schemas/form-record.schema';
 import { FormSubmission, FormSubmissionDocument } from '../schemas/form-submission.schema';
+import { currentJob } from '../../jobs/job-queue.service';
 import { postWebhook, webhookAllowed } from './webhook-client';
 import { WORK_EVENT_NAMES, type WorkEvent } from './form-record.service';
 import { FormDefinitionService } from './form-definition.service';
@@ -131,7 +132,8 @@ export class FormWebhookService implements OnModuleInit {
       body = { ...payload, values, work: record.work ?? {} };
     }
     try {
-      const res = await postWebhook(s.url, body, s.secret || process.env.FORM_WEBHOOK_SECRET);
+      // The job's id is the same on every retry of this delivery.
+      const res = await postWebhook(s.url, body, s.secret || process.env.FORM_WEBHOOK_SECRET, currentJob()?.id);
       await this.hooks.updateOne({ uuid: s.uuid, orgId: s.orgId }, { $set: { lastDeliveryAt: new Date(), lastResult: `${e.name}: ${res.status}`, failures: 0 } });
     } catch (err) {
       const msg = ((err as Error).message ?? 'failed').slice(0, 200);

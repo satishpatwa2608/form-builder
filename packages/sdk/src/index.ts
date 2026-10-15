@@ -92,6 +92,11 @@ export interface StepContext {
   steps: Record<string, unknown>;
   /** This step's key in the flow: its `data` lands at steps[stepKey] for the steps below. */
   stepKey: string;
+  /**
+   * The same each time this step of this run is tried (a try can be repeated after an interruption), different
+   * for every other: pass it on as an Idempotency-Key, or store it, so the work is done once.
+   */
+  runKey?: string;
 }
 
 /** A line for the record's timeline, optionally with data for later steps. Throw to fail the step. */

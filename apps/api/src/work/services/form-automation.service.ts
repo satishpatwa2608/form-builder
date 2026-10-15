@@ -7,7 +7,8 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectModel } from '@nestjs/mongoose';
 import { OnEvent } from '@nestjs/event-emitter';
 import { createHash } from 'node:crypto';
-import { JobQueue, stillHeld, type JobContext } from '../../jobs/job-queue.service';
+import { JobQueue, currentJob, stillHeld, type JobContext } from '../../jobs/job-queue.service';
+import { ACTION_KEY } from '../../connectors/connectors.service';
 import { Model } from 'mongoose';
 import { newId as uuidv4 } from '../../common/crypto';
 import { MailService } from './mail.service';
@@ -28,7 +29,7 @@ import {
 } from '@fb/engine';
 import { FORM_RECORD_FIELDS_EVENT, FORM_RECORD_STATUS_EVENT, FORM_SUBMITTED_EVENT, WORKFLOW } from '../constants';
 import { FormSubmission, FormSubmissionDocument } from '../schemas/form-submission.schema';
-import { FlowApproval, FormFlowRun, FormFlowRunDocument } from '../schemas/form-record.schema';
+import { FlowApproval, FormFlowRun, FormFlowRunDocument, FormStepMark, FormStepMarkDocument } from '../schemas/form-record.schema';
 import { FormRecordService, isRecordAdmin, recordPath, type RecordFieldsEvent, type RecordStatusEvent } from './form-record.service';
 import { escalationAt } from './sla';
 import { FormHandlerRegistry, type FormHandlerContext, type FormHandlerResult } from './form-workflow.registry';
@@ -75,6 +76,18 @@ function stableId(a: string, b: string): string {
 
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
+/** Steps that reach another system or a person outside, so a second try must not simply do them again. */
+const OUTSIDE = new Set<AutomationAction['type']>(['EMAIL', 'WEBHOOK', 'FLOW', 'HANDLER']);
+const MARK_KEEP_MS = 30 * 86_400_000;
+export const MAY_HAVE_RUN =
+  'this may have been done already, before the work was interrupted. Check the other system for this response; if it is not there, run the flow again from this step';
+
+/** For an email step tried again: who it already went to. */
+interface SentTo {
+  has(email: string): boolean;
+  add(email: string): Promise<unknown>;
+}
+
 /**
  * Runs a form's automations: when (submitted / status changed / overdue)
  * -> if (condition on the answers + $status) -> then (actions). Every action
@@ -104,6 +117,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @InjectModel(FormSubmission.name) private readonly submissions: Model<FormSubmissionDocument>,
     @InjectModel(FormFlowRun.name) private readonly runs: Model<FormFlowRunDocument>,
+    @InjectModel(FormStepMark.name) private readonly marks: Model<FormStepMarkDocument>,
     private readonly records: FormRecordService,
     private readonly mail: MailService,
     private readonly handlers: FormHandlerRegistry,
@@ -423,6 +437,8 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     // What an earlier attempt of the same job already did, by step.
     const earlier = jobRunId ? await this.records.runSteps(orgId, recordId, runId) : new Map<number, Record<string, unknown>>();
     if (earlier.has(-1)) return;
+    // Each time the flow goes back, the steps it does again are fresh runs of them, with keys of their own.
+    let rounds = await this.records.timesWentBack(orgId, recordId, runId);
     const log = (message: string, data: Record<string, unknown>) => {
       // Every step's outcome, in the organisation's log as well as on the record: failures as errors.
       (data.ok === false ? orgLog.error : orgLog.info)(orgId, 'workflow', `${automation.name}: ${message}`, { form: run.definition.code, record: recordId, step: typeof data.stepKey === 'string' ? data.stepKey : '', kind: typeof data.action === 'string' ? data.action : '', run: runId });
@@ -461,7 +477,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
             if (done) return { step, k, info, done };
             if (step.if && !evaluateCondition(step.if, conditionValues(run.values, live.status, seen, { priority: live.priority, work: live.work }))) return { step, k, info, skipped: true };
             try {
-              return { step, k, info, result: await this.execute(step, { ...run, record: live, steps: { ...seen }, stepKey: k }, depth, actor) };
+              return { step, k, info, result: await this.once(step, { ...run, record: live, steps: { ...seen }, stepKey: k }, depth, actor, { runId, index: at, round: rounds }) };
             } catch (err) {
               return { step, k, info, error: ((err as Error).message ?? 'failed').slice(0, 300) };
             }
@@ -518,6 +534,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         await log(`going back to step ${target + 1}: ${stepName(automation.actions[target])} (${gone + 1} of ${most})`, { ...base, ok: true, wentBack: true, backTo: target, output: { times: gone + 1, wentBack: true } });
         // What was done between there and here is to be done afresh, not remembered from an earlier attempt of this job.
         for (let i = target; i <= index; i++) earlier.delete(i);
+        rounds++;
         index = target - 1;
         continue;
       }
@@ -563,7 +580,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         return finish('STOPPED');
       }
       try {
-        const result = await this.execute(action, { ...run, record: live, steps: { ...steps }, stepKey: key }, depth, actor);
+        const result = await this.once(action, { ...run, record: live, steps: { ...steps }, stepKey: key }, depth, actor, { runId, index, round: rounds });
         const { summary, data } = typeof result === 'string' ? { summary: result, data: undefined } : result;
         if (data) steps[key] = data;
         await log(summary, { ...base, ok: true, ...(data ? { output: boundedOutput(data) } : {}) });
@@ -877,7 +894,25 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     return [...new Set(out.map((e) => e.trim().toLowerCase()).filter((e) => EMAIL.test(e)))].slice(0, 20);
   }
 
-  private async execute(action: AutomationAction, ctx: FormHandlerContext, depth: number, actor: string): Promise<StepResult> {
+  /**
+   * One step, with what keeps a second try (after its worker died) from doing outside work twice. Each step run
+   * gets a key that is the same on every try (`runKey`: the Idempotency-Key of a webhook, given to custom code).
+   * In a job, a step that reaches outside is marked before it starts; finding the mark already there means an
+   * earlier try may have done it: an email skips whoever it went to, and a connector write - which has no key
+   * the other system would know - is stopped for a person to check instead of being written twice.
+   */
+  private async once(action: AutomationAction, ctx: FormHandlerContext, depth: number, actor: string, at: { runId: string; index: number; round: number }): Promise<StepResult> {
+    const runKey = stableId(at.runId, `${ctx.stepKey}#${at.round}`);
+    if (!OUTSIDE.has(action.type) || !currentJob()) return this.execute(action, { ...ctx, runKey }, depth, actor);
+    const where = { orgId: ctx.orgId, runId: at.runId, stepIndex: at.index, round: at.round };
+    const before = await this.marks.findOneAndUpdate(where, { $setOnInsert: { ...where, sentTo: [], expireAt: new Date(Date.now() + MARK_KEEP_MS) } }, { upsert: true, new: false }).lean();
+    if (before && action.type === 'HANDLER' && ACTION_KEY.test(action.key)) throw new Error(MAY_HAVE_RUN);
+    const sent = new Set(before?.sentTo ?? []);
+    const sentTo: SentTo = { has: (email) => sent.has(email), add: (email) => this.marks.updateOne(where, { $addToSet: { sentTo: email } }) };
+    return this.execute(action, { ...ctx, runKey }, depth, actor, sentTo);
+  }
+
+  private async execute(action: AutomationAction, ctx: FormHandlerContext, depth: number, actor: string, sentTo?: SentTo): Promise<StepResult> {
     const tctx = this.templateContext(ctx);
     const { orgId, record, definition } = ctx;
 
@@ -895,7 +930,13 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         // The PDF of the response, made (or fetched, if it is already kept) once for all recipients.
         const document = action.attachDocument ? await this.documents.forRecord(orgId, record.uuid) : null;
         const attachments = document ? [{ fileName: document.fileName, contentType: 'application/pdf', content: document.pdf }] : undefined;
+        let before = 0;
         for (const email of to) {
+          // Tried again after an interruption: whoever it already went to is not sent it twice.
+          if (sentTo?.has(email)) {
+            before++;
+            continue;
+          }
           const sent = await this.mail.sendMail({
             to: email,
             subject,
@@ -908,8 +949,10 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
           });
           // With the organisation's own mail server, why: its admin can put it right.
           if (!sent?.success) throw new Error(`email to ${email} failed${sent?.message && / /.test(sent.message) ? ` - ${sent.message}` : ''}`);
+          await sentTo?.add(email);
         }
-        return { summary: `emailed ${to.length} recipient${to.length === 1 ? '' : 's'}${document ? ' with the PDF' : ''}`, data: { sent: to.length } };
+        const already = before ? ` (${before} of them before an interruption, not sent again)` : '';
+        return { summary: `emailed ${to.length} recipient${to.length === 1 ? '' : 's'}${document ? ' with the PDF' : ''}${already}`, data: { sent: to.length } };
       }
 
       case 'NOTIFY': {
@@ -943,7 +986,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         const tool = FLOW_SERVICE_INFO[action.service]?.label ?? 'the automation tool';
         // Checked again here, at the moment of sending: only that tool's own addresses are ever called.
         if (!isFlowAddress(action.service, action.url)) throw new Error(`that is not a ${tool} address`);
-        const { status, reply } = await postJson(new URL(action.url), this.outgoing(ctx), process.env.FORM_WEBHOOK_SECRET);
+        const { status, reply } = await postJson(new URL(action.url), this.outgoing(ctx), process.env.FORM_WEBHOOK_SECRET, ctx.runKey);
         return { summary: `handed to ${tool}`, data: { ...reply, httpStatus: status } };
       }
 
@@ -966,7 +1009,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
    * FORM_WEBHOOK_SECRET is set so the receiver can trust the body.
    */
   private async webhook(url: string, ctx: FormHandlerContext): Promise<StepResult> {
-    const { host, status, reply } = await postWebhook(url, this.outgoing(ctx), process.env.FORM_WEBHOOK_SECRET);
+    const { host, status, reply } = await postWebhook(url, this.outgoing(ctx), process.env.FORM_WEBHOOK_SECRET, ctx.runKey);
     // A JSON object reply becomes this step's output, e.g. {{$steps.crm.leadId}}.
     return { summary: `posted to ${host}`, data: { ...reply, httpStatus: status } };
   }

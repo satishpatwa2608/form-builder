@@ -256,7 +256,7 @@ describe('Automations and webhooks on the queue (e2e)', () => {
   let jobs: Model<Job>;
   let owner: string;
   let orgId: string;
-  const hooks: { url: string }[] = [];
+  const hooks: { url: string; key: string | null }[] = [];
   let failNext = 0;
   const realFetch = globalThis.fetch;
 
@@ -268,7 +268,7 @@ describe('Automations and webhooks on the queue (e2e)', () => {
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (!url.startsWith('https://hooks.example.com')) return realFetch(input, init);
-      hooks.push({ url });
+      hooks.push({ url, key: new Headers(init?.headers).get('idempotency-key') });
       return failNext-- > 0 ? new Response('down', { status: 503 }) : new Response('{}', { status: 200 });
     }) as typeof fetch;
     await h.signUp('Asha', 'asha@acme.test', 'Acme');
@@ -312,18 +312,51 @@ describe('Automations and webhooks on the queue (e2e)', () => {
     expect(await timeline(res.submissionId)).toEqual(before);
   });
 
-  it('a job that died half way carries on from the next step', async () => {
-    const res = (await submit('three@customer.test')).body;
-    await waitFor(() => mailsTo('three@customer.test').length === 2);
-    const job = (await jobs.findOne({ type: 'automation.submitted', 'payload.submissionId': res.submissionId }).lean())!;
+  /** Forget a step's outcome on the timeline, and (when it never started) its start mark too; then let the job be taken again. */
+  const interrupt = async (recordId: string, stepIndex: number, started: boolean) => {
+    const job = (await jobs.findOne({ type: 'automation.submitted', 'payload.submissionId': recordId }).lean())!;
     await waitFor(async () => (await jobs.findOne({ uuid: job.uuid }).lean())!.status === 'DONE');
-
-    // Forget the second step, as if the worker died right after the first.
-    const events = h.app.get(getModelToken('FormRecordEvent')) as Model<{ recordId: string; type: string; data: { stepIndex?: number } }>;
-    expect((await events.deleteOne({ recordId: res.submissionId, type: 'AUTOMATION', 'data.stepIndex': 1 })).deletedCount).toBe(1);
+    const events = h.app.get(getModelToken('FormRecordEvent')) as Model<{ recordId: string; type: string; data: { stepIndex?: number; runId?: string } }>;
+    const step = (await events.findOne({ recordId, type: 'AUTOMATION', 'data.stepIndex': stepIndex }).lean())!;
+    expect((await events.deleteOne({ recordId, type: 'AUTOMATION', 'data.stepIndex': stepIndex })).deletedCount).toBe(1);
+    if (!started) await h.app.get<Model<{ runId: string }>>(getModelToken('FormStepMark')).deleteOne({ runId: step.data.runId, stepIndex });
     await jobs.updateOne({ uuid: job.uuid }, { $set: { status: 'RUNNING', lockedUntil: new Date(Date.now() - 1000) } });
     await queue.drain();
-    expect(mailsTo('three@customer.test')).toEqual(['Got it REQ-000003', 'Second REQ-000003', 'Second REQ-000003']);
+  };
+
+  it('a job that died before a step started carries on from that step', async () => {
+    const res = (await submit('three@customer.test')).body;
+    await waitFor(() => mailsTo('three@customer.test').length === 2);
+    // As if the worker died after the first email, before the second was begun: the second is sent now.
+    h.outbox.splice(h.outbox.findIndex((m) => m.to === 'three@customer.test' && m.subject.startsWith('Second')), 1);
+    await interrupt(res.submissionId, 1, false);
+    expect(mailsTo('three@customer.test')).toEqual(['Got it REQ-000003', 'Second REQ-000003']);
+  });
+
+  it('a job that died after sending an email, before writing that it had, does not send it again', async () => {
+    const res = (await submit('five@customer.test')).body;
+    await waitFor(() => mailsTo('five@customer.test').length === 2);
+    await interrupt(res.submissionId, 1, true);
+    expect(mailsTo('five@customer.test')).toEqual(['Got it REQ-000004', 'Second REQ-000004']);
+    expect((await timeline(res.submissionId)).at(-1)).toBe('AUTOMATION: Acknowledge: emailed 1 recipient (1 of them before an interruption, not sent again)');
+  });
+
+  it('a webhook step sent again after an interruption carries the same Idempotency-Key; another response, another key', async () => {
+    const folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Hooks' }).expect(201)).body[0].id;
+    const def = { ...form('HOOKED'), automations: [{ id: 'a1', name: 'Tell CRM', enabled: true, when: 'SUBMITTED', actions: [{ id: 'w1', type: 'WEBHOOK', url: 'https://hooks.example.com/step' }] }] };
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: folder, definition: def }).expect(201)).body.definition.id;
+    await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+    const send = async (email: string) => (await h.api().post(`/public/forms/HOOKED/submissions?org=${orgId}`).send({ values: { name: 'Ravi', email } }).expect(201)).body.submissionId as string;
+    const steps = () => hooks.filter((x) => x.url.endsWith('/step'));
+    const first = await send('hook1@customer.test');
+    await waitFor(() => steps().length === 1);
+    await interrupt(first, 0, true);
+    await send('hook2@customer.test');
+    await waitFor(() => steps().length === 3);
+    const [a, again, other] = steps().map((x) => x.key);
+    expect(a).toMatch(/^[0-9a-f-]{36}$/);
+    expect(again).toBe(a);
+    expect(other).not.toBe(a);
   });
 
   it('a webhook receiver that is down is tried again later', async () => {

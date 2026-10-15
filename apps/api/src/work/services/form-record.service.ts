@@ -630,6 +630,11 @@ export class FormRecordService {
     return steps;
   }
 
+  /** How many times a run has gone back to an earlier step so far. */
+  async timesWentBack(orgId: string, recordId: string, runId: string): Promise<number> {
+    return this.events.countDocuments({ orgId, recordId, type: 'AUTOMATION', 'data.runId': runId, 'data.wentBack': true });
+  }
+
   /**
    * Move a record to `to`. `from` guards against two people moving it at
    * once: the write only happens if it's still in the status we checked.

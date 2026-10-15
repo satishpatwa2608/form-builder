@@ -3,6 +3,8 @@ import { MongoClient } from 'mongodb';
 import { getModelToken } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import { Connector } from '../src/connectors/connector.schema';
+import { JobQueue } from '../src/jobs/job-queue.service';
+import { MAY_HAVE_RUN } from '../src/work/services/form-automation.service';
 import { startApp, type Harness } from './harness';
 
 describe('Connectors: a customer database behind forms (e2e)', () => {
@@ -205,7 +207,7 @@ describe('Connectors: a customer database behind forms (e2e)', () => {
 
     const submit = (values: object) => h.api().post(`/public/forms/PLANT_ISSUE/submissions?org=${orgId}`).send({ values, idempotencyKey: `k${Math.random()}` });
     await submit({ plant: 'P9', description: 'x', reporter: 'Ravi' }).expect(422); // not a real option
-    await submit({ plant: 'P2', description: 'Boiler leak', reporter: 'Ravi' }).expect(201);
+    const record = (await submit({ plant: 'P2', description: 'Boiler leak', reporter: 'Ravi' }).expect(201)).body.submissionId as string;
     const c = await MongoClient.connect(uri);
     let saved: unknown = null;
     for (let i = 0; i < 40 && !saved; i++) {
@@ -214,6 +216,21 @@ describe('Connectors: a customer database behind forms (e2e)', () => {
     }
     await c.close();
     expect(saved).toMatchObject({ plant: 'P2', description: 'Boiler leak', reporter: 'Ravi' });
+
+    // The worker dies after the row is written and before the timeline says so: the job is taken again, and the
+    // row is not written a second time. The step is stopped for a person to check instead.
+    const jobs = h.app.get<Model<{ uuid: string; status: string; type: string; payload: { submissionId?: string } }>>(getModelToken('Job'));
+    const job = (await jobs.findOne({ type: 'automation.submitted', 'payload.submissionId': record }).lean())!;
+    for (let i = 0; i < 40 && (await jobs.findOne({ uuid: job.uuid }).lean())!.status !== 'DONE'; i++) await new Promise((r) => setTimeout(r, 50));
+    const events = h.app.get<Model<{ recordId: string; type: string; data: { stepIndex?: number } }>>(getModelToken('FormRecordEvent'));
+    expect((await events.deleteMany({ recordId: record, type: 'AUTOMATION', 'data.stepIndex': 0 })).deletedCount).toBe(1);
+    await jobs.updateOne({ uuid: job.uuid }, { $set: { status: 'RUNNING', lockedUntil: new Date(Date.now() - 1000) } });
+    await h.app.get(JobQueue).drain();
+    const again = await MongoClient.connect(uri);
+    expect(await again.db('crm').collection('complaints').countDocuments({ plant: 'P2' })).toBe(1);
+    await again.close();
+    const timeline = (await h.api().get(`/records/${record}`).set(h.bearer(owner)).expect(200)).body.events.map((e: { message: string }) => e.message);
+    expect(timeline).toContain(`Save to CRM: HANDLER failed - ${MAY_HAVE_RUN}`);
 
     // Turning writes off breaks the step at the next publish, not silently.
     await h.api().patch(`/connectors/${connectorId}`).set(h.bearer(owner)).send({ writable: false }).expect(200);

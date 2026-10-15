@@ -22,6 +22,11 @@ export interface FormHandlerContext {
   steps: Readonly<Record<string, unknown>>;
   /** This step's key - its output lands at steps[key] for the steps below. */
   stepKey: string;
+  /**
+   * The same every time this step of this run is tried (after a crash, say), and different for every other step
+   * and run: send it as an Idempotency-Key, or store it, so the other system does the work once.
+   */
+  runKey?: string;
   /** For a step that writes to another system: which answer fills which of its fields, where the designer chose. */
   map?: Record<string, string>;
 }
@@ -119,7 +124,7 @@ export class FormHandlerRegistry implements OnApplicationBootstrap {
     const own = this.handlers.get(key)?.run;
     // The organisation's own code, in its extension: found per org when the step runs.
     if (!own && EXT_STEP_KEY.test(key)) {
-      return ({ orgId, trigger, definition, record, values, steps, stepKey }) =>
+      return ({ orgId, trigger, definition, record, values, steps, stepKey, runKey }) =>
         this.extensions.runStep(orgId, key, {
           trigger,
           form: { code: definition.code, version: definition.version, name: definition.name },
@@ -128,6 +133,7 @@ export class FormHandlerRegistry implements OnApplicationBootstrap {
           work: record.work ?? {},
           steps,
           stepKey,
+          runKey,
         });
     }
     return own;

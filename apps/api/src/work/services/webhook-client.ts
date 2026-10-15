@@ -24,20 +24,24 @@ export function webhookAllowed(url: string): { ok: true; target: URL } | { ok: f
  * sha256=...`) when a secret is given, so the receiver can trust the body.
  * Returns the reply as an object when it is a JSON object.
  */
-export async function postWebhook(url: string, payload: unknown, secret?: string): Promise<{ host: string; status: number; reply: Record<string, unknown> }> {
+export async function postWebhook(url: string, payload: unknown, secret?: string, key?: string): Promise<{ host: string; status: number; reply: Record<string, unknown> }> {
   const allowed = webhookAllowed(url);
   // `in` narrows under the API's non-strict config too.
   if ('error' in allowed) throw new Error(allowed.error);
-  return postJson(allowed.target, payload, secret);
+  return postJson(allowed.target, payload, secret, key);
 }
 
 /**
  * The posting itself, to an address someone has already decided may be called.
  * An error names the host and the status only: the rest of the address can be a secret.
+ *
+ * `key` goes as the Idempotency-Key header: the same on every retry of one delivery, so a receiver that saw it
+ * already can answer without doing the work twice.
  */
-export async function postJson(target: URL, payload: unknown, secret?: string): Promise<{ host: string; status: number; reply: Record<string, unknown> }> {
+export async function postJson(target: URL, payload: unknown, secret?: string, key?: string): Promise<{ host: string; status: number; reply: Record<string, unknown> }> {
   const body = JSON.stringify(payload);
   const headers: Record<string, string> = { 'content-type': 'application/json', 'user-agent': 'form-builder-webhook' };
+  if (key) headers['idempotency-key'] = key;
   if (secret) headers['x-fb-signature'] = `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
   const res = await fetch(target, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(WORKFLOW.webhookTimeoutMs) }).catch(() => {
     throw new Error(`${target.hostname} did not answer`);

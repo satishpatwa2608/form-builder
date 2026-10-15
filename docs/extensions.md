@@ -236,7 +236,7 @@ For anyone writing an extension without the SDK, in any language.
 |---|---|---|
 | `GET /fb/health` (unsigned) | – | `{ "ok": true }` |
 | `GET /fb/manifest` | – | `{ contract: 1, name, steps: [{ key, label, description?, outputs? }], lists: [{ key, label, description?, params? }], checks: [{ key, label, description? }], fields: [{ key, label, description?, height? }] }` |
-| `POST /fb/steps/<key>` | `{ orgId, trigger, form, record, values, work, steps, stepKey }` | `{ summary?, data? }` |
+| `POST /fb/steps/<key>` | `{ orgId, trigger, form, record, values, work, steps, stepKey, runKey }` (`runKey` is the same each time this step of this run is tried: use it so the work is done once) | `{ summary?, data? }` |
 | `POST /fb/lists/<key>` | `{ orgId, params }` | `{ rows: [{ value, label, ... }] }` |
 | `POST /fb/checks/<key>` | `{ orgId, form, values }` | `{ errors: { field: message }, message }` |
 | `GET /fb/fields/<key>` | – | `{ html }`: a complete page, at most 200 KB |
