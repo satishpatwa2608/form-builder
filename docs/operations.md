@@ -303,7 +303,7 @@ code in that image. Measured 16 October 2026 (60 s of submissions from 20 client
 | Responses, each starting an automation (an email and a notification) | 112 a second; half answered within 165 ms, 99% within 350 ms; none refused or failed |
 | The queue behind them | caught up 35 s after the burst ended; no job failed |
 | Inbox over 107,000 records (newest, open and overdue, by priority, search by reference or in answers) | 0.5 to 0.9 s, worst 1.1 s |
-| Report by a question, 90 days | 1.6 s |
+| Report by a question, 90 days | 1.6 s at first; 0.55 s once worked out in the database in one pass (it read up to 50,000 records into the API) |
 | Dashboard, 30 days | 3.5 s at first; 0.7 s after it was made one pass over open and recent records (it was a dozen queries) with an index on open and resolved work |
 | Making and keeping PDFs, 2,000 queued | 12 a second |
 | API memory after all of it | 166 MB of 900 |

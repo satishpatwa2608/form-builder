@@ -7,13 +7,33 @@ import { FormWorkSettings, FormWorkSettingsDocument, FormWorkView, FormWorkViewD
 import { FormSubmission, FormSubmissionDocument } from '../schemas/form-submission.schema';
 import { FormRecordService, isRecordAdmin, openCondition, type InboxQuery } from './form-record.service';
 import { FormDefinitionService } from './form-definition.service';
-import { formShape, workflowOf } from '@fb/engine';
+import { formShape, workflowOf, type FormDefinition } from '@fb/engine';
 import { FormCalendarService } from './form-calendar.service';
 import { PeopleService } from './people.service';
 
-/** How many records one report reads at most (per part); past that it says it is partial. */
-const REPORT_ROWS = 50_000;
 const REPORT_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,99}$/;
+
+/** In an aggregation: the record is still open (not resolved, not in a status its form calls done). */
+function openExpr(latest: Map<string, FormDefinition>) {
+  const done = [...latest.entries()]
+    .map(([code, def]) => ({ code, keys: workflowOf(def).statuses.filter((st: { category: string }) => st.category === 'DONE').map((st: { key: string }) => st.key) }))
+    .filter((d) => d.keys.length);
+  return {
+    $and: [{ $eq: [{ $ifNull: ['$resolvedAt', null] }, null] }, { $not: [{ $or: [false, ...done.map((d) => ({ $and: [{ $eq: ['$formCode', d.code] }, { $in: ['$status', d.keys] }] }))] }] }],
+  };
+}
+
+/** In an aggregation: past one of its deadlines (a response not yet given counts against the response deadline). */
+function overdueExpr(now: Date) {
+  const isDate = (f: string) => ({ $eq: [{ $type: f }, 'date'] });
+  return {
+    $or: [
+      { $and: [isDate('$dueAt'), { $lte: ['$dueAt', now] }] },
+      { $and: [isDate('$resolutionDueAt'), { $lte: ['$resolutionDueAt', now] }] },
+      { $and: [isDate('$responseDueAt'), { $lte: ['$responseDueAt', now] }, { $eq: [{ $ifNull: ['$respondedAt', null] }, null] }] },
+    ],
+  };
+}
 
 /** The middle value, in hours to one decimal; null with none. */
 function median(ms: number[]): number | null {
@@ -149,20 +169,9 @@ export class WorkPortalService {
 
     // Everything below is one pass over the records that matter (open, or made or resolved in the period), each
     // number a sum of those that fit: it was a dozen queries, each walking the records again (infra/load).
-    const done = [...latest.entries()]
-      .map(([code, def]) => ({ code, keys: workflowOf(def).statuses.filter((st: { category: string }) => st.category === 'DONE').map((st: { key: string }) => st.key) }))
-      .filter((d) => d.keys.length);
     const isDate = (f: string) => ({ $eq: [{ $type: f }, 'date'] });
-    const isOpen = {
-      $and: [{ $eq: [{ $ifNull: ['$resolvedAt', null] }, null] }, { $not: [{ $or: [false, ...done.map((d) => ({ $and: [{ $eq: ['$formCode', d.code] }, { $in: ['$status', d.keys] }] }))] }] }],
-    };
-    const isOverdue = {
-      $or: [
-        { $and: [isDate('$dueAt'), { $lte: ['$dueAt', now] }] },
-        { $and: [isDate('$resolutionDueAt'), { $lte: ['$resolutionDueAt', now] }] },
-        { $and: [isDate('$responseDueAt'), { $lte: ['$responseDueAt', now] }, { $eq: [{ $ifNull: ['$respondedAt', null] }, null] }] },
-      ],
-    };
+    const isOpen = openExpr(latest);
+    const isOverdue = overdueExpr(now);
     const isDueToday = {
       $or: ['$resolutionDueAt', '$dueAt'].map((f) => ({ $and: [isDate(f), { $gte: [f, now] }, { $lt: [f, endOfDay] }] })),
     };
@@ -299,47 +308,42 @@ export class WorkPortalService {
     const key = field ? `payload.${form!.submission.mapping?.[field.name] ?? field.name}` : by === 'team' || by === 'assignee' ? 'assigneeId' : by;
 
     const { filter: all } = await this.recordsService.inboxFilter(user, { formCode: query.formCode || undefined, team: query.team || undefined });
-    const pick = `${key} createdAt resolvedAt dueAt resolutionDueAt responseDueAt respondedAt`;
-    const [inPeriod, open] = await Promise.all([
-      this.records.find({ $and: [all, { $or: [{ createdAt: { $gte: since } }, { resolvedAt: { $gte: since } }] }] }).select(pick).limit(REPORT_ROWS).lean(),
-      this.records.find({ $and: [all, openCondition(latest)] }).select(pick).limit(REPORT_ROWS).lean(),
-    ]);
-    const valueOf = (r: Record<string, unknown>) => {
-      const v = key.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), r);
-      return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
+    // One pass in the database: each group's counts, and how long each record resolved in the period took (for
+    // the median). It read the records into the API before, up to 50,000 of them.
+    const isDate = (f: string) => ({ $eq: [{ $type: f }, 'date'] });
+    const resolvedIn = { $and: [isDate('$resolvedAt'), { $gte: ['$resolvedAt', since] }] };
+    const rows = (await this.records.aggregate([
+      { $match: { $and: [all, { $or: [{ createdAt: { $gte: since } }, { resolvedAt: { $gte: since } }, openCondition(latest)] }] } },
+      {
+        $group: {
+          _id: `$${key}`,
+          opened: { $sum: { $cond: [{ $and: [isDate('$createdAt'), { $gte: ['$createdAt', since] }] }, 1, 0] } },
+          resolved: { $sum: { $cond: [resolvedIn, 1, 0] } },
+          openNow: { $sum: { $cond: [openExpr(latest), 1, 0] } },
+          overdueNow: { $sum: { $cond: [{ $and: [openExpr(latest), overdueExpr(now)] }, 1, 0] } },
+          times: { $push: { $cond: [resolvedIn, { $subtract: ['$resolvedAt', '$createdAt'] }, '$$REMOVE'] } },
+        },
+      },
+    ] as never)) as { _id: unknown; opened: number; resolved: number; openNow: number; overdueNow: number; times: number[] }[];
+    const departments = by === 'team' ? await this.people.departmentsOf(user.orgId, rows.map((r) => (typeof r._id === 'string' ? r._id : '')).filter(Boolean)) : new Map<string, string>();
+    const groupOf = (id: unknown) => {
+      if (by === 'team') return id ? departments.get(String(id)) || 'No team' : 'Not assigned';
+      return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
     };
-    const departments = by === 'team' ? await this.people.departmentsOf(user.orgId, [...inPeriod, ...open].map((r) => r.assigneeId ?? '').filter(Boolean)) : new Map<string, string>();
-    const groupOf = (r: Record<string, unknown>) => (by === 'team' ? (r.assigneeId ? departments.get(String(r.assigneeId)) || 'No team' : 'Not assigned') : valueOf(r));
 
     type Group = { opened: number; resolved: number; openNow: number; overdueNow: number; times: number[] };
     const groups = new Map<string, Group>();
-    const at = (g: string) => {
-      if (!groups.has(g)) groups.set(g, { opened: 0, resolved: 0, openNow: 0, overdueNow: 0, times: [] });
-      return groups.get(g)!;
-    };
     const total: Group = { opened: 0, resolved: 0, openNow: 0, overdueNow: 0, times: [] };
-    for (const r of inPeriod as unknown as (Record<string, unknown> & { createdAt: Date; resolvedAt: Date | null })[]) {
-      const g = at(groupOf(r));
-      if (r.createdAt >= since) {
-        g.opened++;
-        total.opened++;
-      }
-      if (r.resolvedAt && r.resolvedAt >= since) {
-        g.resolved++;
-        total.resolved++;
-        const ms = r.resolvedAt.getTime() - r.createdAt.getTime();
-        g.times.push(ms);
-        total.times.push(ms);
-      }
-    }
-    const late = (d: unknown) => d instanceof Date && d <= now;
-    for (const r of open as unknown as (Record<string, unknown> & { respondedAt: Date | null })[]) {
-      const g = at(groupOf(r));
-      g.openNow++;
-      total.openNow++;
-      if (late(r.dueAt) || late(r.resolutionDueAt) || (late(r.responseDueAt) && !r.respondedAt)) {
-        g.overdueNow++;
-        total.overdueNow++;
+    for (const r of rows) {
+      const name = groupOf(r._id);
+      const g = groups.get(name) ?? { opened: 0, resolved: 0, openNow: 0, overdueNow: 0, times: [] };
+      groups.set(name, g);
+      for (const into of [g, total]) {
+        into.opened += r.opened;
+        into.resolved += r.resolved;
+        into.openNow += r.openNow;
+        into.overdueNow += r.overdueNow;
+        into.times.push(...r.times);
       }
     }
 
@@ -361,7 +365,8 @@ export class WorkPortalService {
       groups: [...groups.entries()].map(([g, v]) => ({ key: g, label: label(g), ...summary(v) })).sort((a, b) => b.opened + b.openNow - (a.opened + a.openNow) || a.label.localeCompare(b.label)),
       total: summary(total),
       // More records than a report reads at once: the numbers are of the first ones only.
-      partial: inPeriod.length >= REPORT_ROWS || open.length >= REPORT_ROWS,
+      // Kept for the page: a report is never of part of the records now.
+      partial: false,
     };
   }
 }
