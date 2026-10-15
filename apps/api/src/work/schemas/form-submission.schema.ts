@@ -191,6 +191,8 @@ FormSubmissionSchema.index(
   { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } },
 );
 FormSubmissionSchema.index({ orgId: 1, assigneeId: 1, status: 1, createdAt: -1 });
+// Open work (not resolved) and what was resolved in a period: the dashboard's and the reports' questions.
+FormSubmissionSchema.index({ orgId: 1, resolvedAt: 1, formCode: 1 });
 FormSubmissionSchema.index({ dueAt: 1, slaBreachedAt: 1 }, { partialFilterExpression: { dueAt: { $type: 'date' } } });
 FormSubmissionSchema.index({ responseDueAt: 1, respondedAt: 1, responseBreachedAt: 1 }, { partialFilterExpression: { responseDueAt: { $type: 'date' } } });
 FormSubmissionSchema.index({ nextEscalationAt: 1 }, { partialFilterExpression: { nextEscalationAt: { $type: 'date' } } });

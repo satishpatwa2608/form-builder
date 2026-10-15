@@ -304,7 +304,7 @@ code in that image. Measured 16 October 2026 (60 s of submissions from 20 client
 | The queue behind them | caught up 35 s after the burst ended; no job failed |
 | Inbox over 107,000 records (newest, open and overdue, by priority, search by reference or in answers) | 0.6 to 0.9 s, worst 1.1 s |
 | Report by a question, 90 days | 1.6 s |
-| Dashboard, 30 days | 3.5 s (the slowest page: worth an index or a cache when someone has this much) |
+| Dashboard, 30 days | 3.5 s (the slowest page. An index on open and resolved work was added after this run: about a fifth faster on the same data. The dashboard still asks a dozen questions of the records one after another; putting them into one pass is the next step when someone has this much) |
 | Making and keeping PDFs, 2,000 queued | 12 a second |
 | API memory after all of it | 166 MB of 900 |
 
