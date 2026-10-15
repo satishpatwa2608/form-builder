@@ -82,6 +82,16 @@ const MARK_KEEP_MS = 30 * 86_400_000;
 export const MAY_HAVE_RUN =
   'this may have been done already, before the work was interrupted. Check the other system for this response; if it is not there, run the flow again from this step';
 
+/** A stopped flow, to be run again from the step that failed. */
+interface RunAgain {
+  orgId: string;
+  recordId: string;
+  runId: string;
+  automationId: string;
+  from: number;
+  by: string;
+}
+
 /** For an email step tried again: who it already went to. */
 interface SentTo {
   has(email: string): boolean;
@@ -176,6 +186,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     this.jobs.register('automation.submitted', (e: FormSubmittedEvent, job) => this.afterSubmission(e, job));
     this.jobs.register('automation.fields', (e: RecordFieldsEvent, job) => this.run('FIELD_UPDATED', e.orgId, e.recordId, 0, e.by, e.fields, undefined, job.id));
     this.jobs.register('automation.status', (e: RecordStatusEvent, job) => this.run('STATUS_CHANGED', e.orgId, e.recordId, e.depth, e.by, [], undefined, job.id));
+    this.jobs.register('automation.again', (p: RunAgain) => this.runFromStop(p));
     // The sweep belongs to whichever process runs jobs. FORM_WORKFLOW_SWEEP=false turns it off (tests call sweep() directly).
     if (!this.jobs.runsJobs || process.env.FORM_WORKFLOW_SWEEP === 'false' || process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => void this.sweep(), WORKFLOW.sweepEveryMs);
@@ -595,6 +606,37 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       }
     }
     await finish('DONE');
+  }
+
+  /**
+   * Run a flow that stopped on a failed step again, from that step: what was done before it stands, and the step
+   * and those after it run afresh (a connector write that "may have been done already" is done now, the person
+   * having checked). For whoever runs the organisation's work; through the queue, like the first run.
+   */
+  async runAgain(user: { uuid: string; orgId: string; name?: string; modules?: string[] }, recordId: string, runId: string) {
+    if (!isRecordAdmin(user)) throw new ForbiddenException('Only a Forms admin can run a flow again');
+    await this.records.load(user.orgId, recordId);
+    const stop = await this.records.stopOf(user.orgId, recordId, runId);
+    if (!stop) throw new NotFoundException('This flow has not stopped on a failed step');
+    if (stop.again) throw new ConflictException('This flow is already running again');
+    const from = stop.stepIndex;
+    await this.records.log(user.orgId, recordId, 'AUTOMATION', user.uuid, `Run again from step ${from + 1}`, { runId, automationId: stop.automationId, again: true, from });
+    await this.jobs.enqueue('automation.again', { orgId: user.orgId, recordId, runId, automationId: stop.automationId, from, by: user.uuid } satisfies RunAgain, { orgId: user.orgId, dedupeKey: `again:${runId}:${stop.id}` });
+  }
+
+  private async runFromStop(p: RunAgain) {
+    const { record, definition } = await this.records.load(p.orgId, p.recordId);
+    const automation = (definition.automations ?? []).find((a) => a.id === p.automationId);
+    if (!automation) {
+      await this.records.log(p.orgId, p.recordId, 'AUTOMATION', '', 'Could not run again: the flow is no longer on this version of the form', { runId: p.runId, ok: false });
+      return;
+    }
+    // What the steps before it produced, for the steps from here on.
+    const earlier = await this.records.runSteps(p.orgId, p.recordId, p.runId);
+    const steps: Record<string, unknown> = {};
+    for (const [i, done] of earlier) if (i >= 0 && i < p.from && automation.actions[i] && done.output && typeof done.output === 'object') steps[stepKey(automation.actions[i], i)] = done.output;
+    const values = valuesFromPayload(definition, record.payload as FormValues);
+    await this.runFlow(automation, { orgId: p.orgId, trigger: automation.when, definition, values, recordId: p.recordId }, 0, p.by, { runId: p.runId, from: p.from, steps }, p.runId);
   }
 
   /** Store the paused flow and tell the approvers. Returns the approval's title as shown to them. */

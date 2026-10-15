@@ -230,6 +230,19 @@ export class JobQueue implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** A job that failed for good, started again from its first attempt. False when there is no such job of that organisation's. */
+  async retry(uuid: string, orgId: string): Promise<boolean> {
+    const res = await this.jobs.updateOne({ uuid, orgId, status: 'FAILED' }, { $set: { status: 'PENDING', attempts: 0, runAt: new Date() }, $unset: { expireAt: 1 } });
+    if (!res.modifiedCount) return false;
+    if (this.runsJobs && !this.closed) setImmediate(() => void this.drain().catch((err) => this.logger.error(`job run failed: ${(err as Error).message}`)));
+    return true;
+  }
+
+  /** What failed for good lately, newest first. */
+  async failed(orgId: string, since: Date, limit = 50) {
+    return this.jobs.find({ orgId, status: 'FAILED', updatedAt: { $gte: since } }).sort({ updatedAt: -1 }).limit(limit).select('uuid type payload attempts lastError updatedAt').lean<(Job & { updatedAt: Date })[]>();
+  }
+
   /** Counts by status, for the health page and tests. */
   async counts(orgId?: string): Promise<Record<string, number>> {
     const rows = await this.jobs.aggregate<{ _id: string; n: number }>([

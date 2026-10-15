@@ -16,6 +16,8 @@ export interface Customer {
   forms: number;
   responsesThisMonth: number;
   lastActiveAt: string | null;
+  /** Background work that gave up in the last 30 days: a count only. */
+  failedWork?: number;
 }
 
 const PLANS: { value: Customer['plan']; label: string }[] = [
@@ -119,6 +121,7 @@ export default function CustomersPage() {
                   <th scope="col">People</th>
                   <th scope="col">Forms</th>
                   <th scope="col">Responses this month</th>
+                  <th scope="col" title="Background work that gave up after its tries in the last 30 days">Failed work</th>
                   <th scope="col">Last active</th>
                   <th scope="col">Since</th>
                 </tr>
@@ -190,6 +193,7 @@ export default function CustomersPage() {
                     </td>
                     <td>{c.forms}</td>
                     <td>{c.responsesThisMonth.toLocaleString()}</td>
+                    <td>{c.failedWork ? <Badge tone="danger">{c.failedWork}</Badge> : <span className="st-muted">0</span>}</td>
                     <td title={c.lastActiveAt ? new Date(c.lastActiveAt).toLocaleString() : ''}>{ago(c.lastActiveAt)}</td>
                     <td className="st-muted">{day(c.createdAt)}</td>
                   </tr>

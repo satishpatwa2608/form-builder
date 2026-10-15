@@ -62,7 +62,7 @@ vi.mock('../adapters/registry/useFormRegistry', async (importOriginal) => ({
   useFormDefinitions: () => ({ data: registry.forms, isLoading: false }),
 }));
 
-const api = vi.hoisted(() => ({ rowExtra: {} as Record<string, unknown>, addFile: vi.fn(), fileLink: vi.fn(async () => 'https://files.test/letter.pdf'), bulk: vi.fn(), saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown> }));
+const api = vi.hoisted(() => ({ rowExtra: {} as Record<string, unknown>, addFile: vi.fn(), fileLink: vi.fn(async () => 'https://files.test/letter.pdf'), bulk: vi.fn(), saveView: vi.fn(), mutate: vi.fn(), theme: 'classic', saveTheme: vi.fn(), filters: [] as unknown[], actions: [] as unknown[], extra: {} as Record<string, unknown>, record: {} as Record<string, unknown>, events: [] as unknown[] }));
 vi.mock('../adapters/workflow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../adapters/workflow')>();
   const people = [{ uuid: 'u1', name: 'Denim Head', email: 'd@x.test' }, { uuid: 'u2', name: 'Loom Lead', email: 'l@x.test' }];
@@ -114,6 +114,7 @@ vi.mock('../adapters/workflow', async (importOriginal) => {
               { uuid: 'e2', type: 'AUTOMATION', by: '', message: 'CRM: HANDLER failed - timeout', data: { ok: false }, createdAt: record.createdAt },
               { uuid: 'e3', type: 'AUTOMATION', by: '', message: 'Lead flow: looked up', data: { ok: true, runId: 'run1', stepIndex: 0 }, createdAt: record.createdAt },
               { uuid: 'e4', type: 'AUTOMATION', by: '', message: 'Lead flow: Custom API skipped (condition not met)', data: { ok: true, skipped: true, runId: 'run1', stepIndex: 1 }, createdAt: record.createdAt },
+              ...api.events,
             ],
           }
         : undefined,
@@ -135,6 +136,8 @@ vi.mock('../adapters/workflow', async (importOriginal) => {
 
 beforeEach(() => {
   auth.modules = ['FormPlatformAdminModule'];
+  api.events = [];
+  api.extra = {};
   api.theme = 'classic';
 });
 
@@ -217,6 +220,31 @@ describe('Records inbox', () => {
     await user.type(within(drawer).getByRole('textbox', { name: 'Comment' }), 'Called back');
     await user.click(within(drawer).getByRole('button', { name: 'Comment' }));
     expect(api.mutate).toHaveBeenLastCalledWith({ kind: 'comment', message: 'Called back' });
+  });
+
+  it('a flow that stopped on a failed step: a Forms admin runs it again from that step; others are not offered it', async () => {
+    Object.assign(registry, { forms: [form] });
+    api.mutate.mockResolvedValue({});
+    api.events = [
+      { uuid: 'e5', type: 'AUTOMATION', by: '', message: 'To CRM: WEBHOOK failed - crm.test answered 503', data: { ok: false, runId: 'run2', stepIndex: 1, automationId: 'a2' }, createdAt: record.createdAt },
+      { uuid: 'e6', type: 'AUTOMATION', by: '', message: 'To CRM: stopped after step 2 failed', data: { ok: false, stopped: true, runId: 'run2', stepIndex: 1, automationId: 'a2' }, createdAt: record.createdAt },
+    ];
+    api.extra = { canRunAgain: true };
+    const user = userEvent.setup();
+    const { unmount } = render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    const drawer = await screen.findByRole('dialog');
+    const run = within(drawer).getByText('To CRM').closest('li')!;
+    // A run that finished is not offered it.
+    expect(within(within(drawer).getByText('Lead flow').closest('li')!).queryByRole('button')).not.toBeInTheDocument();
+    await user.click(within(run).getByRole('button', { name: 'Run again from step 2' }));
+    expect(api.mutate).toHaveBeenLastCalledWith({ kind: 'again', runId: 'run2' });
+    unmount();
+
+    api.extra = { canRunAgain: false };
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: /Run again/ })).not.toBeInTheDocument();
   });
 
   it('work item: priority, named actions with a comment, work fields saved from the drawer', async () => {

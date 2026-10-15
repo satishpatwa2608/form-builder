@@ -1,3 +1,5 @@
+import { getModelToken } from '@nestjs/mongoose';
+import type { Model } from 'mongoose';
 import { PASSWORD, startApp, type Harness } from './harness';
 
 /** The operator's console: the customers of an installation, seen from outside, by the people who run it. */
@@ -44,7 +46,14 @@ describe('Operator: customers (e2e)', () => {
 
     const rows = await list();
     expect(rows.map((r) => r.name).sort()).toEqual(['Sangam', 'Vendor']);
-    expect(rows.find((r) => r.name === 'Sangam')).toMatchObject({ forms: 1, responsesThisMonth: 1, members: 1 });
+    expect(rows.find((r) => r.name === 'Sangam')).toMatchObject({ forms: 1, responsesThisMonth: 1, members: 1, failedWork: 0 });
+    // Work of theirs that gave up shows as a number, never as what it was.
+    const jobs = h.app.get<Model<{ orgId: string; status: string; lastError: string }>>(getModelToken('Job'));
+    await jobs.create({ uuid: 'op-failed-1', type: 'webhook.deliver', orgId, payload: { secret: 'Confidential Person' }, status: 'FAILED', runAt: new Date(), lastError: 'Secret salary hook down' });
+    const after = await list();
+    expect(after.find((r) => r.name === 'Sangam')).toMatchObject({ failedWork: 1 });
+    expect(after.find((r) => r.name === 'Vendor')).toMatchObject({ failedWork: 0 });
+    expect(JSON.stringify(after)).not.toMatch(/Secret salary|Confidential Person/);
     expect(JSON.stringify(rows)).not.toMatch(/Secret salary|SALARY|Confidential Person/);
     // Being the operator opens nothing inside the customer.
     await h.api().get(`/forms/${id}`).set(h.bearer(operator)).expect((r) => expect([403, 404]).toContain(r.status));

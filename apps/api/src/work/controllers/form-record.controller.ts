@@ -1,11 +1,12 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpException, Param, Post, Put, Query, Req, UseFilters } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpException, NotFoundException, Param, Post, Put, Query, Req, UseFilters } from '@nestjs/common';
+import { JobQueue } from '../../jobs/job-queue.service';
 import { RequirePermission } from '../../auth/auth.guard';
 import apiResponse from '../response';
 import { FormFieldErrorsFilter } from '../security/form-http';
 import { FormCalendarService } from '../services/form-calendar.service';
 import { FormWebhookService } from '../services/form-webhook.service';
 import { WorkPortalService } from '../services/work-portal.service';
-import { FormRecordService, type InboxQuery } from '../services/form-record.service';
+import { FormRecordService, isRecordAdmin, type InboxQuery } from '../services/form-record.service';
 import { FormHandlerRegistry } from '../services/form-workflow.registry';
 import { FormAutomationService } from '../services/form-automation.service';
 import { FormSubmissionService } from '../services/form-submission.service';
@@ -15,6 +16,20 @@ import { FormDefinitionService } from '../services/form-definition.service';
 /** Sign-in and org membership come from the global AuthGuard; each route names the permission it needs. */
 /** How many ticked records one request may act on. */
 const BULK_LIMIT = 50;
+
+/** Background work, in the words of the person who will read the failed-work list. */
+const JOB_WORDS: Record<string, string> = {
+  'automation.submitted': 'Automations after a response',
+  'automation.status': 'Automations after a status change',
+  'automation.fields': 'Automations after work fields changed',
+  'automation.again': 'A flow run again',
+  'webhook.deliver': 'Webhook delivery',
+  'form.publish': 'Scheduled publishing',
+  'document.record': 'PDF of a response',
+  'document.batch-item': 'A document in a batch',
+  'signature.remind': 'Signature reminder',
+  'signature.expire': 'Closing an expired signature request',
+};
 
 @Controller()
 @UseFilters(FormFieldErrorsFilter)
@@ -28,7 +43,52 @@ export class FormRecordController {
     private readonly webhooks: FormWebhookService,
     private readonly portal: WorkPortalService,
     private readonly definitions: FormDefinitionService,
+    private readonly jobs: JobQueue,
   ) {}
+
+  /**
+   * What failed in the last 30 days and is still failed: background work that gave up after its tries, and flows
+   * that stopped on a failed step. Each can be run again. For Forms admins.
+   */
+  @Get('failed-work')
+  @RequirePermission('record.work')
+  async failedWork(@Req() req: any) {
+    if (!isRecordAdmin(req.user)) throw new ForbiddenException('Only a Forms admin can see failed work');
+    const orgId: string = req.user.orgId;
+    const since = new Date(Date.now() - 30 * 86_400_000);
+    const [jobs, flows, latest] = await Promise.all([this.jobs.failed(orgId, since), this.records.stoppedFlows(orgId, since), this.definitions.latestByCode(orgId)]);
+    const recordOf = (p: Record<string, unknown>) => {
+      const event = p.event as { recordId?: unknown } | undefined;
+      const id = p.submissionId ?? p.recordId ?? event?.recordId;
+      return typeof id === 'string' ? id : '';
+    };
+    const refs = await this.records.refsOf(orgId, jobs.map((j) => recordOf(j.payload)).filter(Boolean));
+    return {
+      jobs: jobs.map((j) => {
+        const recordId = recordOf(j.payload);
+        return { id: j.uuid, what: JOB_WORDS[j.type] ?? j.type, recordId, ref: refs.get(recordId) ?? '', error: j.lastError, attempts: j.attempts, at: j.updatedAt };
+      }),
+      flows: flows.map((f) => ({ ...f, form: latest.get(f.formCode)?.name ?? f.formCode })),
+    };
+  }
+
+  @Post('failed-work/jobs/:id/retry')
+  @HttpCode(200)
+  @RequirePermission('record.work')
+  async retryJob(@Param('id') id: string, @Req() req: any) {
+    if (!isRecordAdmin(req.user)) throw new ForbiddenException('Only a Forms admin can run failed work again');
+    if (!(await this.jobs.retry(String(id).slice(0, 100), req.user.orgId))) throw new NotFoundException('There is no failed work with that id');
+    return { queued: true };
+  }
+
+  /** A flow that stopped on a failed step, run again from that step. */
+  @Post('records/:id/runs/:runId/again')
+  @HttpCode(200)
+  @RequirePermission('record.work')
+  async runAgain(@Param('id') id: string, @Param('runId') runId: string, @Req() req: any) {
+    await this.automations.runAgain(req.user, id, runId);
+    return this.records.getAfterChange(req.user, id);
+  }
 
   /** The live version of every form that tracks work items (the Inbox's filters and New work item). */
   @Get('work-forms')

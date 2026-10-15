@@ -193,9 +193,14 @@ function groupRuns(events: RecordEvent[]): TimelineItem[] {
 function RunItem({
   events,
   def,
+  onRunAgain,
+  busy,
 }: {
   events: RecordEvent[];
   def: FormDefinition;
+  /** Offered to a Forms admin when the flow's last word is that it stopped on a failed step. */
+  onRunAgain?: () => void;
+  busy?: boolean;
 }) {
   const automation = def.automations?.find(
     (a) => a.id === events[0].data.automationId,
@@ -204,6 +209,11 @@ function RunItem({
   const failed = events.some((e) => e.data.ok === false);
   const stepText = (e: RecordEvent) =>
     e.message.slice(e.message.indexOf(":") + 1).trim();
+  const last = events[events.length - 1];
+  const stoppedAt =
+    last.data.stopped && typeof last.data.stepIndex === "number"
+      ? last.data.stepIndex + 1
+      : undefined;
   return (
     <li className={failed ? "fb-timeline__failed" : undefined}>
       <div>
@@ -232,6 +242,13 @@ function RunItem({
           </li>
         ))}
       </ol>
+      {stoppedAt !== undefined && onRunAgain && (
+        <div>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onRunAgain}>
+            Run again from step {stoppedAt}
+          </Button>
+        </div>
+      )}
       <div className="fb-timeline__meta">
         Automation · {format(new Date(events[0].createdAt), "dd MMM, HH:mm")}
       </div>
@@ -650,6 +667,12 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
                         key={item.runId}
                         events={item.events}
                         def={def}
+                        busy={act.isPending}
+                        onRunAgain={
+                          data.canRunAgain
+                            ? () => void run({ kind: "again", runId: item.runId }, "Running again - the timeline shows how it goes")
+                            : undefined
+                        }
                       />
                     ) : (
                       <EventItem

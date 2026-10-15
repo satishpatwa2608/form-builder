@@ -585,6 +585,8 @@ export class FormRecordService {
       // Forms with named actions move only through them; others offer the allowed statuses.
       actions: definition.workflow?.enabled ? actionsFor(workflowOf(definition), record.status) : [],
       canReopen: this.canReopen(record, definition),
+      // A Forms admin may run a flow that stopped on a failed step again, from that step.
+      canRunAgain: isRecordAdmin(user),
       contactEmail: await this.contactEmail(user.orgId, record, definition),
       next: definition.workflow?.enabled && !definition.workflow.actions?.length ? allowedNext(workflowOf(definition), record.status) : [],
     });
@@ -620,7 +622,11 @@ export class FormRecordService {
     const steps = new Map<number, Record<string, unknown>>();
     for (const row of rows) {
       const data = (row.data ?? {}) as Record<string, unknown>;
-      if (data.stopped) steps.set(-1, data);
+      if (data.again === true && typeof data.from === 'number') {
+        // Someone ran the stopped flow again from a step: from there on, nothing counts as done.
+        steps.delete(-1);
+        for (const i of [...steps.keys()]) if (i >= data.from) steps.delete(i);
+      } else if (data.stopped) steps.set(-1, data);
       else if (typeof data.stepIndex === 'number') {
         // The flow went back to an earlier step here: what it had done from there on is to be done again.
         if (data.wentBack === true && typeof data.backTo === 'number') for (let i = data.backTo; i < data.stepIndex; i++) steps.delete(i);
@@ -630,9 +636,72 @@ export class FormRecordService {
     return steps;
   }
 
-  /** How many times a run has gone back to an earlier step so far. */
+  /** How many times a run has gone back to an earlier step, or been run again, so far: each starts a new round of its steps. */
   async timesWentBack(orgId: string, recordId: string, runId: string): Promise<number> {
-    return this.events.countDocuments({ orgId, recordId, type: 'AUTOMATION', 'data.runId': runId, 'data.wentBack': true });
+    return this.events.countDocuments({ orgId, recordId, type: 'AUTOMATION', 'data.runId': runId, $or: [{ 'data.wentBack': true }, { 'data.again': true }] });
+  }
+
+  /** The reference of each of these records that exists, by id. */
+  async refsOf(orgId: string, ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const rows = await this.records.find({ orgId, uuid: { $in: [...new Set(ids)].slice(0, 200) } }).select('uuid ref').lean();
+    return new Map(rows.map((r) => [r.uuid, r.ref]));
+  }
+
+  /** Where a run last stopped on a failed step, and whether it has been run again since. */
+  async stopOf(orgId: string, recordId: string, runId: string): Promise<{ id: string; automationId: string; stepIndex: number; again: boolean } | null> {
+    const stop = await this.events.findOne({ orgId, recordId, type: 'AUTOMATION', 'data.runId': runId, 'data.stopped': true }).sort({ _id: -1 }).lean();
+    const data = (stop?.data ?? {}) as { automationId?: unknown; stepIndex?: unknown };
+    if (!stop || typeof data.automationId !== 'string' || typeof data.stepIndex !== 'number') return null;
+    const again = await this.events.exists({ orgId, recordId, type: 'AUTOMATION', 'data.runId': runId, 'data.again': true, _id: { $gt: stop._id } });
+    return { id: stop.uuid, automationId: data.automationId, stepIndex: data.stepIndex, again: !!again };
+  }
+
+  /**
+   * Flows that stopped on a failed step since `since` and have not been run again: for the organisation's
+   * failed-work list. The newest first, the failed step's own message with each.
+   */
+  async stoppedFlows(orgId: string, since: Date, limit = 50) {
+    const stops = await this.events
+      .find({ orgId, type: 'AUTOMATION', 'data.stopped': true, 'data.runId': { $type: 'string' }, createdAt: { $gte: since } })
+      .sort({ _id: -1 })
+      .limit(limit * 2)
+      .lean<(FormRecordEvent & { _id: unknown; createdAt: Date })[]>();
+    const runIds = [...new Set(stops.map((s) => (s.data as { runId: string }).runId))];
+    if (!runIds.length) return [];
+    const later = await this.events
+      .find({ orgId, type: 'AUTOMATION', 'data.runId': { $in: runIds }, $or: [{ 'data.again': true }, { 'data.stopped': true }, { 'data.ok': false }] })
+      .sort({ _id: 1 })
+      .select('uuid recordId data createdAt')
+      .lean<(FormRecordEvent & { _id: { toString(): string }; createdAt: Date })[]>();
+    const records = new Map(
+      (await this.records.find({ orgId, uuid: { $in: [...new Set(stops.map((s) => s.recordId))] } }).select('uuid ref formCode').lean()).map((r) => [r.uuid, r]),
+    );
+    const seen = new Set<string>();
+    const out: { recordId: string; ref: string; formCode: string; runId: string; automation: string; step: number; error: string; at: Date }[] = [];
+    for (const stop of stops) {
+      const data = stop.data as { runId: string; stepIndex?: number };
+      if (seen.has(data.runId)) continue;
+      seen.add(data.runId);
+      const after = later.filter((e) => (e.data as { runId: string }).runId === data.runId);
+      const at = after.findIndex((e) => e.uuid === stop.uuid);
+      if (after.slice(at + 1).some((e) => (e.data as { again?: boolean }).again)) continue;
+      const failed = after.slice(0, at).reverse().find((e) => (e.data as { stepIndex?: number; ok?: boolean }).stepIndex === data.stepIndex && (e.data as { ok?: boolean }).ok === false);
+      const record = records.get(stop.recordId);
+      if (!record) continue;
+      out.push({
+        recordId: stop.recordId,
+        ref: record.ref,
+        formCode: record.formCode,
+        runId: data.runId,
+        automation: stop.message.split(': ')[0] ?? '',
+        step: (data.stepIndex ?? 0) + 1,
+        error: String((failed?.data as { error?: unknown } | undefined)?.error ?? ''),
+        at: stop.createdAt,
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
   }
 
   /**

@@ -149,6 +149,8 @@ export interface RecordDetail {
   actions: WorkflowAction[];
   /** Closed and still inside the form's reopen window. */
   canReopen: boolean;
+  /** A Forms admin may run a flow that stopped on a failed step again, from that step. */
+  canRunAgain?: boolean;
   /** Where "Email requester" sends ('' = no address known). */
   contactEmail: string;
   people: Record<string, Person>;
@@ -272,10 +274,11 @@ type RecordAction =
   | { kind: 'priority'; priority: Priority }
   | { kind: 'work'; values: FormValues }
   | { kind: 'reopen'; comment: string }
+  | { kind: 'again'; runId: string }
   | { kind: 'email'; subject: string; body: string; templateKey?: string; requestInfo?: boolean };
 
 const pathOf = (a: RecordAction) =>
-  a.kind === 'decide' ? `approvals/${a.runId}` : a.kind === 'comment' ? 'comments' : a.kind === 'act' ? `actions/${a.key}` : a.kind;
+  a.kind === 'decide' ? `approvals/${a.runId}` : a.kind === 'again' ? `runs/${a.runId}/again` : a.kind === 'comment' ? 'comments' : a.kind === 'act' ? `actions/${a.key}` : a.kind;
 
 /** Every change returns the fresh record; the inbox list is refreshed behind it. */
 /** Done, but the item is no longer with this user (reassigned, approval decided). */
@@ -293,7 +296,7 @@ export function useRecordAction(id: string | undefined) {
           ? { to: action.to, note: action.note }
           : action.kind === 'assign'
             ? { userId: action.userId, note: action.note }
-            : action.kind === 'take' || action.kind === 'send-back'
+            : action.kind === 'take' || action.kind === 'send-back' || action.kind === 'again'
               ? {}
               : action.kind === 'ask'
                 ? { userId: action.userId, question: action.question }

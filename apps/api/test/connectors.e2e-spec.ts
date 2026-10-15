@@ -231,6 +231,14 @@ describe('Connectors: a customer database behind forms (e2e)', () => {
     await again.close();
     const timeline = (await h.api().get(`/records/${record}`).set(h.bearer(owner)).expect(200)).body.events.map((e: { message: string }) => e.message);
     expect(timeline).toContain(`Save to CRM: HANDLER failed - ${MAY_HAVE_RUN}`);
+    // A person looked, found it was not there after all, and ran it again: now it is written.
+    const stopped = (await h.api().get('/failed-work').set(h.bearer(owner)).expect(200)).body.flows.find((f: { recordId: string }) => f.recordId === record);
+    expect(stopped).toMatchObject({ automation: 'Save to CRM', step: 1, error: MAY_HAVE_RUN });
+    await h.api().post(`/records/${record}/runs/${stopped.runId}/again`).set(h.bearer(owner)).expect(200);
+    await h.app.get(JobQueue).drain();
+    const third = await MongoClient.connect(uri);
+    expect(await third.db('crm').collection('complaints').countDocuments({ plant: 'P2' })).toBe(2);
+    await third.close();
 
     // Turning writes off breaks the step at the next publish, not silently.
     await h.api().patch(`/connectors/${connectorId}`).set(h.bearer(owner)).send({ writable: false }).expect(200);

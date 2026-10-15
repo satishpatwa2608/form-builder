@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 import { useFolders, useMembers } from '../lib/queries';
 import { ROLE_LABEL } from '../lib/types';
 import { Badge, Card, PageHead } from '../components/ui';
+import { FailedWorkCard } from './FailedWorkCard';
 
 export default function OverviewPage() {
   const { me, can } = useAuth();
@@ -36,6 +37,7 @@ export default function OverviewPage() {
             <strong>{me.user.twoFactorEnabled ? <Badge tone="success">Two-factor on</Badge> : <Badge tone="warn">Password only</Badge>}</strong>
           </div>
         </div>
+        {can('record.admin') && <FailedWorkCard />}
         <Card title="Get set up" subtitle={left ? `${left} step${left > 1 ? 's' : ''} left` : 'All done - forms and connectors arrive next.'}>
           <ul className="st-stack" style={{ listStyle: 'none', margin: 0, padding: 0, gap: 12 }}>
             {steps.map((s) => (

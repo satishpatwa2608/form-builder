@@ -8,6 +8,7 @@ import type { AuthContext } from '../auth/auth-context';
 import { newId } from '../common/crypto';
 import { APP_CONFIG, isOperator, type AppConfig } from '../config';
 import { Form, type FormDocument } from '../forms/form.schema';
+import { Job, type JobDocument } from '../jobs/job.schema';
 import { Invitation, Membership, Organization, type InvitationDocument, type MembershipDocument, type OrganizationDocument } from '../orgs/org.schemas';
 import { OrgsService } from '../orgs/orgs.service';
 import { PLAN_IDS, PLANS, type PlanId } from '../plans/plans';
@@ -30,6 +31,8 @@ export interface CustomerRow {
   responsesThisMonth: number;
   /** When anything was last done in it (the newest entry of its audit trail). */
   lastActiveAt: Date | null;
+  /** Background work of theirs that gave up after its tries in the last 30 days (a count only: what it was is theirs). */
+  failedWork: number;
 }
 
 /**
@@ -55,6 +58,7 @@ export class OperatorService {
     @InjectModel(Form.name) private readonly forms: Model<FormDocument>,
     @InjectModel(UsageMonth.name) private readonly months: Model<UsageMonthDocument>,
     @InjectModel(AuditEntry.name) private readonly entries: Model<AuditEntryDocument>,
+    @InjectModel(Job.name) private readonly jobs: Model<JobDocument>,
   ) {}
 
   /** Not an operator: there is nothing here, said the same way as a page that does not exist. */
@@ -69,12 +73,13 @@ export class OperatorService {
     const orgs = await this.orgs.find({}).sort({ createdAt: -1 }).limit(1000).select('id name plan createdAt').lean<{ id: string; name: string; plan?: string; createdAt?: Date }[]>();
     const ids = orgs.map((o) => o.id);
     const month = new Date().toISOString().slice(0, 7);
-    const [members, formCounts, usage, last, invited] = await Promise.all([
+    const [members, formCounts, usage, last, invited, failed] = await Promise.all([
       this.memberships.find({ orgId: { $in: ids }, status: 'ACTIVE' }).select('orgId userId role').lean(),
       this.forms.aggregate<{ _id: string; n: number }>([{ $match: { orgId: { $in: ids }, isDeleted: false } }, { $group: { _id: { orgId: '$orgId', code: '$code' } } }, { $group: { _id: '$_id.orgId', n: { $sum: 1 } } }]),
       this.months.find({ orgId: { $in: ids }, month }).select('orgId submissions').lean(),
       this.entries.aggregate<{ _id: string; at: Date }>([{ $match: { orgId: { $in: ids } } }, { $group: { _id: '$orgId', at: { $max: '$at' } } }]),
       this.invitations.find({ orgId: { $in: ids }, role: 'OWNER', acceptedAt: null, revokedAt: null, expiresAt: { $gt: new Date() } }).select('orgId email').lean(),
+      this.jobs.aggregate<{ _id: string; n: number }>([{ $match: { orgId: { $in: ids }, status: 'FAILED', updatedAt: { $gte: new Date(Date.now() - 30 * 86_400_000) } } }, { $group: { _id: '$orgId', n: { $sum: 1 } } }]),
     ]);
     const owners = await this.users.find({ id: { $in: members.filter((m) => m.role === 'OWNER').map((m) => m.userId) } }).select('id name email').lean();
     const person = new Map(owners.map((u) => [u.id, { name: u.name, email: u.email }]));
@@ -94,6 +99,7 @@ export class OperatorService {
         forms: formCounts.find((f) => f._id === o.id)?.n ?? 0,
         responsesThisMonth: usage.find((u) => u.orgId === o.id)?.submissions ?? 0,
         lastActiveAt: last.find((l) => l._id === o.id)?.at ?? null,
+        failedWork: failed.find((f) => f._id === o.id)?.n ?? 0,
       };
     });
   }
