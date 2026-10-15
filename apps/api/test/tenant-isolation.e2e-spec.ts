@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PDFDocument } from 'pdf-lib';
+import { OpenWithService } from '../src/work/services/open-with.service';
 import { startApp, type Harness } from './harness';
 
 /**
@@ -22,6 +23,7 @@ describe('Tenant isolation: one organisation cannot reach another (e2e)', () => 
   let orgA: string;
   let orgB: string;
   const ids: Record<string, string> = {};
+  let formDef: Record<string, unknown>;
   /** Everything of A's that must never appear in an answer to B. */
   const secrets: string[] = [];
 
@@ -83,6 +85,7 @@ describe('Tenant isolation: one organisation cannot reach another (e2e)', () => 
       document: { keep: true },
       automations: [{ id: 'ask', name: 'Ask', enabled: true, when: 'SUBMITTED', actions: [{ id: 'ok', type: 'APPROVAL', to: [{ kind: 'USER', userId: (await h.api().get('/auth/me').set(h.bearer(a))).body.user.id }], title: `Approve ${MARK}` }] }],
     };
+    formDef = definition;
     ids.form = (await as('post', '/forms', { folderId: ids.folder, definition })).body.definition.id;
     ids.comment = idOf((await as('post', `/forms/${ids.form}/comments`, { text: `Comment ${MARK}` })).body, `Comment ${MARK}`);
     await as('post', `/forms/${ids.form}/publish`, {}, 200);
@@ -215,5 +218,50 @@ describe('Tenant isolation: one organisation cannot reach another (e2e)', () => 
     expect((await h.api().post(`/public/data-sources/query?org=${orgB}`).send({ formCode: 'ALPHA_FORM', key: '/lists/x', params: {} })).status).toBe(404);
     // And under A's own name it still works, so the refusals above are about the organisation, not a broken form.
     expect((await pub(`/public/forms/ALPHA_FORM?org=${orgA}`)).status).toBe(200);
+  });
+
+  it("links and files made for A do not work for B, even where B has a form with the same code", async () => {
+    // B publishes a form of its own under the same code, and gets a record of its own.
+    const folderB = (await h.api().post('/folders').set(h.bearer(b)).send({ name: 'Beta folder' }).expect(201)).body[0].id;
+    const formB = (await h.api().post('/forms').set(h.bearer(b)).send({ folderId: folderB, definition: { ...formDef, name: 'Beta form', automations: [] } }).expect(201)).body.definition.id;
+    await h.api().post(`/forms/${formB}/publish`).set(h.bearer(b)).expect(200);
+    const recordB = (await h.api().post(`/public/forms/ALPHA_FORM/submissions?org=${orgB}`).send({ values: { customer: 'Beta customer' } }).expect(201)).body.submissionId;
+
+    // A saved-for-later draft of A's opens only on A's form.
+    const draft = (await h.api().post(`/public/forms/ALPHA_FORM/drafts?org=${orgA}`).send({ values: { customer: `Draft ${MARK}` } }).expect(201)).body.token;
+    expect((await h.api().post(`/public/forms/ALPHA_FORM/drafts/load?org=${orgA}`).send({ token: draft }).expect(200)).body.values.customer).toBe(`Draft ${MARK}`);
+    await h.api().post(`/public/forms/ALPHA_FORM/drafts/load?org=${orgB}`).send({ token: draft }).expect(404);
+    await h.api().post(`/public/forms/ALPHA_FORM/drafts/discard?org=${orgB}`).send({ token: draft }).expect(204);
+    await h.api().post(`/public/forms/ALPHA_FORM/drafts/load?org=${orgA}`).send({ token: draft }).expect(200);
+
+    // A file sent to A's form cannot be put into a response to B's, nor onto B's record by B's staff.
+    const ticket = (await h.api().post(`/public/forms/ALPHA_FORM/uploads?org=${orgA}`).send({ fieldName: 'photo', fileName: 'a.png', contentType: 'image/png', size: PNG.length }).expect(201)).body;
+    await h.api().put(h.localUrl(ticket.url).replace(h.base, '')).set('Content-Type', 'image/png').send(PNG).expect(200);
+    await h.api().post(`/public/uploads/${ticket.uploadId}/verify?org=${orgA}`).expect(200);
+    const sent = await h.api().post(`/public/forms/ALPHA_FORM/submissions?org=${orgB}`).send({ values: { customer: 'Beta', photo: [{ uploadId: ticket.uploadId }] } });
+    expect(sent.status).toBeGreaterThanOrEqual(400);
+    await h.api().post(`/records/${recordB}/files/${ticket.uploadId}/attach`).set(h.bearer(b)).expect((res) => expect(res.status).toBeGreaterThanOrEqual(400));
+    await h.api().post(`/records/${recordB}/files/${ids.upload}/attach`).set(h.bearer(b)).expect((res) => expect(res.status).toBeGreaterThanOrEqual(400));
+    // ...and no download link for A's file comes through B's own record or B's own form.
+    await h.api().get(`/records/${recordB}/files/${ids.upload}`).set(h.bearer(b)).expect(404);
+    await h.api().get(`/forms/${formB}/submissions/${recordB}/files/${ids.upload}`).set(h.bearer(b)).expect(404);
+    // A's own file is still A's, and still sendable on A's form.
+    await h.api().post(`/public/forms/ALPHA_FORM/submissions?org=${orgA}`).send({ values: { customer: 'Alpha again', photo: [{ uploadId: ticket.uploadId }] } }).expect(201);
+
+    // A link that opens a form with one of A's records is A's alone: B's form of the same code does not accept it.
+    const openWith = h.app.get(OpenWithService) as unknown as { link: OpenWithService['link']; read(token: string, def: { orgId: string; code: string }): string | undefined };
+    const link = openWith.link({ orgId: orgA, code: 'ALPHA_FORM' }, 'CUST-1', 7).token;
+    expect(openWith.read(link, { orgId: orgA, code: 'ALPHA_FORM' })).toBe('CUST-1');
+    expect(openWith.read(link, { orgId: orgB, code: 'ALPHA_FORM' })).toBeUndefined();
+
+    // A requester signed in to A's portal is not signed in to B's.
+    for (const token of [a, b]) await h.api().patch('/org').set(h.bearer(token)).send({ portal: { enabled: true } }).expect(200);
+    await h.api().post(`/public/portal/${orgA}/link`).send({ email: 'ravi@customer.test' }).expect(202);
+    const mail = [...h.outbox].reverse().find((m) => m.to === 'ravi@customer.test' && m.text.includes(`/portal/${orgA}?key=`))!;
+    const key = /key=(fbportal_[A-Za-z0-9_-]+)/.exec(mail.text)![1];
+    await h.api().post(`/public/portal/${orgB}/session`).send({ key }).expect(401);
+    const session = (await h.api().post(`/public/portal/${orgA}/session`).send({ key }).expect(200)).body.session;
+    await h.api().get(`/public/portal/${orgA}/requests`).set({ Authorization: `Portal ${session}` }).expect(200);
+    await h.api().get(`/public/portal/${orgB}/requests`).set({ Authorization: `Portal ${session}` }).expect(403);
   });
 });
