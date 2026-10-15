@@ -73,8 +73,8 @@ export class SignaturesService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.jobs.register(JOB_REMIND, (p: { id: string }) => this.remind(p.id), { maxAttempts: 3 });
-    this.jobs.register(JOB_EXPIRE, (p: { id: string }) => this.expire(p.id), { maxAttempts: 3 });
+    this.jobs.register(JOB_REMIND, (p: { id: string; orgId?: string }) => this.remind(p.id, p.orgId), { maxAttempts: 3 });
+    this.jobs.register(JOB_EXPIRE, (p: { id: string; orgId?: string }) => this.expire(p.id, p.orgId), { maxAttempts: 3 });
   }
 
   private async orgName(orgId: string) {
@@ -86,7 +86,7 @@ export class SignaturesService implements OnModuleInit {
     const signer = request.signers[index]!;
     const token = `fbsig_${randomToken()}`;
     const next: Signer = { ...signer, tokenHash: hashToken(token), status: 'SENT', sentAt: signer.sentAt ?? new Date(), ...(reminder ? { remindedAt: new Date() } : {}) };
-    await this.requests.updateOne({ id: request.id }, { $set: { [`signers.${index}`]: next } });
+    await this.requests.updateOne({ id: request.id, orgId: request.orgId }, { $set: { [`signers.${index}`]: next } });
     const org = await this.orgName(request.orgId);
     const days = Math.max(1, Math.ceil((request.expiresAt.getTime() - Date.now()) / 86_400_000));
     await this.mail
@@ -128,8 +128,8 @@ export class SignaturesService implements OnModuleInit {
     await this.store.put(SignaturesService.originalKey(request), pdf, 'application/pdf');
     for (const index of order === 'PARALLEL' ? emails.map((_, i) => i) : [0]) await this.invite(request, index);
     orgLog.info(p.orgId, 'signatures', `Sent for signature: ${request.title}`, { record: p.recordId, signers: emails.length, order, days });
-    if (maxReminders > 0) await this.jobs.enqueue(JOB_REMIND, { id }, { orgId: p.orgId, runAt: new Date(Date.now() + REMIND_EVERY_MS), dedupeKey: `signature-remind:${id}:1` });
-    await this.jobs.enqueue(JOB_EXPIRE, { id }, { orgId: p.orgId, runAt: expiresAt, dedupeKey: `signature-expire:${id}` });
+    if (maxReminders > 0) await this.jobs.enqueue(JOB_REMIND, { id, orgId: p.orgId }, { orgId: p.orgId, runAt: new Date(Date.now() + REMIND_EVERY_MS), dedupeKey: `signature-remind:${id}:1` });
+    await this.jobs.enqueue(JOB_EXPIRE, { id, orgId: p.orgId }, { orgId: p.orgId, runAt: expiresAt, dedupeKey: `signature-expire:${id}` });
     return id;
   }
 
@@ -140,7 +140,7 @@ export class SignaturesService implements OnModuleInit {
   // ── The signer's side (reached with the link's token and nothing else) ────
 
   private async byToken(token: string): Promise<{ request: SignatureRequest; index: number; signer: Signer }> {
-    const request = /^fbsig_[A-Za-z0-9_-]{20,}$/.test(token) ? await this.requests.findOne({ 'signers.tokenHash': hashToken(token) }).lean<SignatureRequest>() : null;
+    const request = /^fbsig_[A-Za-z0-9_-]{20,}$/.test(token) ? await this.requests.findOne({ 'signers.tokenHash': hashToken(token) }).comment('across-orgs: a signing link is found by its unguessable token, before anyone is known').lean<SignatureRequest>() : null;
     const index = request?.signers.findIndex((s) => s.tokenHash === hashToken(token)) ?? -1;
     if (!request || index < 0) throw new NotFoundException('This signing link is not valid. Check that you copied all of it, or ask for a new one.');
     return { request, index, signer: request.signers[index]! };
@@ -200,7 +200,7 @@ export class SignaturesService implements OnModuleInit {
     if (signer.codeSentAt && Date.now() - new Date(signer.codeSentAt).getTime() < CODE_WAIT_MS) throw new HttpException('A code was sent a moment ago. Check your email, or wait a minute to ask for another.', 429);
     if ((signer.codesSent ?? 0) >= MAX_CODES) throw new ForbiddenException('Too many codes have been asked for with this link. Ask for the document to be sent again.');
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-    await this.requests.updateOne({ id: request.id }, { $set: { [`signers.${index}.codeHash`]: sha256(Buffer.from(`${request.id}:${signer.tokenHash}:${code}`)), [`signers.${index}.codeSentAt`]: new Date(), [`signers.${index}.tries`]: 0 }, $inc: { [`signers.${index}.codesSent`]: 1 } });
+    await this.requests.updateOne({ id: request.id, orgId: request.orgId }, { $set: { [`signers.${index}.codeHash`]: sha256(Buffer.from(`${request.id}:${signer.tokenHash}:${code}`)), [`signers.${index}.codeSentAt`]: new Date(), [`signers.${index}.tries`]: 0 }, $inc: { [`signers.${index}.codesSent`]: 1 } });
     const org = await this.orgName(request.orgId);
     await this.mail.send(request.orgId, {
       to: signer.email,
@@ -230,13 +230,13 @@ export class SignaturesService implements OnModuleInit {
       // something they know has no "another", so the link itself stops working.
       const spent = tries >= MAX_TRIES;
       await this.requests.updateOne(
-        { id: request.id },
+        { id: request.id, orgId: request.orgId },
         { $set: { [`signers.${index}.tries`]: spent && request.confirm === 'EMAIL_CODE' ? 0 : tries, ...(spent ? (request.confirm === 'KNOWN' || (signer.codesSent ?? 0) >= MAX_CODES ? { [`signers.${index}.lockedAt`]: new Date() } : { [`signers.${index}.codeHash`]: '' }) : {}) } },
       );
       if (spent) orgLog.warn(request.orgId, 'signatures', `Too many wrong tries before signing: ${request.title}`, { record: request.recordId });
       throw new ForbiddenException(spent ? (request.confirm === 'KNOWN' ? 'That is not right, and there were too many wrong tries: this link no longer works. Ask for the document to be sent again.' : 'That is not right, and that code has been tried too often. Ask for a new one.') : 'That is not right. Check it and try again.');
     }
-    await this.requests.updateOne({ id: request.id }, { $set: { [`signers.${index}.confirmedAt`]: new Date(), [`signers.${index}.codeHash`]: '', [`signers.${index}.tries`]: 0 } });
+    await this.requests.updateOne({ id: request.id, orgId: request.orgId }, { $set: { [`signers.${index}.confirmedAt`]: new Date(), [`signers.${index}.codeHash`]: '', [`signers.${index}.tries`]: 0 } });
     return { pass: this.passFor(signer, Date.now() + PASS_MINUTES * 60_000) };
   }
 
@@ -258,7 +258,7 @@ export class SignaturesService implements OnModuleInit {
     if (input.agreed !== true) throw new BadRequestException('Tick the box to agree to sign electronically');
     // Claimed in one step, so the same link used twice at once signs once.
     const claimed = await this.requests.findOneAndUpdate(
-      { id: request.id, status: 'WAITING', [`signers.${index}.status`]: 'SENT', [`signers.${index}.tokenHash`]: signer.tokenHash },
+      { id: request.id, orgId: request.orgId, status: 'WAITING', [`signers.${index}.status`]: 'SENT', [`signers.${index}.tokenHash`]: signer.tokenHash },
       { $set: { [`signers.${index}.status`]: 'SIGNED', [`signers.${index}.name`]: name, [`signers.${index}.signature`]: input.signature, [`signers.${index}.signedAt`]: new Date(), [`signers.${index}.ip`]: meta.ip.slice(0, 64), [`signers.${index}.userAgent`]: meta.userAgent.slice(0, 300) } },
       { new: true },
     ).lean<SignatureRequest>();
@@ -274,7 +274,7 @@ export class SignaturesService implements OnModuleInit {
     SignaturesService.open(request, signer);
     const reason = typeof (body as { reason?: unknown })?.reason === 'string' ? oneLine((body as { reason: string }).reason, 500) : '';
     const claimed = await this.requests.findOneAndUpdate(
-      { id: request.id, status: 'WAITING', [`signers.${index}.status`]: 'SENT' },
+      { id: request.id, orgId: request.orgId, status: 'WAITING', [`signers.${index}.status`]: 'SENT' },
       { $set: { [`signers.${index}.status`]: 'DECLINED', [`signers.${index}.declineReason`]: reason, [`signers.${index}.signedAt`]: new Date(), [`signers.${index}.ip`]: meta.ip.slice(0, 64), [`signers.${index}.userAgent`]: meta.userAgent.slice(0, 300) } },
       { new: true },
     ).lean<SignatureRequest>();
@@ -292,7 +292,7 @@ export class SignaturesService implements OnModuleInit {
       signedKey = `signatures/${request.orgId}/${request.id}/signed.pdf`;
       await this.store.put(signedKey, signed, 'application/pdf');
     }
-    const done = await this.requests.findOneAndUpdate({ id: request.id, status: 'WAITING' }, { $set: { status, signedKey, finishedAt: new Date() } });
+    const done = await this.requests.findOneAndUpdate({ id: request.id, orgId: request.orgId, status: 'WAITING' }, { $set: { status, signedKey, finishedAt: new Date() } });
     // Ended already (the last signature and the expiry arriving together): the workflow has been told once.
     if (!done) return;
     const declined = request.signers.find((s) => s.status === 'DECLINED');
@@ -378,19 +378,26 @@ export class SignaturesService implements OnModuleInit {
     return request.seal ? this.seals.seal(request.orgId, whole, `${request.title}: signed by ${request.signers.length} ${request.signers.length === 1 ? 'person' : 'people'}`) : whole;
   }
 
-  private async remind(id: string) {
+  /** Jobs queued before they carried their organisation say only the request's id. */
+  private static ofJob(id: string, orgId: string | undefined) {
+    return { filter: { id, ...(orgId ? { orgId } : {}) }, comment: orgId ? undefined : 'across-orgs: a job queued before jobs named their organisation' };
+  }
+
+  private async remind(id: string, orgId?: string) {
+    const { filter, comment } = SignaturesService.ofJob(id, orgId);
     // Counted first, in one step: a round of reminders goes out once however often the job is tried.
-    const request = await this.requests.findOneAndUpdate({ id, status: 'WAITING', expiresAt: { $gt: new Date() }, $expr: { $lt: ['$reminders', '$maxReminders'] } }, { $inc: { reminders: 1 } }, { new: true }).lean<SignatureRequest>();
+    const request = await this.requests.findOneAndUpdate({ ...filter, status: 'WAITING', expiresAt: { $gt: new Date() }, $expr: { $lt: ['$reminders', '$maxReminders'] } }, { $inc: { reminders: 1 } }, { comment, new: true }).lean<SignatureRequest>();
     if (!request) return;
     // A reminder is a fresh link: the earlier one stops working, so only the newest email signs.
     for (const [index, s] of request.signers.entries()) if (s.status === 'SENT') await this.invite(request, index, true);
     if (request.reminders < request.maxReminders) {
-      await this.jobs.enqueue(JOB_REMIND, { id }, { orgId: request.orgId, runAt: new Date(Date.now() + REMIND_EVERY_MS), dedupeKey: `signature-remind:${id}:${request.reminders + 1}` });
+      await this.jobs.enqueue(JOB_REMIND, { id, orgId: request.orgId }, { orgId: request.orgId, runAt: new Date(Date.now() + REMIND_EVERY_MS), dedupeKey: `signature-remind:${id}:${request.reminders + 1}` });
     }
   }
 
-  private async expire(id: string) {
-    const request = await this.requests.findOne({ id, status: 'WAITING' }).lean<SignatureRequest>();
+  private async expire(id: string, orgId?: string) {
+    const { filter, comment } = SignaturesService.ofJob(id, orgId);
+    const request = await this.requests.findOne({ ...filter, status: 'WAITING' }, null, { comment }).lean<SignatureRequest>();
     if (request) await this.finish(request, 'EXPIRED');
   }
 

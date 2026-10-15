@@ -99,3 +99,23 @@ describe('rows that follow an answer', () => {
     expect(check({ travellers: [{ name: 'A' }] }).success).toBe(true);
   });
 });
+
+describe('example answers and the time of day', () => {
+  it('"today" in an example answer is the day the form\'s rules call today, whatever the hour and the computer\'s own zone', async () => {
+    const { exampleAnswers } = await import('../src');
+    const def = { name: 'Claim', code: 'CLAIM', fields: [{ id: 't', type: 'DATE', name: 'tripTo', label: 'Trip ended', required: true }] } as never;
+    // The engine has no Node types (it also runs in the browser), so the environment is reached this way.
+    const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
+    const zone = env.TZ;
+    // A computer in India: half past midnight there is still the day before in UTC, which is what today() counts.
+    env.TZ = 'Asia/Kolkata';
+    try {
+      for (const [now, day] of [['2026-10-15T19:00:00Z', '2026-10-15'], ['2026-10-16T06:00:00Z', '2026-10-16'], ['2026-10-16T23:30:00Z', '2026-10-16']] as const) {
+        expect((await exampleAnswers(def, { now: new Date(now) })).values.tripTo).toBe(day);
+      }
+    } finally {
+      if (zone === undefined) delete env.TZ;
+      else env.TZ = zone;
+    }
+  });
+});

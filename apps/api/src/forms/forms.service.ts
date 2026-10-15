@@ -383,7 +383,7 @@ export class FormsService implements OnModuleInit {
     if (!row || row.status !== 'DRAFT' || !row.publishAt || row.publishAt.toISOString() !== publishAt) return;
     const member = await this.memberships.findOne({ orgId, userId: row.scheduledBy, status: 'ACTIVE' }).lean();
     const fail = async (reason: string) => {
-      await this.forms.updateOne({ id: formId }, { $set: { publishAt: null, scheduleError: reason.slice(0, 500) } });
+      await this.forms.updateOne({ id: formId, orgId }, { $set: { publishAt: null, scheduleError: reason.slice(0, 500) } });
       this.logger.warn(`scheduled publish of ${row.code} v${row.version} did not happen: ${reason}`);
     };
     if (!member) return fail('The person who scheduled it is no longer a member of the organisation');

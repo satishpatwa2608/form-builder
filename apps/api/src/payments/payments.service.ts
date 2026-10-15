@@ -112,7 +112,7 @@ export class PaymentsService {
         url = made.url;
         await row.save();
       } catch (e) {
-        await this.payments.deleteOne({ id });
+        await this.payments.deleteOne({ orgId, id });
         this.logger.warn(`payment for ${orgId}/${code} could not start: ${(e as Error).message}`);
         orgLog.error(orgId, 'submissions', `A payment could not be started: ${(e as Error).message}`, { form: code });
         throw new ServiceUnavailableException('The payment page could not be opened. Try again in a moment.');
@@ -140,7 +140,7 @@ export class PaymentsService {
     const row = await this.mine(orgId, id, user);
     if (row.provider !== 'TEST') throw new NotFoundException('No such payment');
     if (outcome !== 'PAID' && outcome !== 'FAILED') throw new BadRequestException('Choose how the payment went');
-    if (row.status === 'PENDING') await this.payments.updateOne({ id }, { $set: { testOutcome: outcome } });
+    if (row.status === 'PENDING') await this.payments.updateOne({ orgId, id }, { $set: { testOutcome: outcome } });
     return this.confirm(orgId, id, user);
   }
 
@@ -166,7 +166,7 @@ export class PaymentsService {
         }
       }
       if (state.failed) {
-        await this.payments.updateOne({ id, status: 'PENDING' }, { $set: { status: 'FAILED', held: null } });
+        await this.payments.updateOne({ orgId, id, status: 'PENDING' }, { $set: { status: 'FAILED', held: null } });
         orgLog.warn(orgId, 'submissions', 'A payment did not go through', { form: row.formCode, payment: id });
         return { status: 'FAILED' as const, formCode: row.formCode };
       }
@@ -176,17 +176,17 @@ export class PaymentsService {
         throw new HttpException('The amount paid is not the amount due. Please contact the organisation, quoting your payment.', 409);
       }
       // Only one caller moves it on; a second finds it already paid and goes on to the same response.
-      await this.payments.updateOne({ id, status: 'PENDING' }, { $set: { status: 'PAID', paidAt: new Date(), purgeAt: null } });
+      await this.payments.updateOne({ orgId, id, status: 'PENDING' }, { $set: { status: 'PAID', paidAt: new Date(), purgeAt: null } });
     }
 
-    const paid = (await this.payments.findOne({ id }).lean())!;
+    const paid = (await this.payments.findOne({ orgId, id }).lean())!;
     try {
       const result = await this.submissions.submit(orgId, row.formCode, { ...(paid.held ?? {}), idempotencyKey: id }, user, ip, {
         humanChecked: true,
         payment: { id, provider: paid.provider, reference: paid.providerRef, amountMinor: paid.amountMinor, currency: paid.currency, paidAt: paid.paidAt ?? new Date() },
       });
       const data = (result ?? {}) as { submissionId?: string; ref?: string };
-      await this.payments.updateOne({ id }, { $set: { status: 'SUBMITTED', submissionId: data.submissionId ?? '', ref: data.ref ?? '', held: null } });
+      await this.payments.updateOne({ orgId, id }, { $set: { status: 'SUBMITTED', submissionId: data.submissionId ?? '', ref: data.ref ?? '', held: null } });
       orgLog.info(orgId, 'submissions', 'Payment received', { form: row.formCode, payment: id, ref: data.ref ?? '', amount: fromMinor(paid.amountMinor, paid.currency), currency: paid.currency });
       return { status: 'SUBMITTED' as const, ref: data.ref ?? '', submissionId: data.submissionId ?? '', formCode: row.formCode };
     } catch (e) {

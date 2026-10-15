@@ -69,7 +69,7 @@ export class AuthService implements OnModuleInit {
    * actively belong to, so each org's admins see it; with no org, unattached.
    */
   private async userEvent(userId: string, meta: Partial<RequestMeta>, action: string) {
-    const orgIds = [...new Set((await this.memberships.find({ userId, status: 'ACTIVE' }).lean()).map((m) => m.orgId))];
+    const orgIds = [...new Set((await this.memberships.find({ userId, status: 'ACTIVE' }, null, { comment: 'across-orgs: a person\'s memberships, wherever they are' }).lean()).map((m) => m.orgId))];
     for (const orgId of orgIds.length ? orgIds : ['']) {
       await this.audit.record({ orgId, actorId: userId, ip: meta.ip, userAgent: meta.userAgent }, { action, targetType: 'user', targetId: userId });
     }
@@ -174,7 +174,7 @@ export class AuthService implements OnModuleInit {
       mfa = true;
     }
 
-    const memberships = await this.memberships.find({ userId: user.id, status: 'ACTIVE' }).sort({ updatedAt: -1 }).lean();
+    const memberships = await this.memberships.find({ userId: user.id, status: 'ACTIVE' }, null, { comment: 'across-orgs: a person signing in sees every organisation they belong to' }).sort({ updatedAt: -1 }).lean();
     const membership = body.orgId ? memberships.find((m) => m.orgId === body.orgId) : memberships[0];
     if (!membership) throw new ForbiddenException('You are not a member of any organisation');
 
@@ -273,7 +273,7 @@ export class AuthService implements OnModuleInit {
   /** The signed-in user, their organisations, and what they can do in the current one. */
   async me(auth: AuthContext) {
     const user = await this.users.findOne({ id: auth.userId }).lean();
-    const memberships = await this.memberships.find({ userId: auth.userId, status: 'ACTIVE' }).lean();
+    const memberships = await this.memberships.find({ userId: auth.userId, status: 'ACTIVE' }, null, { comment: 'across-orgs: a person sees every organisation they belong to' }).lean();
     const orgs = await this.orgs.find({ id: { $in: memberships.map((m) => m.orgId) } }).lean();
     const current = orgs.find((o) => o.id === auth.orgId);
     return {
@@ -315,7 +315,7 @@ export class AuthService implements OnModuleInit {
   async disableTwoFactor(auth: AuthContext, body: { password: string; code: string }) {
     const user = await this.users.findOne({ id: auth.userId });
     if (!user!.totpEnabledAt) throw new BadRequestException('Two-factor sign-in is not on');
-    const orgIds = (await this.memberships.find({ userId: auth.userId, status: 'ACTIVE' }).lean()).map((m) => m.orgId);
+    const orgIds = (await this.memberships.find({ userId: auth.userId, status: 'ACTIVE' }, null, { comment: 'across-orgs: a person sees every organisation they belong to' }).lean()).map((m) => m.orgId);
     if (await this.orgs.exists({ id: { $in: orgIds }, 'security.require2fa': true })) {
       throw new ForbiddenException('One of your organisations requires two-factor sign-in');
     }

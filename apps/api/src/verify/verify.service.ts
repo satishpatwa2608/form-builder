@@ -51,7 +51,7 @@ export class VerifyService {
   /** Sends a code to what was typed. The answer is the same whether or not anything is known about that address. */
   async send(orgId: string, formCode: string, body: { field?: unknown; value?: unknown }) {
     const { def, field, text, valueHash } = await this.target(orgId, formCode, body.field, body.value);
-    if ((await this.codes.countDocuments({ valueHash })) >= MAX_SENDS_AN_HOUR) throw new HttpException('Too many codes have been sent here. Try again in an hour.', 429);
+    if ((await this.codes.countDocuments({ valueHash }).comment('across-orgs: codes sent to one address are counted wherever they were asked for, so no one is flooded')) >= MAX_SENDS_AN_HOUR) throw new HttpException('Too many codes have been sent here. Try again in an hour.', 429);
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const words = `${code} is your code for "${def.name}". It works for ${CODE_MINUTES} minutes. If you did not ask for it, ignore this message.`;
     if (field.type === 'EMAIL') await this.mail.send(orgId, { to: text, subject: `${code} is your code`, text: words });
@@ -65,14 +65,14 @@ export class VerifyService {
   async check(orgId: string, formCode: string, body: { field?: unknown; value?: unknown; code?: unknown }) {
     const { field, text, valueHash } = await this.target(orgId, formCode, body.field, body.value);
     const typed = typeof body.code === 'string' ? body.code.replace(/\s/g, '') : '';
-    const row = await this.codes.findOne({ valueHash, expiresAt: { $gt: new Date() }, attempts: { $lt: MAX_TRIES } }).sort({ createdAt: -1 });
+    const row = await this.codes.findOne({ orgId, valueHash, expiresAt: { $gt: new Date() }, attempts: { $lt: MAX_TRIES } }).sort({ createdAt: -1 });
     if (!row) throw fault(field.name, 'That code has expired. Ask for a new one.');
     if (!/^[0-9]{6}$/.test(typed) || !safeEqual(row.codeHash, hashToken(`${valueHash}|${typed}`))) {
-      await this.codes.updateOne({ _id: row._id }, { $inc: { attempts: 1 } });
+      await this.codes.updateOne({ _id: row._id, orgId }, { $inc: { attempts: 1 } });
       throw fault(field.name, row.attempts + 1 >= MAX_TRIES ? 'That code is not right. Ask for a new one.' : 'That code is not right. Check it and try again.');
     }
     // Spent: the same code cannot make a second proof.
-    await this.codes.updateOne({ _id: row._id }, { $set: { attempts: MAX_TRIES } });
+    await this.codes.updateOne({ _id: row._id, orgId }, { $set: { attempts: MAX_TRIES } });
     return { proof: this.proofFor(orgId, formCode, field.name, text, Date.now() + PROOF_MINUTES * 60_000) };
   }
 

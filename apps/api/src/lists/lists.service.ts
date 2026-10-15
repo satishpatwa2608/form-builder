@@ -143,7 +143,7 @@ export class ListsService {
     if (used.length) throw new ConflictException(`"${row.name}" is used by ${used.map((u) => u.name).join(', ')}. Change those fields first.`);
     const child = await this.rows.findOne({ orgId: auth.orgId, dependsOn: row.key }).lean();
     if (child) throw new ConflictException(`"${child.name}" depends on this list. Change or delete that one first.`);
-    await this.rows.deleteOne({ id });
+    await this.rows.deleteOne({ orgId: auth.orgId, id });
     await this.audit.record(actorOf(auth), { action: 'list.deleted', targetType: 'list', targetId: id, before: { name: row.name } });
   }
 

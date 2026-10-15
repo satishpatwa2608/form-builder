@@ -249,7 +249,7 @@ export class OrgsService {
    * user confirms with their password.
    */
   async accept(body: { token: string; name?: string; password: string }, meta: RequestMeta) {
-    const inv = await this.invitations.findOne({ tokenHash: hashToken(body.token), acceptedAt: null, revokedAt: null, expiresAt: { $gt: new Date() } });
+    const inv = await this.invitations.findOne({ tokenHash: hashToken(body.token), acceptedAt: null, revokedAt: null, expiresAt: { $gt: new Date() } }, null, { comment: 'across-orgs: an invitation is found by its unguessable token, before anyone is known' });
     if (!inv) throw new BadRequestException('This invitation is not valid any more. Ask for a new one.');
     let user = await this.users.findOne({ email: inv.email });
     if (user) {

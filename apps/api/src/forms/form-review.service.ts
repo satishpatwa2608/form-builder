@@ -110,7 +110,7 @@ export class FormReviewService {
     row.set({ review });
     row.markModified('review');
     // Saving the review must not look like an edit of the form.
-    await this.forms.updateOne({ id: row.id }, { $set: { review } }, { timestamps: false });
+    await this.forms.updateOne({ id: row.id, orgId: row.orgId }, { $set: { review } }, { timestamps: false });
   }
 
   async request(auth: AuthContext, id: string, body: unknown) {

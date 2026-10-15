@@ -167,7 +167,7 @@ export class FormUploadService {
     for (const u of uploads) {
       const key = u.key.replace(/\/pending\/[^/]+\//, `/${submissionId}/${u.uuid}-`);
       await this.store.move(u.key, key);
-      await this.uploads.updateOne({ uuid: u.uuid }, { $set: { status: 'ATTACHED', key } });
+      await this.uploads.updateOne({ uuid: u.uuid, orgId: u.orgId }, { $set: { status: 'ATTACHED', key } });
       files.push({ fieldName: u.fieldName, uploadId: u.uuid, key, name: u.name, size: u.size, contentType: u.contentType });
     }
     return files;

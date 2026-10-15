@@ -66,7 +66,7 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
   async onModuleDestroy() {
     if (this.relay) clearInterval(this.relay);
     // So that other processes stop passing calls here at once, not when the last heartbeat grows old.
-    await this.gateways.updateMany({ instanceId: this.instanceId }, { $set: { instanceId: '' } }).catch(() => undefined);
+    await this.gateways.updateMany({ instanceId: this.instanceId }, { $set: { instanceId: '' } }, { comment: 'across-orgs: every gateway connected to this server process, whoever it belongs to' }).catch(() => undefined);
     for (const g of this.live.values()) g.ws.close(1001, 'Server shutting down');
     this.wss?.close();
   }
@@ -74,7 +74,7 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
   private async accept(req: IncomingMessage, socket: Duplex, head: Buffer) {
     const header = req.headers.authorization ?? '';
     const secret = header.startsWith('Bearer ') ? header.slice(7) : '';
-    const gw = secret ? await this.gateways.findOne({ secretHash: hashToken(secret), revokedAt: null }).lean() : null;
+    const gw = secret ? await this.gateways.findOne({ secretHash: hashToken(secret), revokedAt: null }, null, { comment: 'across-orgs: a gateway is known by its unguessable secret as it connects' }).lean() : null;
     if (!gw) {
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       socket.destroy();
@@ -85,7 +85,7 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
       const entry: Live = { ws, orgId: gw.orgId, pending: new Map() };
       this.live.set(gw.id, entry);
       // (A query does nothing until it is run: hence exec.)
-      void this.gateways.updateOne({ id: gw.id }, { $set: { lastSeenAt: new Date(), instanceId: this.instanceId, version: String(req.headers['x-gateway-version'] ?? '').slice(0, 40) } }).exec().catch(() => undefined);
+      void this.gateways.updateOne({ id: gw.id, orgId: gw.orgId }, { $set: { lastSeenAt: new Date(), instanceId: this.instanceId, version: String(req.headers['x-gateway-version'] ?? '').slice(0, 40) } }).exec().catch(() => undefined);
       this.logger.log(`gateway ${gw.id} connected (org ${gw.orgId})`);
       orgLog.info(gw.orgId, 'gateway', `Gateway connected: ${gw.name}`, { gateway: gw.id });
       ws.on('message', (data) => {
@@ -101,14 +101,14 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
         entry.pending.delete(msg.id);
         p.resolve(msg);
       });
-      ws.on('pong', () => void this.gateways.updateOne({ id: gw.id }, { $set: { lastSeenAt: new Date() } }).exec().catch(() => undefined));
+      ws.on('pong', () => void this.gateways.updateOne({ id: gw.id, orgId: gw.orgId }, { $set: { lastSeenAt: new Date() } }).exec().catch(() => undefined));
       const ping = setInterval(() => ws.ping(), 30_000);
       ws.on('close', () => {
         clearInterval(ping);
         if (this.live.get(gw.id)?.ws === ws) {
           this.live.delete(gw.id);
           // Only if it is still ours: the agent may already have connected to another process.
-          void this.gateways.updateOne({ id: gw.id, instanceId: this.instanceId }, { $set: { instanceId: '' } }).catch(() => undefined);
+          void this.gateways.updateOne({ id: gw.id, orgId: gw.orgId, instanceId: this.instanceId }, { $set: { instanceId: '' } }).catch(() => undefined);
         }
         for (const p of entry.pending.values()) {
           clearTimeout(p.timer);
@@ -217,7 +217,7 @@ export class GatewaysService implements OnApplicationBootstrap, OnModuleDestroy 
 
   /** The agent trades its one-time token for a long-lived secret (returned once; only its hash is kept). */
   async register(token: string) {
-    const gw = await this.gateways.findOne({ registrationHash: hashToken(token), registrationExpiresAt: { $gt: new Date() }, revokedAt: null });
+    const gw = await this.gateways.findOne({ registrationHash: hashToken(token), registrationExpiresAt: { $gt: new Date() }, revokedAt: null }, null, { comment: 'across-orgs: a gateway registers with its unguessable one-time token' });
     if (!gw) throw new BadRequestException('This registration token is not valid any more');
     const secret = `fbgw_${randomToken()}${randomToken()}`;
     gw.set({ secretHash: hashToken(secret), registrationHash: '', registrationExpiresAt: null, registeredAt: new Date() });

@@ -184,7 +184,7 @@ export class ExtensionsService {
   /** Remembers whether the extension is answering, for the admins' page. Never fails the call it describes. */
   private async note(row: ExtensionRow, error: string, unreachable: boolean) {
     await this.rows
-      .updateOne({ id: row.id }, { $set: { status: unreachable ? 'UNREACHABLE' : 'OK', lastError: error } })
+      .updateOne({ id: row.id, orgId: row.orgId }, { $set: { status: unreachable ? 'UNREACHABLE' : 'OK', lastError: error } })
       .catch((e: Error) => this.logger.warn(`could not record the state of extension ${row.ref}: ${e.message}`));
   }
 
@@ -235,12 +235,12 @@ export class ExtensionsService {
         pages[field.key] = html;
       }
       const set = { ...manifest, pages, status: 'OK' as const, lastSyncedAt: new Date(), lastError: '' };
-      await this.rows.updateOne({ id: row.id }, { $set: set });
+      await this.rows.updateOne({ id: row.id, orgId: row.orgId }, { $set: set });
       return ExtensionsService.view({ ...row, ...set });
     } catch (e) {
       if (!(e instanceof ExtensionFailure)) throw e;
       // What it offered before stays: forms that use it keep working if this was a passing fault.
-      await this.rows.updateOne({ id: row.id }, { $set: { lastError: e.message, ...(e.unreachable ? { status: 'UNREACHABLE' as const } : {}) } });
+      await this.rows.updateOne({ id: row.id, orgId: row.orgId }, { $set: { lastError: e.message, ...(e.unreachable ? { status: 'UNREACHABLE' as const } : {}) } });
       throw new BadRequestException(e.message);
     }
   }

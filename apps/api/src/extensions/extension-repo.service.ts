@@ -255,7 +255,7 @@ export class ExtensionRepoService {
    * nothing but a build of the organisation's own code.
    */
   async hook(token: string, body: unknown, caller: { ip: string; userAgent: string }): Promise<{ started: boolean; why?: string }> {
-    const repo = await this.repos.findOne({ hookHash: hashToken(token) }).lean();
+    const repo = await this.repos.findOne({ hookHash: hashToken(token) }, null, { comment: 'across-orgs: the push hook of a repository is found by its unguessable token' }).lean();
     if (!repo) throw new NotFoundException();
     if (!repo.auto) return { started: false, why: 'Deploying on every commit is switched off' };
     const moved = branchIn(body);
@@ -281,7 +281,7 @@ export class ExtensionRepoService {
     orgLog.info(repo.orgId, 'extensions', `Build started from ${repo.branch} (${trigger === 'COMMIT' ? 'a commit' : 'asked for by hand'})`, { build: id });
     try {
       const runId = await runner.start({ buildId: id, api: this.config.API_URL, token });
-      await this.builds.updateOne({ id }, { $set: { runId } });
+      await this.builds.updateOne({ id }, { $set: { runId } }, { comment: 'across-orgs: the build pipeline names a build by its unguessable id' });
     } catch (e) {
       this.logger.error(`build ${id} could not start: ${(e as Error).name}`);
       await this.fail(id, 'The build could not be started. Try again in a moment.', '');
@@ -289,14 +289,14 @@ export class ExtensionRepoService {
   }
 
   private async fail(id: string, message: string, output: string) {
-    const row = await this.builds.findOneAndUpdate({ id, status: { $in: ACTIVE } }, { $set: { status: 'FAILED', message: message.slice(0, 500), output: clean(output) } }, { new: true }).lean();
+    const row = await this.builds.findOneAndUpdate({ id, status: { $in: ACTIVE } }, { $set: { status: 'FAILED', message: message.slice(0, 500), output: clean(output) } }, { new: true, comment: 'across-orgs: the build pipeline names a build by its unguessable id' }).lean();
     if (row) orgLog.error(row.orgId, 'extensions', `Build failed: ${message}`, { build: id });
   }
 
   // ── The build machine (it shows the build's own token; nothing else lets it in) ─────────────────────
 
   private async building(id: string, token: unknown) {
-    const row = typeof token === 'string' ? await this.builds.findOne({ id, tokenHash: hashToken(token), status: 'BUILDING' }).lean() : null;
+    const row = typeof token === 'string' ? await this.builds.findOne({ id, tokenHash: hashToken(token), status: 'BUILDING' }, null, { comment: 'across-orgs: the build pipeline names a build by its unguessable id' }).lean() : null;
     if (!row) throw new ForbiddenException();
     return row;
   }
@@ -304,7 +304,7 @@ export class ExtensionRepoService {
   /** Everything the build needs, handed over once: where the code is, the key to read it, and a sign-in to push with. */
   async job(id: string, token: unknown) {
     const row = await this.building(id, token);
-    const taken = await this.builds.updateOne({ id, collected: false }, { $set: { collected: true } });
+    const taken = await this.builds.updateOne({ id, collected: false }, { $set: { collected: true } }, { comment: 'across-orgs: the build pipeline names a build by its unguessable id' });
     if (!taken.modifiedCount) throw new ForbiddenException();
     const repo = await this.mustHave(row.orgId);
     const push = await this.deploys.pushLoginFor(row.orgId);
@@ -317,19 +317,19 @@ export class ExtensionRepoService {
     const commit = typeof body.commit === 'string' && /^[0-9a-f]{40}$/.test(body.commit) ? body.commit : '';
     const commitMessage = typeof body.message === 'string' ? clean(body.message).slice(0, 200) : '';
     const log = typeof body.log === 'string' ? body.log : '';
-    await this.builds.updateOne({ id }, { $set: { commit, commitMessage } });
+    await this.builds.updateOne({ id }, { $set: { commit, commitMessage } }, { comment: 'across-orgs: the build pipeline names a build by its unguessable id' });
     if (body.ok !== true || !commit) return this.fail(id, commit ? 'The code did not build. What the build printed is below.' : `The code could not be fetched from the branch ${row.branch}. Check the branch, and that the key has been added to the repository.`, log);
     try {
       const asked = await this.deploys.request({ orgId: row.orgId, userId: row.startedBy === 'commit' ? 'commit' : row.startedBy, ip: '', userAgent: 'build' }, commit.slice(0, 7));
-      await this.builds.updateOne({ id }, { $set: { status: 'DEPLOYING', deployId: asked.deploys[0]!.id, output: '' } });
+      await this.builds.updateOne({ id }, { $set: { status: 'DEPLOYING', deployId: asked.deploys[0]!.id, output: '' } }, { comment: 'across-orgs: the build pipeline names a build by its unguessable id' });
     } catch (e) {
       await this.fail(id, (e as Error).message, log);
     }
   }
 
   private async afterDeploy(deployId: string) {
-    const deploy = await this.deployRows.findOne({ id: deployId }).lean();
-    const build = deploy && (await this.builds.findOneAndUpdate({ deployId, status: 'DEPLOYING' }, { $set: { status: deploy.status === 'LIVE' ? 'LIVE' : 'FAILED', message: deploy.message, output: deploy.output } }).lean());
+    const deploy = await this.deployRows.findOne({ id: deployId }, null, { comment: 'across-orgs: a finished deploy is named by its unguessable id' }).lean();
+    const build = deploy && (await this.builds.findOneAndUpdate({ deployId, status: 'DEPLOYING' }, { $set: { status: deploy.status === 'LIVE' ? 'LIVE' : 'FAILED', message: deploy.message, output: deploy.output } }, { comment: 'across-orgs: a finished deploy is named by its unguessable id' }).lean());
     if (!build) return;
     // The branch moved while this one was being built: build what is there now.
     const repo = await this.repos.findOne({ orgId: build.orgId, again: true, auto: true }).lean();

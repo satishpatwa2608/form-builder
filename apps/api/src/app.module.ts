@@ -8,6 +8,8 @@ import { SiteController, SitePublicController } from './site/site.controller';
 import { PlansController } from './plans/plans.controller';
 import { PlansService } from './plans/plans.service';
 import { FormStat, FormStatSchema, UsageMonth, UsageMonthSchema, FormFieldStat, FormFieldStatSchema } from './plans/usage.schema';
+import type { Connection } from 'mongoose';
+import { orgScopePlugin } from './common/org-scope';
 import { Module, type DynamicModule } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_GUARD, DiscoveryModule } from '@nestjs/core';
@@ -156,7 +158,14 @@ export class AppModule {
     return {
       module: AppModule,
       imports: [
-        MongooseModule.forRoot(config.MONGODB_URL, { autoIndex: true }),
+        MongooseModule.forRoot(config.MONGODB_URL, {
+          autoIndex: true,
+          // Every query on an organisation's data must say which organisation it is for (common/org-scope.ts).
+          connectionFactory: (connection: Connection) => {
+            connection.plugin(orgScopePlugin);
+            return connection;
+          },
+        }),
         MongooseModule.forFeature([
           { name: User.name, schema: UserSchema },
           { name: Session.name, schema: SessionSchema },

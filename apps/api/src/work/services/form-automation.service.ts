@@ -184,12 +184,13 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     try {
       const due = await this.submissions
         .find({ dueAt: { $lte: now }, slaBreachedAt: null, isDeleted: false })
+        .comment('across-orgs: the time-limit sweep looks at every organisation')
         .limit(WORKFLOW.sweepBatch)
         .select('uuid orgId dueAt status')
         .lean();
       for (const r of due) {
         const claimed = await this.submissions.updateOne(
-          { uuid: r.uuid, slaBreachedAt: null, dueAt: r.dueAt, status: r.status },
+          { uuid: r.uuid, orgId: r.orgId, slaBreachedAt: null, dueAt: r.dueAt, status: r.status },
           { $set: { slaBreachedAt: now } },
         );
         if (!claimed.modifiedCount) continue;
@@ -217,10 +218,11 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     let fired = 0;
     const late = await this.runs
       .find({ status: 'WAITING', 'approval.dueAt': { $ne: null, $lte: now }, 'approval.lateAt': null })
+      .comment('across-orgs: the late-approval sweep looks at every organisation')
       .limit(WORKFLOW.sweepBatch)
       .lean();
     for (const run of late) {
-      const claimed = await this.runs.updateOne({ uuid: run.uuid, status: 'WAITING', 'approval.lateAt': null }, { $set: { 'approval.lateAt': now } });
+      const claimed = await this.runs.updateOne({ uuid: run.uuid, orgId: run.orgId, status: 'WAITING', 'approval.lateAt': null }, { $set: { 'approval.lateAt': now } });
       if (!claimed.modifiedCount || !run.approval) continue;
       fired++;
       try {
@@ -244,7 +246,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
           }
           const approvers = [...new Set(next)];
           // The links in the emails of people who gave way stop working with them.
-          await this.runs.updateOne({ uuid: run.uuid, status: 'WAITING' }, { $set: { 'approval.approvers': approvers, 'approval.keys': (approval.keys ?? []).filter((k) => approvers.includes(k.userId)) } });
+          await this.runs.updateOne({ uuid: run.uuid, orgId: run.orgId, status: 'WAITING' }, { $set: { 'approval.approvers': approvers, 'approval.keys': (approval.keys ?? []).filter((k) => approvers.includes(k.userId)) } });
           await this.records.log(run.orgId, run.recordId, 'APPROVAL', '', 'No answer in time', { phase: 'late', runId: run.uuid, title: approval.title, did: 'MANAGER', approvers });
           tell(approvers.filter((a) => !(approval.approved ?? []).includes(a)), added.length ? 'Approval passed to you' : 'Approval overdue');
           continue;
@@ -267,11 +269,12 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     let fired = 0;
     const due = await this.submissions
       .find({ responseDueAt: { $lte: now }, respondedAt: null, responseBreachedAt: null, resolvedAt: null, isDeleted: false })
+      .comment('across-orgs: the response-time sweep looks at every organisation')
       .limit(WORKFLOW.sweepBatch)
       .select('uuid orgId responseDueAt')
       .lean();
     for (const r of due) {
-      const claimed = await this.submissions.updateOne({ uuid: r.uuid, respondedAt: null, responseBreachedAt: null }, { $set: { responseBreachedAt: now } });
+      const claimed = await this.submissions.updateOne({ uuid: r.uuid, orgId: r.orgId, respondedAt: null, responseBreachedAt: null }, { $set: { responseBreachedAt: now } });
       if (!claimed.modifiedCount) continue;
       fired++;
       await this.records.log(r.orgId, r.uuid, 'SLA', '', 'No response in time', { kind: 'RESPONSE', dueAt: r.responseDueAt });
@@ -285,11 +288,12 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     let fired = 0;
     const due = await this.submissions
       .find({ resolutionWarnAt: { $lte: now }, resolvedAt: null, slaPausedAt: null, isDeleted: false })
+      .comment('across-orgs: the time-almost-up sweep looks at every organisation')
       .limit(WORKFLOW.sweepBatch)
       .select('uuid orgId resolutionWarnAt resolutionDueAt')
       .lean();
     for (const r of due) {
-      const claimed = await this.submissions.updateOne({ uuid: r.uuid, resolutionWarnAt: r.resolutionWarnAt }, { $set: { resolutionWarnAt: null } });
+      const claimed = await this.submissions.updateOne({ uuid: r.uuid, orgId: r.orgId, resolutionWarnAt: r.resolutionWarnAt }, { $set: { resolutionWarnAt: null } });
       if (!claimed.modifiedCount) continue;
       fired++;
       await this.records.log(r.orgId, r.uuid, 'SLA', '', 'Resolution due soon', { kind: 'APPROACHING', dueAt: r.resolutionDueAt });
@@ -308,6 +312,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     let fired = 0;
     const due = await this.submissions
       .find({ nextEscalationAt: { $lte: now }, resolvedAt: null, slaPausedAt: null, isDeleted: false })
+      .comment('across-orgs: the escalation sweep looks at every organisation')
       .limit(WORKFLOW.sweepBatch)
       .select('uuid orgId')
       .lean();
@@ -319,7 +324,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
         const ctx = await this.records.slaContext(orgId, definition);
         const next = escalationAt(ctx, step + 1, record.resolutionDueAt);
         const claimed = await this.submissions.updateOne(
-          { uuid, nextEscalationAt: record.nextEscalationAt, escalationStep: step },
+          { uuid, orgId, nextEscalationAt: record.nextEscalationAt, escalationStep: step },
           { $set: { escalationStep: step + 1, nextEscalationAt: next, ...(step === 0 ? { resolutionBreachedAt: now } : {}) } },
         );
         if (!claimed.modifiedCount) break;
@@ -424,7 +429,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       return this.records.log(orgId, recordId, 'AUTOMATION', '', `${automation.name}: ${message}`, { runId, automationId: automation.id, ...data });
     };
     const finish = (status: 'DONE' | 'STOPPED') =>
-      resume ? this.runs.updateOne({ uuid: runId }, { $set: { status, steps } }) : Promise.resolve();
+      resume ? this.runs.updateOne({ uuid: runId, orgId }, { $set: { status, steps } }) : Promise.resolve();
 
     for (let index = resume?.from ?? 0; index < automation.actions.length; index++) {
       const action = automation.actions[index];
@@ -522,16 +527,16 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
           if (!signers.length) throw new Error('no one to sign');
           const title = renderTemplate(action.title, this.templateContext(ctx), false).slice(0, 200);
           await this.runs.updateOne(
-            { uuid: runId },
+            { uuid: runId, orgId: run.orgId },
             { $set: { orgId: run.orgId, recordId: run.recordId, formId: run.definition.id, automationId: automation.id, trigger: run.trigger, depth, actor, status: 'WAITING', stepIndex: index, steps } },
             { upsert: true },
           );
           const requestId = await this.signatures.start({ orgId: run.orgId, recordId: run.recordId, runId, stepKey: key, title, message: action.message ? renderTemplate(action.message, this.templateContext(ctx), false) : undefined, order: action.order, expiresInDays: action.expiresInDays, signers, confirm: action.confirm, known: action.confirm === 'KNOWN' ? renderTemplate(action.known ?? '', this.templateContext(ctx), false) : undefined, knownLabel: action.knownLabel });
-          await this.runs.updateOne({ uuid: runId }, { $set: { signatureRequestId: requestId } });
+          await this.runs.updateOne({ uuid: runId, orgId: run.orgId }, { $set: { signatureRequestId: requestId } });
           await log(`sent for signature to ${signers.length} ${signers.length === 1 ? 'person' : 'people'}: ${title}`, { ...base, ok: true, waiting: true });
           return;
         } catch (e) {
-          await this.runs.updateOne({ uuid: runId, status: 'WAITING' }, { $set: { status: 'RUNNING' } });
+          await this.runs.updateOne({ uuid: runId, orgId: run.orgId, status: 'WAITING' }, { $set: { status: 'RUNNING' } });
           await log(`SIGN failed - ${(e as Error).message}`, { ...base, ok: false, error: (e as Error).message });
           if (action.continueOnError) continue;
           await log(`stopped after step ${index + 1} failed`, { ok: false, stopped: true, stepIndex: index });
@@ -596,7 +601,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     const tctx = this.templateContext({ ...run, record: p.live, values: {}, steps: p.steps, stepKey: p.key });
     const title = renderTemplate(p.action.title, { ...tctx, values: valuesFromPayload(run.definition, p.live.payload as FormValues) }, false).slice(0, 200);
     await this.runs.updateOne(
-      { uuid: p.runId },
+      { uuid: p.runId, orgId: run.orgId },
       {
         $set: {
           orgId: run.orgId,
@@ -674,7 +679,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       }
       const all = `${parts.length} approvals at the same time: ${parts.map((part) => part.title).join('; ')}`.slice(0, 400);
       // The flow itself is answered by nobody: it has no approvers, no deadline and no email links of its own.
-      await this.runs.updateOne({ uuid: p.runId }, { $set: { 'approval.approvers': [], 'approval.keys': [], 'approval.dueAt': null, 'approval.parts': parts.length, 'approval.title': all } });
+      await this.runs.updateOne({ uuid: p.runId, orgId: run.orgId }, { $set: { 'approval.approvers': [], 'approval.keys': [], 'approval.dueAt': null, 'approval.parts': parts.length, 'approval.title': all } });
       return all;
     }
     this.records.notify(run.orgId, p.approvers, `Approval needed: ${title}${p.live.ref ? ` (${p.live.ref})` : ''}`, run.recordId, p.live.ref, run.definition.name, keys?.raw);
@@ -718,12 +723,12 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
 
     if (run.kind === 'PART') {
       // One of several asked at once. It is settled; whether the flow goes on depends on the others.
-      await this.runs.updateOne({ uuid: runId }, { $set: { status: 'DONE' } });
+      await this.runs.updateOne({ uuid: runId, orgId: user.orgId }, { $set: { status: 'DONE' } });
       await this.records.log(user.orgId, recordId, 'APPROVAL', user.uuid, comment, { phase: 'part', runId, title: run.approval.title, decision });
-      const waiting = decision === 'APPROVED' ? await this.runs.countDocuments({ parentRunId: run.parentRunId, kind: 'PART', status: 'WAITING' }) : 0;
+      const waiting = decision === 'APPROVED' ? await this.runs.countDocuments({ orgId: user.orgId, parentRunId: run.parentRunId, kind: 'PART', status: 'WAITING' }) : 0;
       if (waiting) return;
       // The last approval, or the first rejection: the rest are no longer asked, and the flow is answered as one.
-      await this.runs.updateMany({ parentRunId: run.parentRunId, kind: 'PART', status: 'WAITING' }, { $set: { status: 'STOPPED' } });
+      await this.runs.updateMany({ orgId: user.orgId, parentRunId: run.parentRunId, kind: 'PART', status: 'WAITING' }, { $set: { status: 'STOPPED' } });
       const parent = await this.runs.findOneAndUpdate(
         { uuid: run.parentRunId, orgId: user.orgId, status: 'WAITING' },
         { $set: { status: 'RUNNING', 'approval.decision': decision, 'approval.decidedBy': user.uuid, 'approval.comment': comment, 'approval.decidedAt': decidedAt } },
@@ -734,11 +739,11 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       return this.carryOn(parent as FormFlowRun & { approval: FlowApproval }, decision, user, comment, decidedAt);
     }
     // An administrator answering for the whole step: the approvals it was waiting for are no longer asked.
-    if (run.approval.parts) await this.runs.updateMany({ parentRunId: runId, kind: 'PART', status: 'WAITING' }, { $set: { status: 'STOPPED' } });
+    if (run.approval.parts) await this.runs.updateMany({ orgId: user.orgId, parentRunId: runId, kind: 'PART', status: 'WAITING' }, { $set: { status: 'STOPPED' } });
 
     if (run.kind === 'ACTION') {
       // A named action waiting for approval: the decision makes (or refuses) the move.
-      await this.runs.updateOne({ uuid: runId }, { $set: { status: 'DONE' } });
+      await this.runs.updateOne({ uuid: runId, orgId: user.orgId }, { $set: { status: 'DONE' } });
       await this.records.completeActionApproval(user.orgId, recordId, run.actionKey, decision, user.uuid, comment, runId);
       return;
     }
@@ -762,7 +767,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       output,
     });
     if (!automation) {
-      await this.runs.updateOne({ uuid: runId }, { $set: { status: 'STOPPED' } });
+      await this.runs.updateOne({ uuid: runId, orgId: user.orgId }, { $set: { status: 'STOPPED' } });
       return;
     }
     // Carry on in the background, like after a submission.
@@ -779,7 +784,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
   private async byKey(key: unknown) {
     if (typeof key !== 'string' || !APPROVAL_KEY.test(key)) return null;
     const hash = hashToken(key);
-    const run = await this.runs.findOne({ 'approval.keys.hash': hash }).lean();
+    const run = await this.runs.findOne({ 'approval.keys.hash': hash }).comment('across-orgs: an approval link is found by its unguessable key, before anyone is known').lean();
     const mine = run?.approval?.keys?.find((k) => k.hash === hash);
     if (!run?.approval || !mine) return null;
     return { run, approval: run.approval, userId: mine.userId };
@@ -809,7 +814,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
     const person = (await this.records.present(run.orgId, [userId])).length ? (await this.records.contacts(run.orgId, [userId])).get(userId) : undefined;
     if (!person || !(await this.records.worksRecords(run.orgId, userId))) throw new ForbiddenException('You can no longer answer this.');
     await this.decide({ uuid: userId, orgId: run.orgId, name: person.name, modules: [] }, run.recordId, run.uuid, body);
-    await this.runs.updateOne({ uuid: run.uuid }, { $pull: { 'approval.keys': { userId } } });
+    await this.runs.updateOne({ uuid: run.uuid, orgId: run.orgId }, { $pull: { 'approval.keys': { userId } } });
     return { done: true };
   }
 
@@ -826,7 +831,7 @@ export class FormAutomationService implements OnModuleInit, OnModuleDestroy {
       const said = e.output.status === 'SIGNED' ? `signed by ${e.output.signers === 1 ? 'the signer' : `all ${e.output.signers} signers`}` : e.output.status === 'DECLINED' ? `declined by ${e.output.declinedBy}` : 'not signed in time';
       await this.records.log(e.orgId, e.recordId, 'AUTOMATION', '', `${automation?.name ?? 'Automation'}: ${said}`, { runId: e.runId, automationId: run.automationId, stepKey: e.stepKey, stepIndex: run.stepIndex, action: 'SIGN', ok: e.output.status === 'SIGNED', output: e.output });
       if (!automation) {
-        await this.runs.updateOne({ uuid: e.runId }, { $set: { status: 'STOPPED' } });
+        await this.runs.updateOne({ uuid: e.runId, orgId: e.orgId }, { $set: { status: 'STOPPED' } });
         return;
       }
       await this.runFlow(

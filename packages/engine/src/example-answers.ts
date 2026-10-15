@@ -15,9 +15,14 @@ export const EXAMPLE_SIGNATURE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA
 const SAMPLES = ['Asha Rao', 'ABCDE1234F', '411001', 'HDFC0001234', '123456789012', 'MH12AB1234', '1234', '1234567890', 'HDFCINBB', 'P1234567', 'AB123456', '27ABCDE1234F1Z5', 'MA1AB2CD3EF456789', 'Test value for this field'];
 const DAY_OFFSETS = [0, 3, -3, 40, -40, 400, -400, -11000, -2500, 1500];
 const pad = (n: number) => String(n).padStart(2, '0');
+/**
+ * A day counted from `now`, as the form's own rules count days: in UTC, as `today()` does when no time zone is
+ * given. (Counted in the computer's own zone instead, "today" was tomorrow for a rule between midnight and 5:30
+ * in India, and a date that had to be past was refused.)
+ */
 const isoDay = (now: Date, offset: number) => {
   const d = new Date(now.getTime() + offset * 86_400_000);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 };
 
 type Path = string;

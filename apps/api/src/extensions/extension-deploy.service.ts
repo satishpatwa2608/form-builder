@@ -248,7 +248,7 @@ export class ExtensionDeployService {
 
   /** The organisation a deploy key speaks for. Anything else is told nothing but "no". */
   async callerFor(key: string, ip: string, userAgent: string): Promise<DeployCaller> {
-    const row = key.startsWith(KEY_PREFIX) ? await this.keys.findOneAndUpdate({ hash: hashToken(key) }, { $set: { lastUsedAt: new Date() } }).lean() : null;
+    const row = key.startsWith(KEY_PREFIX) ? await this.keys.findOneAndUpdate({ hash: hashToken(key) }, { $set: { lastUsedAt: new Date() } }, { comment: 'across-orgs: a deploy key is found by its unguessable value' }).lean() : null;
     if (!row) throw new UnauthorizedException('This deploy key is not valid. Make a new one on the Extensions page.');
     return { orgId: row.orgId, userId: `deploy-key:${row.hint}`, ip, userAgent: userAgent.slice(0, 200) };
   }
@@ -260,9 +260,9 @@ export class ExtensionDeployService {
    * service stopped is closed as failed first, so the organisation is not left waiting for ever.
    */
   async takeNext(): Promise<{ id: string; kind: 'DEPLOY' | 'REMOVE'; orgId: string; image: string } | null> {
-    const stale = await this.deploys.find({ status: 'RUNNING', updatedAt: { $lt: new Date(Date.now() - 10 * 60_000) } }).lean();
+    const stale = await this.deploys.find({ status: 'RUNNING', updatedAt: { $lt: new Date(Date.now() - 10 * 60_000) } }, null, { comment: 'across-orgs: the deploy worker serves every organisation' }).lean();
     for (const row of stale) await this.finish(row.id, 'FAILED', 'The deployment was interrupted. Nothing was changed; ask for it again.', '');
-    const row = await this.deploys.findOneAndUpdate({ status: 'PENDING' }, { $set: { status: 'RUNNING' } }, { sort: { createdAt: 1 }, new: true }).lean();
+    const row = await this.deploys.findOneAndUpdate({ status: 'PENDING' }, { $set: { status: 'RUNNING' } }, { comment: 'across-orgs: the deploy worker serves every organisation', sort: { createdAt: 1 }, new: true }).lean();
     if (!row) return null;
     // Checked again here, at the last step before something is run: the image is this organisation's and no one else's.
     if (!UUID.test(row.orgId) || (row.kind === 'DEPLOY' && row.image !== `${this.registry}/${spaceOf(row.orgId)}:${row.tag}`) || (row.kind === 'DEPLOY' && !TAG.test(row.tag))) {
@@ -276,7 +276,7 @@ export class ExtensionDeployService {
   async finish(id: string, status: 'LIVE' | 'FAILED' | 'REMOVED', message: string, output: string) {
     // The end of the extension's own output: enough to see why it did not start, and no more than a screenful.
     const tail = output.replace(/[^\x09\x0a\x20-\x7e\u00a0-\uffff]/g, '').slice(-4000);
-    const row = await this.deploys.findOneAndUpdate({ id, status: 'RUNNING' }, { $set: { status, message: message.slice(0, 500), output: tail, finishedAt: new Date() } }, { new: true }).lean();
+    const row = await this.deploys.findOneAndUpdate({ id, status: 'RUNNING' }, { $set: { status, message: message.slice(0, 500), output: tail, finishedAt: new Date() } }, { new: true, comment: 'across-orgs: the deploy worker finishes the deploy it took' }).lean();
     if (!row) throw new NotFoundException('No such deployment under way');
     await this.audit.record({ orgId: row.orgId, actorId: 'system:deploy' }, { action: status === 'LIVE' ? 'extension.deployed' : status === 'REMOVED' ? 'extension.undeployed' : 'extension.deploy_failed', targetType: 'extension', targetId: id, after: { tag: row.tag } });
     if (status === 'FAILED') orgLog.error(row.orgId, 'extensions', `Deployment failed${row.tag ? ` (version ${row.tag})` : ''}: ${message}`, { deploy: id });

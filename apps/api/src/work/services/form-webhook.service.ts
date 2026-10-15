@@ -132,11 +132,11 @@ export class FormWebhookService implements OnModuleInit {
     }
     try {
       const res = await postWebhook(s.url, body, s.secret || process.env.FORM_WEBHOOK_SECRET);
-      await this.hooks.updateOne({ uuid: s.uuid }, { $set: { lastDeliveryAt: new Date(), lastResult: `${e.name}: ${res.status}`, failures: 0 } });
+      await this.hooks.updateOne({ uuid: s.uuid, orgId: s.orgId }, { $set: { lastDeliveryAt: new Date(), lastResult: `${e.name}: ${res.status}`, failures: 0 } });
     } catch (err) {
       const msg = ((err as Error).message ?? 'failed').slice(0, 200);
       this.logger.warn(`webhook ${s.name} (${e.name}) failed: ${msg}`);
-      await this.hooks.updateOne({ uuid: s.uuid }, { $set: { lastDeliveryAt: new Date(), lastResult: `${e.name}: ${msg}` }, $inc: { failures: 1 } });
+      await this.hooks.updateOne({ uuid: s.uuid, orgId: s.orgId }, { $set: { lastDeliveryAt: new Date(), lastResult: `${e.name}: ${msg}` }, $inc: { failures: 1 } });
       throw err;
     }
   }
