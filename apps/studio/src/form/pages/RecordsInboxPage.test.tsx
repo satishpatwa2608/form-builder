@@ -259,7 +259,7 @@ describe('Records inbox', () => {
   it('a button that needs a file first says so before it is pressed, and shows why it was refused', async () => {
     Object.assign(registry, { forms: [form] });
     api.actions = [{ key: 'resolve', label: 'Resolve', to: 'DONE', requireFiles: { picturesOnly: true, if: { field: 'category', operator: 'equals', value: 'DELIVERY' } } }];
-    const refusal = Object.assign(new Error('Complete these to Resolve'), { status: 400, fields: [{ field: 'files', message: 'Add a picture to the record before you Resolve' }] });
+    const refusal = Object.assign(new Error('Complete these to Resolve'), { status: 400, fields: [{ field: 'files', message: 'Add a picture to the record before "Resolve"' }] });
     api.mutate.mockRejectedValueOnce(refusal);
     const user = userEvent.setup();
     render(<Page />);

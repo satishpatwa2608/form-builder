@@ -78,7 +78,7 @@ describe('A file required before a record can move (e2e)', () => {
     const id = await complaint('LEAK');
     await act(id, 'start').expect(200);
     const refused = await act(id, 'resolve').expect(400);
-    expect(refused.body.errors).toEqual([{ field: 'files', message: 'Add a picture to the record before you Resolve' }]);
+    expect(refused.body.errors).toEqual([{ field: 'files', message: 'Add a picture to the record before "Resolve"' }]);
     await addFile(id, 'invoice.pdf', 'application/pdf', await pdf());
     await act(id, 'resolve').expect(400);
     await addFile(id, 'repair.png', 'image/png', PNG);
@@ -105,7 +105,7 @@ describe('A file required before a record can move (e2e)', () => {
     const rec = (await h.api().post(`/public/forms/MAINT_TWO/submissions?org=${orgId}`).send({ values: { kind: 'NOISE' } }).expect(201)).body.submissionId as string;
     await act(rec, 'start').expect(200);
     await addFile(rec, 'note.pdf', 'application/pdf', await pdf());
-    expect((await act(rec, 'resolve').expect(400)).body.errors[0].message).toBe('Add 2 files to the record before you Resolve (1 so far)');
+    expect((await act(rec, 'resolve').expect(400)).body.errors[0].message).toBe('Add 2 files to the record before "Resolve" (1 so far)');
     await addFile(rec, 'photo.png', 'image/png', PNG);
     await act(rec, 'resolve').expect(200);
   });

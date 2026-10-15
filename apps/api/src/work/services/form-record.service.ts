@@ -966,7 +966,7 @@ export class FormRecordService {
       ).length;
       const need = files.count ?? 1;
       const what = files.picturesOnly ? (need === 1 ? 'a picture' : `${need} pictures`) : need === 1 ? 'a file' : `${need} files`;
-      if (added < need) missing.push({ field: 'files', message: `Add ${what} to the record before you ${action.label}${need > 1 ? ` (${added} so far)` : ''}` });
+      if (added < need) missing.push({ field: 'files', message: `Add ${what} to the record before "${action.label}"${need > 1 ? ` (${added} so far)` : ''}` });
     }
     if (missing.length) throw new FormFieldErrors(400, `Complete these to ${action.label}`, missing);
     if (await this.runs.exists({ orgId: user.orgId, recordId: id, kind: 'ACTION', status: 'WAITING' })) {
