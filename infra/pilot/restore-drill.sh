@@ -52,7 +52,7 @@ API_PORT=4199
 (cd apps/api && env -i PATH="$PATH" HOME="$HOME" NODE_ENV=development PORT=$API_PORT \
   MONGODB_URL="mongodb://127.0.0.1:$PORT/form-builder" JOBS_ROLE=enqueue FORM_WORKFLOW_SWEEP=false \
   JWT_SECRET="$(openssl rand -base64 48)" SECRET_KEY="${DRILL_SECRET_KEY:-$(openssl rand -base64 32)}" ${DRILL_KMS_KEY_ID:+KMS_KEY_ID=$DRILL_KMS_KEY_ID AWS_PROFILE=formbuilder} \
-  node dist/main.js > "$WORK/api.log" 2>&1) &
+  exec node dist/main.js > "$WORK/api.log" 2>&1) &
 API_PID=$!
 for i in $(seq 1 60); do curl -fsS -m 2 "http://127.0.0.1:$API_PORT/health" -o "$WORK/health.json" 2>/dev/null && break; sleep 1; done
 grep -q '"database":"ok"' "$WORK/health.json" || { echo "the product did not come up"; tail -20 "$WORK/api.log"; exit 1; }
