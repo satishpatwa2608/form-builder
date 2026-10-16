@@ -129,3 +129,21 @@ describe('WhatsApp', () => {
     expect(state.calls.some((c) => c.path === '/org/sms' && c.method === 'PUT')).toBe(false);
   });
 });
+
+describe('WhatsApp with a provider chosen', () => {
+  it('writes the call from the account details: the person fills in their account, not the technical part', async () => {
+    show(<SmsCard channel="whatsapp" />);
+    fireEvent.change(await screen.findByLabelText('Your WhatsApp provider'), { target: { value: 'META' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Write the call from these details' }));
+    expect(await screen.findByText('Fill in: Phone number ID')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Phone number ID'), { target: { value: '1234567890' } });
+    fireEvent.change(screen.getByLabelText('Approved template name'), { target: { value: 'request_update' } });
+    fireEvent.change(screen.getByLabelText('Template language code'), { target: { value: 'en' } });
+    fireEvent.change(screen.getByLabelText('Access token'), { target: { value: 'EAAG-token' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Write the call from these details' }));
+    expect((screen.getByLabelText('Where your WhatsApp service is called') as HTMLInputElement).value).toBe('https://graph.facebook.com/v20.0/1234567890/messages');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(sent('/org/whatsapp', 'PUT')).toMatchObject({ url: 'https://graph.facebook.com/v20.0/1234567890/messages', format: 'JSON', headers: [{ name: 'Authorization', value: 'Bearer EAAG-token' }] }));
+    expect(JSON.parse(sent('/org/whatsapp', 'PUT').body).template.name).toBe('request_update');
+  });
+});

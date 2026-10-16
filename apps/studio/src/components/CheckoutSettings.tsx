@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Alert, Badge, Button, Card, SelectField, TextField, useSubmit } from './ui';
+import { WHATSAPP_PROVIDERS, whatsappPreset, type WhatsappProvider } from './whatsapp-presets';
 
 interface PaymentSettings {
   provider: 'NONE' | 'TEST' | 'RAZORPAY' | 'STRIPE';
@@ -123,6 +124,18 @@ export function SmsCard({ channel = 'sms' }: { channel?: 'sms' | 'whatsapp' }) {
   const [form, setForm] = useState({ url: '', method: 'POST' as SmsSettings['method'], format: 'JSON' as SmsSettings['format'], body: '', headerName: '', headerValue: '' });
   const [to, setTo] = useState('');
   const [note, setNote] = useState<string>();
+  // WhatsApp: a provider's details, from which the call below is written.
+  const [provider, setProvider] = useState<WhatsappProvider | ''>('');
+  const [details, setDetails] = useState<Record<string, string>>({});
+  const [presetProblem, setPresetProblem] = useState<string>();
+  const usePreset = () => {
+    if (!provider) return;
+    const p = whatsappPreset(provider, details);
+    if ('missing' in p) return setPresetProblem(`Fill in: ${p.missing}`);
+    setPresetProblem(undefined);
+    setForm({ url: p.url, method: p.method, format: p.format, body: p.body, headerName: p.headerName, headerValue: p.headerValue });
+    setNote('The call is written from your details. Save it, then send a test message.');
+  };
   useEffect(() => {
     if (data) setForm({ url: data.url, method: data.method, format: data.format, body: data.body, headerName: data.headers[0]?.name ?? '', headerValue: '' });
   }, [data]);
@@ -152,6 +165,33 @@ export function SmsCard({ channel = 'sms' }: { channel?: 'sms' | 'whatsapp' }) {
         {note && <Alert tone="success">{note}</Alert>}
         {error && !Object.keys(save.fields).length && !Object.keys(test.fields).length && <Alert tone="error">{error}</Alert>}
         {data.lastError && !error && <Alert tone="warn">{words.last}: {data.lastError}</Alert>}
+        {channel === 'whatsapp' && (
+          <div className="st-stack" style={{ gap: 8 }} role="group" aria-label="Provider details">
+            <SelectField label="Your WhatsApp provider" value={provider} onChange={(e) => (setProvider(e.target.value as WhatsappProvider | ''), setDetails({}), setPresetProblem(undefined))} hint="Pick yours and fill in your account details: the technical part below is written for you.">
+              <option value="">Other: I will write the call myself</option>
+              {WHATSAPP_PROVIDERS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </SelectField>
+            {provider && (
+              <>
+                <div className="st-grid-2">
+                  {WHATSAPP_PROVIDERS.find((p) => p.value === provider)!.fields.map((f) => (
+                    <TextField key={f.key} label={f.label} hint={f.hint} type={f.secret ? 'password' : 'text'} autoComplete="off" value={details[f.key] ?? ''} onChange={(e) => setDetails((d) => ({ ...d, [f.key]: e.target.value }))} />
+                  ))}
+                </div>
+                {presetProblem && <Alert tone="error">{presetProblem}</Alert>}
+                <div>
+                  <Button type="button" variant="secondary" size="sm" onClick={usePreset}>
+                    Write the call from these details
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <TextField label={words.where} placeholder={words.placeholder} value={form.url} onChange={(e) => set('url', e.target.value)} error={save.fields.url} hint="An https:// address. It may itself contain {{to}} and {{message}}." />
         <div className="st-grid-2">
           <SelectField label="How it is called" value={form.method} onChange={(e) => set('method', e.target.value as SmsSettings['method'])}>
