@@ -41,6 +41,13 @@ The builder and form app have their addresses built in, so a change of host name
 
 To go back to the version before: `infra/pilot/rollback.sh` (or `infra/pilot/rollback.sh <tag>`).
 
+## Alerts
+
+`infra/pilot/alerts.sh on <email>` emails that address when the server fails its checks, the API stops answering
+or work waits over 10 minutes, a job gives up, or the processor stays above 90% (AWS sends a confirmation link
+first). `off` / `resume` stop and restart the emails, `remove` takes it all away, `status` shows it. About
+US$1.40 a month while it exists. The server reports its health once a minute (`health-metrics.sh`, by cron).
+
 ## Looking at it
 
 `aws ssm start-session --profile formbuilder --region ap-south-1 --target i-08cd40934729c192b`, then
