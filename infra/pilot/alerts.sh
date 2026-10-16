@@ -27,9 +27,12 @@ case "${1:-status}" in
   on)
     EMAIL=${2:?the email address the alerts go to}
     T=$(topic); [ -n "$T" ] || T=$(aws sns create-topic "${A[@]}" --name fb-pilot-alerts "${TAG[@]}" --query TopicArn --output text)
-    aws sns subscribe "${A[@]}" --topic-arn "$T" --protocol email --notification-endpoint "$EMAIL" >/dev/null
+    # Once per address: subscribing again would send another confirmation email.
+    aws sns list-subscriptions-by-topic "${A[@]}" --topic-arn "$T" --query 'Subscriptions[].Endpoint' --output text | tr '\t' '\n' | grep -qx "$EMAIL" \
+      || aws sns subscribe "${A[@]}" --topic-arn "$T" --protocol email --notification-endpoint "$EMAIL" >/dev/null
     # The server may send these two numbers, and nothing else, to CloudWatch.
     aws iam put-role-policy "${A[@]}" --role-name $ROLE --policy-name fb-pilot-health-metrics --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"cloudwatch:PutMetricData\",\"Resource\":\"*\",\"Condition\":{\"StringEquals\":{\"cloudwatch:namespace\":\"$NS\"}}}]}"
+    sleep 15 # a new permission takes a few seconds to reach the server
     aws s3 cp "${A[@]}" infra/pilot/health-metrics.sh s3://fb-pilot-547878963606-files/deploy/health-metrics.sh --only-show-errors
     on_server "aws s3 cp s3://fb-pilot-547878963606-files/deploy/health-metrics.sh /opt/fb/health-metrics.sh --only-show-errors && chmod +x /opt/fb/health-metrics.sh && echo '* * * * * root /opt/fb/health-metrics.sh >/dev/null 2>&1' > /etc/cron.d/fb-health-metrics && /opt/fb/health-metrics.sh"
     common=(--alarm-actions "$T" --ok-actions "$T" "${TAG[@]}")
