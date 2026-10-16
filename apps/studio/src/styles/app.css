@@ -582,6 +582,74 @@
   display: none;
 }
 
+/* The person, top right: their name and initials open their account menu. */
+.st-usermenu {
+  position: relative;
+}
+.st-usermenu__button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.st-usermenu__button:hover,
+.st-usermenu__button[aria-expanded='true'] {
+  background: var(--fb-soft);
+  border-color: var(--fb-line);
+}
+.st-usermenu__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  min-width: 240px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  background: var(--fb-surface);
+  border: 1px solid var(--fb-line);
+  border-radius: var(--fb-radius);
+  box-shadow: var(--fb-shadow);
+}
+.st-usermenu__who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--fb-line);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.st-usermenu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--fb-radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.st-usermenu__item:hover,
+.st-usermenu__item:focus-visible {
+  background: var(--fb-soft);
+  outline: none;
+}
+.st-usermenu__item--out {
+  color: var(--fb-danger);
+}
+
 /* ---------- pages ---------- */
 .st-stats {
   display: grid;

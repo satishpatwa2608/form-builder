@@ -329,6 +329,11 @@ export class AuthService implements OnModuleInit {
 
   // ---------------------------------------------------------------- passwords
 
+  async updateProfile(auth: AuthContext, meta: RequestMeta, body: { name: string }) {
+    await this.users.updateOne({ id: auth.userId }, { $set: { name: body.name } });
+    await this.userEvent(auth.userId, meta, 'auth.profile_changed');
+  }
+
   async changePassword(auth: AuthContext, body: { currentPassword: string; newPassword: string }) {
     const user = await this.users.findOne({ id: auth.userId });
     if (!(await argon2.verify(user!.passwordHash, body.currentPassword))) throw new UnauthorizedException('Current password is not right');

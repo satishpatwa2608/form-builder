@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Patch, Post, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
@@ -25,6 +25,7 @@ const codeBody = z.object({ code: z.string().max(20) });
 const disableBody = z.object({ password: z.string().max(200), code: z.string().max(20) });
 const changeBody = z.object({ currentPassword: z.string().max(200), newPassword: password });
 const switchBody = z.object({ orgId: z.string().min(1).max(64) });
+const profileBody = z.object({ name });
 
 /** Sign-in routes get a tighter limit than the global one. */
 const STRICT = { default: { limit: 10, ttl: 60_000 } };
@@ -142,6 +143,14 @@ export class AuthController {
   @HttpCode(200)
   switchOrg(@Auth() auth: AuthContext, @Body(new ZodBody(switchBody)) body: z.infer<typeof switchBody>) {
     return this.auth.switchOrg(auth, body.orgId);
+  }
+
+  /** A person changes their own name, as everyone sees it. The email is how they sign in, so it is not changed here. */
+  @AllowWithoutMfa()
+  @Patch('me')
+  async updateProfile(@Auth() auth: AuthContext, @Meta() meta: RequestMeta, @Body(new ZodBody(profileBody)) body: z.infer<typeof profileBody>) {
+    await this.auth.updateProfile(auth, meta, body);
+    return this.auth.me(auth);
   }
 
   @Post('password')

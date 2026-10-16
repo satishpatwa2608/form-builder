@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { Copy, Download, ShieldCheck, ShieldOff } from 'lucide-react';
 import { api } from '../lib/api';
@@ -146,6 +146,42 @@ function TwoFactorCard() {
   );
 }
 
+/** A person's own name, as colleagues see it on records and in lists. The email is how they sign in: shown, not changed. */
+function ProfileCard() {
+  const { me, reload } = useAuth();
+  const [name, setName] = useState(me?.user.name ?? '');
+  const [done, setDone] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (window.location.hash === '#profile') box.current?.scrollIntoView({ block: 'start' });
+  }, []);
+  const save = useSubmit(async () => {
+    await api('/auth/me', { method: 'PATCH', body: { name: name.trim() } });
+    await reload();
+    setDone(true);
+  });
+  if (!me) return null;
+  return (
+    <div id="profile" ref={box}>
+      <Card title="Your profile" subtitle="Your name is what colleagues see on records, in lists and in emails sent for you.">
+        <form className="st-stack" onSubmit={save.submit} noValidate>
+          {done && <Alert tone="success">Saved.</Alert>}
+          {save.error && !save.fields.name && <Alert tone="error">{save.error}</Alert>}
+          <div className="st-grid-2">
+            <TextField label="Your name" autoComplete="name" maxLength={100} value={name} onChange={(e) => { setName(e.target.value); setDone(false); }} error={save.fields.name} />
+            <TextField label="Email" value={me.user.email} readOnly disabled hint="You sign in with it. To use another, ask an admin to invite that address." />
+          </div>
+          <div>
+            <Button type="submit" busy={save.busy} disabled={!name.trim() || name.trim() === me.user.name}>
+              Save
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
 function PasswordCard() {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -224,6 +260,7 @@ export default function AccountPage() {
         <TwoFactorCard />
         {!needsTwoFactor && (
           <>
+            <ProfileCard />
             <AwayCard />
             <ShareListCard />
             <PasswordCard />

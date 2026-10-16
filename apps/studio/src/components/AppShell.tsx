@@ -2,11 +2,12 @@ import { IdleSignOut } from './IdleSignOut';
 import { useState } from 'react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, Building2, CalendarClock, ClipboardList, Database, FilePlus2, FolderTree, Home, Inbox, Library, ListChecks, LogOut, Mails, Menu, Palette, Puzzle, ScrollText, Settings, Table2, Terminal, UserRound, Users, Webhook, Workflow, type LucideIcon } from 'lucide-react';
+import { UserMenu } from './UserMenu';
 import { NotificationBell } from './NotificationBell';
 import { useAuth } from '../lib/auth';
 import type { Permission } from '../lib/types';
 import { ROLE_LABEL } from '../lib/types';
-import { Alert, Avatar, Badge, Button, Logo } from './ui';
+import { Alert, Badge, Button, Logo } from './ui';
 
 interface NavItem {
   to: string;
@@ -123,8 +124,7 @@ export function AppShell() {
           </div>
           <div className="st-user">
             <NotificationBell />
-            <span className="st-user__name">{me.user.name}</span>
-            <Avatar name={me.user.name} />
+            <UserMenu />
           </div>
         </header>
         <main className="st-content">
