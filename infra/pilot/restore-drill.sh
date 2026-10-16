@@ -4,9 +4,9 @@
 # at the end. Nothing on the pilot is touched.
 #   infra/pilot/restore-drill.sh [form-builder-YYYY-MM-DDTHHMMZ.archive.gz]
 #
-# It starts the product with throwaway keys, so it proves the data comes back and the product runs on it, not
-# that sealed values open: that needs the pilot's own SECRET_KEY and KMS key (docs/operations.md, "Keys"), and is
-# done with someone who may handle them, by setting DRILL_SECRET_KEY and DRILL_KMS_KEY_ID before running this.
+# Without keys it starts the product with throwaway ones, so it proves the data comes back and the product runs
+# on it. With the pilot's own SECRET_KEY and KMS key set as DRILL_SECRET_KEY and DRILL_KMS_KEY_ID (docs/operations.md,
+# "Keys"), it also checks that every sealed value opens with them (counts only; nothing opened is printed).
 set -euo pipefail
 A=(--profile formbuilder --region ap-south-1)
 BUCKET=fb-pilot-547878963606-files
@@ -67,5 +67,13 @@ set -- $FORM
 STATUS=$(curl -s -o "$WORK/form.json" -w '%{http_code}' "http://127.0.0.1:$API_PORT/public/forms/$2?org=$1")
 [ "$STATUS" = 200 ] || { echo "form $2 answered $STATUS"; exit 1; }
 echo "$2: $(grep -o '"name":"[^"]*"' "$WORK/form.json" | head -1)"
+
+if [ -n "${DRILL_SECRET_KEY:-}" ]; then
+  step "7. the real keys open what was sealed"
+  (cd apps/api && env -i PATH="$PATH" HOME="$HOME" MONGODB_URL="mongodb://127.0.0.1:$PORT/form-builder" \
+    SECRET_KEY="$DRILL_SECRET_KEY" ${DRILL_SECRET_KEY_PREVIOUS:+SECRET_KEY_PREVIOUS=$DRILL_SECRET_KEY_PREVIOUS} \
+    ${DRILL_KMS_KEY_ID:+KMS_KEY_ID=$DRILL_KMS_KEY_ID AWS_PROFILE=formbuilder AWS_REGION=ap-south-1} \
+    node dist/cli/check-keys.js) || { echo "a sealed value did not open with these keys"; exit 1; }
+fi
 
 echo "restore drill passed in $(( $(date +%s) - started ))s: $NAME"

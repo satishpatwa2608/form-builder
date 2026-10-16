@@ -337,9 +337,15 @@ public sees it, then removes everything it made. Nothing on the pilot is touched
 on the backup of the 15th: 2 organisations, 4 people, 180 form versions, 45 responses came back; the product
 started; "Workshop booking" opened; 15 seconds. Run it monthly, and after any change to backups.
 
-It starts the product with throwaway keys, so it shows the data comes back, not that sealed values open. To
-show those too, run it with `DRILL_SECRET_KEY` and `DRILL_KMS_KEY_ID` set to the pilot's own (someone who may
-handle them), then open a connector and test it, and sign in with two-factor.
+Without keys it starts the product with throwaway ones, so it shows the data comes back, not that sealed values
+open. With `DRILL_SECRET_KEY` and `DRILL_KMS_KEY_ID` set to the pilot's own (read from SSM straight into the
+environment, never printed), step 7 runs `check-keys`: every value sealed with SECRET_KEY, and every value sealed
+with a KMS data key (connector credentials, PDF certificates, extensions), is opened and counted; nothing opened
+is printed. Run with the real keys on 16 October 2026, backup of the 15th: SECRET_KEY opened 2 of 2, KMS opened
+4 of 4; 16 seconds.
+
+    G() { aws ssm get-parameter --profile formbuilder --region ap-south-1 --with-decryption --name "$1" --query Parameter.Value --output text; }
+    DRILL_SECRET_KEY=$(G /fb-pilot/SECRET_KEY) DRILL_KMS_KEY_ID=$(G /fb-pilot/KMS_KEY_ID) infra/pilot/restore-drill.sh
 
 **Keys.** What each one protects, and what losing it costs:
 
