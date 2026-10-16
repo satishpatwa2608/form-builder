@@ -53,12 +53,13 @@ export class OrgsService {
       security: { require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, idleMinutes: idleMinutesOf(org!.security) },
       portal: { enabled: !!org!.portal?.enabled, title: org!.portal?.title ?? '', intro: org!.portal?.intro ?? '' },
       ai: { drafting: !!org!.ai?.drafting },
+      retention: { days: org!.retention ? org!.retention.days : 7 },
     };
   }
 
-  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean; requireReview?: boolean; idleMinutes?: number }; portal?: { enabled?: boolean; title?: string; intro?: string }; ai?: { drafting?: boolean } }) {
+  async update(auth: AuthContext, body: { name?: string; security?: { require2fa?: boolean; requireReview?: boolean; idleMinutes?: number }; portal?: { enabled?: boolean; title?: string; intro?: string }; ai?: { drafting?: boolean }; retention?: { days: number | null } }) {
     const org = await this.orgs.findOne({ id: auth.orgId });
-    const before = { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled, aiDrafting: !!org!.ai?.drafting };
+    const before = { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled, aiDrafting: !!org!.ai?.drafting, retentionDays: org!.retention ? org!.retention.days : 7 };
     if (body.security?.require2fa === true && !auth.mfa) {
       // Otherwise the admin locks themselves out on the next request.
       throw new BadRequestException('Turn on two-factor sign-in for yourself first');
@@ -71,13 +72,17 @@ export class OrgsService {
     if (body.portal?.title !== undefined) org!.set({ 'portal.title': body.portal.title });
     if (body.portal?.intro !== undefined) org!.set({ 'portal.intro': body.portal.intro });
     if (body.ai?.drafting !== undefined) org!.set({ 'ai.drafting': body.ai.drafting });
+    if (body.retention !== undefined) {
+      org!.set('retention', { days: body.retention.days });
+      org!.markModified('retention');
+    }
     await org!.save();
     await this.audit.record(actorOf(auth), {
       action: 'org.updated',
       targetType: 'organization',
       targetId: auth.orgId,
       before,
-      after: { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled, aiDrafting: !!org!.ai?.drafting },
+      after: { name: org!.name, require2fa: !!org!.security?.require2fa, requireReview: !!org!.security?.requireReview, portal: !!org!.portal?.enabled, aiDrafting: !!org!.ai?.drafting, retentionDays: org!.retention ? org!.retention.days : 7 },
     });
     return this.get(auth);
   }

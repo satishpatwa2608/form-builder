@@ -861,7 +861,27 @@ export function RecordDrawer({ recordId, onClose }: RecordDrawerProps) {
                 Comment
               </Button>
             </section>
-
+            {data.canRunAgain && (
+              <section aria-label="Keeping" className="fb-settings" style={{ gap: 6 }}>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={!!record.held}
+                    disabled={act.isPending}
+                    onChange={(e) =>
+                      void run(
+                        { kind: "hold", held: e.target.checked },
+                        e.target.checked ? "Kept past the retention" : "Let go: deleted with the rest when its time comes",
+                      )
+                    }
+                  />
+                  Keep this record
+                </label>
+                <span className="fb-muted text-sm">
+                  Not deleted when your organisation's retention passes, for example while it is disputed.
+                </span>
+              </section>
+            )}
             </aside>
           </div>
         )}

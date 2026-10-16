@@ -127,6 +127,11 @@ export class Organization {
   @Prop({ type: OrgSso, default: () => ({}) }) sso: OrgSso;
   @Prop({ type: OrgPortal, default: () => ({}) }) portal: OrgPortal;
   @Prop({ type: OrgAi, default: () => ({}) }) ai: OrgAi;
+  /**
+   * How many days a closed record is kept (null: kept until deleted by hand). The organisation's own system keeps
+   * it for good, through a connector; see work/services/retention.service.ts.
+   */
+  @Prop({ type: MongooseSchema.Types.Mixed, default: () => ({ days: 7 }) }) retention: { days: number | null };
   @Prop({ type: OrgMail, default: () => ({}) }) mail: OrgMail;
   /** The organisation's own SMS service (verify/sms.service.ts) and its payment service (payments/payments.service.ts). Secrets in them are sealed. */
   @Prop({ type: MongooseSchema.Types.Mixed, default: () => ({}) }) sms: Record<string, unknown>;

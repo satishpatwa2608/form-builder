@@ -34,6 +34,7 @@ import { Form, FormSchema } from './forms/form.schema';
 import { FormsController } from './forms/forms.controller';
 import { FormsService } from './forms/forms.service';
 import { HealthController } from './health.controller';
+import { RetentionService } from './work/services/retention.service';
 import { previousKeys } from './common/crypto';
 import { AiController } from './ai/ai.controller';
 import { AiService } from './ai/ai.service';
@@ -359,6 +360,7 @@ export class AppModule {
         SealService,
         FormReviewService,
         FormAutomationService,
+        RetentionService,
         FormHandlerRegistry,
         WorkItemService,
         FormWebhookService,

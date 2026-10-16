@@ -321,7 +321,13 @@ limit after about 7,000 responses). Now a request to run while one is going only
 - Drafts (save & resume): deleted 30 days after the last save (TTL index), or on submit.
 - SSO sign-in state: 10 minutes (TTL index).
 - Usage and analytics: daily counts only, no personal data.
-- Submissions and audit log: kept until a retention policy is decided (open question in docs/plan.md).
+- Records (responses) with their files, PDFs, signed copies, timeline and flow runs: deleted once the organisation's retention has passed (Settings → Keeping data: 7 days by default, or 30, 90, 365 days, or keep everything). Counted from `resolvedAt`; for a form without a workflow, from `createdAt`.
+  - Open work (a workflow record not resolved) is never deleted.
+  - A record whose form hands it to the organisation's own system (a connector write, a webhook, a flow tool) is deleted only after that step succeeded (an `AUTOMATION` event with `ok: true`). One that never got there stays, and shows in "Work that failed".
+  - A record a Forms admin keeps ("Keep this record", `held`) stays until let go.
+  - `RetentionService` runs hourly in the process that runs background work, 500 records at a time per organisation, and writes one `records.deleted_by_retention` audit entry per organisation per run (a count; no answers).
+  - `GET /retention` tells an admin the length, which published forms keep their answers only here, and how many go at the next run.
+- Audit log: kept 365 days (TTL index on `at`).
 
 ## Getting it back
 

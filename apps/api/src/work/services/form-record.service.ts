@@ -641,6 +641,15 @@ export class FormRecordService {
     return steps;
   }
 
+  /** Kept whatever the organisation's retention says (a dispute, a legal hold), or let go again. Forms admins only. */
+  async hold(user: AuthUser, id: string, held: boolean) {
+    if (!isRecordAdmin(user)) throw new ForbiddenException('Only a Forms admin can keep a record past the retention');
+    await this.mustSee(user, id);
+    await this.records.updateOne({ orgId: user.orgId, uuid: id }, { $set: { held } });
+    await this.log(user.orgId, id, 'HOLD', user.uuid, held ? 'Kept: not deleted by the retention until let go' : 'Let go: deleted by the retention like the rest', { held });
+    return this.getAfterChange(user, id);
+  }
+
   /** How many times a run has gone back to an earlier step, or been run again, so far: each starts a new round of its steps. */
   async timesWentBack(orgId: string, recordId: string, runId: string): Promise<number> {
     return this.events.countDocuments({ orgId, recordId, type: 'AUTOMATION', 'data.runId': runId, $or: [{ 'data.wentBack': true }, { 'data.again': true }] });

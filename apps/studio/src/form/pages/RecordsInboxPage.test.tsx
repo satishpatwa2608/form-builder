@@ -256,6 +256,27 @@ describe('Records inbox', () => {
     expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: /Run again/ })).not.toBeInTheDocument();
   });
 
+  it('a Forms admin keeps a record past the retention; others are not offered it', async () => {
+    Object.assign(registry, { forms: [form] });
+    api.mutate.mockReset();
+    api.mutate.mockResolvedValue({});
+    api.events = [];
+    api.extra = { canRunAgain: true };
+    const user = userEvent.setup();
+    const { unmount } = render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    const keep = within(await screen.findByRole('dialog')).getByRole('checkbox', { name: 'Keep this record' });
+    expect(keep).not.toBeChecked();
+    await user.click(keep);
+    expect(api.mutate).toHaveBeenLastCalledWith({ kind: 'hold', held: true });
+    unmount();
+
+    api.extra = { canRunAgain: false };
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'CCB-000001' }));
+    expect(within(await screen.findByRole('dialog')).queryByRole('checkbox', { name: 'Keep this record' })).not.toBeInTheDocument();
+  });
+
   it('a button that needs a file first says so before it is pressed, and shows why it was refused', async () => {
     Object.assign(registry, { forms: [form] });
     api.actions = [{ key: 'resolve', label: 'Resolve', to: 'DONE', requireFiles: { picturesOnly: true, if: { field: 'category', operator: 'equals', value: 'DELIVERY' } } }];

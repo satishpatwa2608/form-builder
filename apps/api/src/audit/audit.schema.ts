@@ -25,6 +25,8 @@ export class AuditEntry {
 export type AuditEntryDocument = HydratedDocument<AuditEntry>;
 export const AuditEntrySchema = SchemaFactory.createForClass(AuditEntry);
 AuditEntrySchema.index({ orgId: 1, at: -1 });
+// Who did what is kept for a year (it holds no answers), whatever happens to the records it speaks of.
+AuditEntrySchema.index({ at: 1 }, { expireAfterSeconds: 365 * 86_400 });
 
 const refuse = () => {
   throw new Error('The audit log is append-only');

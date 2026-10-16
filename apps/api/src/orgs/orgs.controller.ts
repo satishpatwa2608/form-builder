@@ -12,7 +12,7 @@ import { idParam } from '../common/id-param';
 import { OrgsService } from './orgs.service';
 
 const orgName = z.string().trim().min(1).max(100);
-const updateOrgBody = z.object({ name: orgName.optional(), security: z.object({ require2fa: z.boolean().optional(), requireReview: z.boolean().optional(), idleMinutes: z.number().int().refine((n) => (IDLE_CHOICES as readonly number[]).includes(n), 'Choose one of the times offered').optional() }).optional(), portal: z.object({ enabled: z.boolean().optional(), title: z.string().trim().max(80).optional(), intro: z.string().trim().max(500).optional() }).optional(), ai: z.object({ drafting: z.boolean().optional() }).optional() });
+const updateOrgBody = z.object({ name: orgName.optional(), security: z.object({ require2fa: z.boolean().optional(), requireReview: z.boolean().optional(), idleMinutes: z.number().int().refine((n) => (IDLE_CHOICES as readonly number[]).includes(n), 'Choose one of the times offered').optional() }).optional(), portal: z.object({ enabled: z.boolean().optional(), title: z.string().trim().max(80).optional(), intro: z.string().trim().max(500).optional() }).optional(), ai: z.object({ drafting: z.boolean().optional() }).optional(), retention: z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90), z.literal(365), z.null()]) }).optional() });
 const createOrgBody = z.object({ name: orgName, plan: z.enum(['FREE', 'TEAM', 'BUSINESS', 'ENTERPRISE']).optional() });
 const memberBody = z
   .object({

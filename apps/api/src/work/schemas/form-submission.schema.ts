@@ -120,6 +120,10 @@ export class FormSubmission {
   @Prop({ type: Date, default: null })
   statusChangedAt: Date | null;
 
+  /** Kept whatever the organisation's retention says (a dispute, a legal hold), until an admin lets it go. */
+  @Prop({ type: Boolean, default: false })
+  held: boolean;
+
   /** When the current status's SLA runs out; null when it has none or the record is done. */
   @Prop({ type: Date, default: null })
   dueAt: Date | null;

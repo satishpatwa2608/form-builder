@@ -81,6 +81,8 @@ export interface RecordRow {
   escalationStep?: number;
   resolvedAt?: string | null;
   reopenCount?: number;
+  /** Kept by a Forms admin: not deleted by the organisation's retention until let go. */
+  held?: boolean;
   submittedBy: string;
   channel: string;
   payload: FormValues;
@@ -89,7 +91,7 @@ export interface RecordRow {
 
 export interface RecordEvent {
   uuid: string;
-  type: 'CREATED' | 'STATUS' | 'ASSIGNED' | 'COMMENT' | 'SLA' | 'AUTOMATION' | 'PRIORITY' | 'FIELD_UPDATE' | 'APPROVAL' | 'REOPENED' | 'ESCALATED' | 'ASK' | 'EMAIL' | 'ASK' | 'FILE';
+  type: 'CREATED' | 'STATUS' | 'ASSIGNED' | 'COMMENT' | 'SLA' | 'AUTOMATION' | 'PRIORITY' | 'FIELD_UPDATE' | 'APPROVAL' | 'REOPENED' | 'ESCALATED' | 'ASK' | 'EMAIL' | 'ASK' | 'FILE' | 'HOLD';
   by: string;
   message: string;
   data: Record<string, unknown>;
@@ -278,6 +280,7 @@ type RecordAction =
   | { kind: 'work'; values: FormValues }
   | { kind: 'reopen'; comment: string }
   | { kind: 'again'; runId: string }
+  | { kind: 'hold'; held: boolean }
   | { kind: 'email'; subject: string; body: string; templateKey?: string; requestInfo?: boolean };
 
 const pathOf = (a: RecordAction) =>
@@ -305,6 +308,8 @@ export function useRecordAction(id: string | undefined) {
                 ? { userId: action.userId, question: action.question }
                 : action.kind === 'answer'
                   ? { answer: action.answer }
+            : action.kind === 'hold'
+              ? { held: action.held }
             : action.kind === 'comment'
               ? { message: action.message }
               : action.kind === 'act'

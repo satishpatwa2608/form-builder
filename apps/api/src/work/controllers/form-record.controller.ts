@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpException, NotFoundException, Param, Post, Put, Query, Req, UseFilters } from '@nestjs/common';
 import { JobQueue } from '../../jobs/job-queue.service';
+import { RetentionService } from '../services/retention.service';
 import { RequirePermission } from '../../auth/auth.guard';
 import apiResponse from '../response';
 import { FormFieldErrorsFilter } from '../security/form-http';
@@ -44,6 +45,7 @@ export class FormRecordController {
     private readonly portal: WorkPortalService,
     private readonly definitions: FormDefinitionService,
     private readonly jobs: JobQueue,
+    private readonly retention: RetentionService,
   ) {}
 
   /**
@@ -79,6 +81,21 @@ export class FormRecordController {
     if (!isRecordAdmin(req.user)) throw new ForbiddenException('Only a Forms admin can run failed work again');
     if (!(await this.jobs.retry(String(id).slice(0, 100), req.user.orgId))) throw new NotFoundException('There is no failed work with that id');
     return { queued: true };
+  }
+
+  /** Keep a record past the organisation's retention (or let it go). */
+  @Post('records/:id/hold')
+  @HttpCode(200)
+  @RequirePermission('record.work')
+  hold(@Param('id') id: string, @Body() body: { held?: unknown }, @Req() req: any) {
+    return this.records.hold(req.user, id, body?.held === true);
+  }
+
+  /** How long closed records are kept, which forms keep their answers only here, and what goes at the next run. */
+  @Get('retention')
+  @RequirePermission('org.manage')
+  retentionOverview(@Req() req: any) {
+    return this.retention.overview(req.user.orgId);
   }
 
   /** A flow that stopped on a failed step, run again from that step. */
