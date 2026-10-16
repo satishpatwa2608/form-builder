@@ -37,7 +37,7 @@ import { HealthController } from './health.controller';
 import { previousKeys } from './common/crypto';
 import { AiController } from './ai/ai.controller';
 import { AiService } from './ai/ai.service';
-import { drafterFor, FORM_DRAFTER } from './ai/drafter';
+import { AnthropicDrafter, drafterFor, FORM_DRAFTER, FORM_DRAFTER_FOR_KEY } from './ai/drafter';
 import { Connector, ConnectorCall, ConnectorCallSchema, ConnectorSchema } from './connectors/connector.schema';
 import { ConnectorsController, ConnectorSignInController } from './connectors/connectors.controller';
 import { ConnectorsService } from './connectors/connectors.service';
@@ -299,6 +299,7 @@ export class AppModule {
         },
         { provide: FILE_SCANNER, useValue: config.FILE_SCANNER === 'clamav' ? new ClamAvScanner(config.CLAMAV_HOST, config.CLAMAV_PORT) : new NoFileScanner() },
         { provide: FORM_DRAFTER, useValue: drafterFor(config) },
+        { provide: FORM_DRAFTER_FOR_KEY, useValue: (key: string) => new AnthropicDrafter(key, config.AI_DRAFT_MODEL) },
         AiService,
         // Order matters: rate limit first, then authentication.
         { provide: APP_GUARD, useClass: ThrottlerGuard },

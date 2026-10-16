@@ -22,7 +22,8 @@ run() {
 NOW=$(run "grep ^TAG= /opt/fb/.env | cut -d= -f2" | tr -d '[:space:]')
 
 # The newest tag before it that all three images have.
-tags() { aws ecr describe-images "${A[@]}" --repository-name "fb-$1" --query 'sort_by(imageDetails,&imagePushedAt)[].imageTags[0]' --output text | tr '\t' '\n' | grep -v None; }
+# Every tag, oldest image first: an image that did not change between two versions carries both their tags.
+tags() { aws ecr describe-images "${A[@]}" --repository-name "fb-$1" --query 'sort_by(imageDetails,&imagePushedAt)[].imageTags[]' --output text < /dev/null | tr '\t' '\n' | grep -v None; }
 if [ -n "${1:-}" ]; then
   TO=$1
 else
@@ -31,6 +32,6 @@ fi
 [ -n "$TO" ] || { echo "no earlier version to go back to (running $NOW)"; exit 1; }
 for app in api studio runtime; do tags $app | grep -qx "$TO" || { echo "fb-$app:$TO is not in the image store"; exit 1; }; done
 
-echo "running $NOW; going back to $TO"
+echo "running $NOW; moving to $TO"
 run "cd /opt/fb && ./deploy.sh $TO 2>&1 | tail -2" | tail -2
-curl -fsS -m 20 -o /dev/null "https://api.$H/health" && echo "rolled back to $TO: https://app.$H"
+curl -fsS -m 20 -o /dev/null "https://api.$H/health" && echo "now running $TO: https://app.$H"

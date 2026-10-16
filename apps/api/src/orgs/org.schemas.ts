@@ -107,6 +107,11 @@ export class OrgPortal {
 export class OrgAi {
   /** Draft a new form from a description (only the description is sent to the AI service). */
   @Prop({ type: Boolean, default: false }) drafting: boolean;
+  /** The organisation's own AI service key, sealed (it pays for what it uses). Never shown again. */
+  @Prop({ type: String, default: '' }) key: string;
+  /** The key's last four characters, to tell which one it is. */
+  @Prop({ type: String, default: '' }) keyHint: string;
+  @Prop({ type: Date, default: null }) keySetAt: Date | null;
 }
 
 @Schema({ timestamps: true, collection: 'organizations' })

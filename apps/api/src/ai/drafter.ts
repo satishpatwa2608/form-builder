@@ -4,9 +4,18 @@ import type { AppConfig } from '../config';
 /** Asks an AI service to draft a form. Only the description is sent; what comes back is plain text. */
 export interface FormDrafter {
   draft(description: string, signal: AbortSignal): Promise<string>;
+  /** Whether the service accepts the key (a call that costs nothing). */
+  check?(signal: AbortSignal): Promise<boolean>;
 }
 
+/** The installation's own drafter, or null. */
 export const FORM_DRAFTER = Symbol('FORM_DRAFTER');
+/** A drafter on an organisation's own key: it pays for what it uses. */
+export const FORM_DRAFTER_FOR_KEY = Symbol('FORM_DRAFTER_FOR_KEY');
+export type DrafterForKey = (key: string) => FormDrafter;
+
+/** The shape of an Anthropic API key. */
+export const ANTHROPIC_KEY = /^sk-ant-[A-Za-z0-9_-]{20,300}$/;
 
 /** Claude, through Anthropic's Messages API, with the installation's own key. */
 export class AnthropicDrafter implements FormDrafter {
@@ -24,9 +33,14 @@ export class AnthropicDrafter implements FormDrafter {
       signal,
     });
     // The service's own words can carry details of the account: only the status is passed on.
-    if (!res.ok) throw new Error(`the AI service answered ${res.status}`);
+    if (!res.ok) throw Object.assign(new Error(`the AI service answered ${res.status}`), { status: res.status });
     const body = (await res.json()) as { content?: { type: string; text?: string }[] };
     return (body.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
+  }
+
+  async check(signal: AbortSignal): Promise<boolean> {
+    const res = await fetch('https://api.anthropic.com/v1/models?limit=1', { headers: { 'x-api-key': this.key, 'anthropic-version': '2023-06-01' }, redirect: 'error', signal });
+    return res.ok;
   }
 }
 

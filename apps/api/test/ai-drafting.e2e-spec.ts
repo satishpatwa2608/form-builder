@@ -1,4 +1,6 @@
-import { FORM_DRAFTER, type FormDrafter } from '../src/ai/drafter';
+import { getModelToken } from '@nestjs/mongoose';
+import type { Model } from 'mongoose';
+import { FORM_DRAFTER, FORM_DRAFTER_FOR_KEY, type FormDrafter } from '../src/ai/drafter';
 import { startApp, type Harness } from './harness';
 
 /** Stands in for the AI service: answers what the test says, and remembers what it was sent. */
@@ -47,7 +49,7 @@ describe('Drafting a form from a description (e2e)', () => {
   const draft = (token: string, description = DESCRIPTION) => h.api().post('/ai/form-drafts').set(h.bearer(token)).send({ description, folderId: folder });
 
   it('is off until an admin turns it on, and only admins can', async () => {
-    expect((await h.api().get('/ai/status').set(h.bearer(owner)).expect(200)).body).toEqual({ available: true, enabled: false, used: 0, limit: 50 });
+    expect((await h.api().get('/ai/status').set(h.bearer(owner)).expect(200)).body).toEqual({ available: true, enabled: false, ownKey: null, used: 0, limit: 50 });
     expect((await draft(owner).expect(403)).body.message).toBe('An admin has not turned on drafting forms from a description (Organisation settings)');
     expect(service.sent).toEqual([]);
     await h.api().patch('/org').set(h.bearer(designer)).send({ ai: { drafting: true } }).expect(403);
@@ -123,5 +125,72 @@ describe('Drafting a form from a description (e2e)', () => {
     } finally {
       await plain.close();
     }
+  });
+});
+
+describe("Drafting on the organisation's own AI key: it pays for what it uses (e2e)", () => {
+  let h: Harness;
+  let owner: string;
+  let designer: string;
+  let folder: string;
+  const KEY = `sk-ant-good-${'x'.repeat(30)}wxyz`;
+  const service = { keys: [] as string[], sent: [] as string[], refuse: false };
+  const forKey = (key: string): FormDrafter => ({
+    check: async () => key.includes('good'),
+    draft: async (description) => {
+      service.keys.push(key);
+      service.sent.push(description);
+      if (service.refuse) throw Object.assign(new Error('the AI service answered 401'), { status: 401 });
+      return GOOD;
+    },
+  });
+
+  beforeAll(async () => {
+    // No key of the installation's own: only organisations with theirs can draft.
+    h = await startApp({ DEFAULT_PLAN: 'FREE' }, (b) => b.overrideProvider(FORM_DRAFTER_FOR_KEY).useValue(forKey));
+    await h.signUp('Asha', 'asha@acme.test', 'Acme Homes');
+    owner = (await h.login('asha@acme.test')).token;
+    folder = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Maintenance' }).expect(201)).body[0].id;
+    await h.addMember(owner, 'Dev Designer', 'dev@acme.test', 'DESIGNER');
+    designer = (await h.login('dev@acme.test')).token;
+  });
+  afterAll(() => h?.close());
+
+  const draft = () => h.api().post('/ai/form-drafts').set(h.bearer(designer)).send({ description: DESCRIPTION, folderId: folder });
+
+  it('is not offered until the organisation puts in its own key; the key is checked, kept sealed and never shown', async () => {
+    expect((await h.api().get('/ai/status').set(h.bearer(owner)).expect(200)).body).toMatchObject({ available: false, enabled: false, ownKey: null });
+    await draft().expect(503);
+    await h.api().put('/ai/key').set(h.bearer(designer)).send({ key: KEY }).expect(403);
+    expect((await h.api().put('/ai/key').set(h.bearer(owner)).send({ key: 'hello' }).expect(400)).body.message).toBe('That is not an Anthropic API key: it starts with sk-ant-');
+    expect((await h.api().put('/ai/key').set(h.bearer(owner)).send({ key: `sk-ant-bad-${'x'.repeat(30)}` }).expect(400)).body.message).toBe('The AI service did not accept that key');
+    const saved = (await h.api().put('/ai/key').set(h.bearer(owner)).send({ key: KEY }).expect(200)).body;
+    expect(saved).toMatchObject({ available: true, enabled: false, ownKey: { hint: 'wxyz' }, limit: null });
+    expect(JSON.stringify(saved)).not.toContain(KEY);
+    expect(JSON.stringify((await h.api().get('/org').set(h.bearer(owner)).expect(200)).body)).not.toContain(KEY);
+    const stored = await h.app.get<Model<{ id: string; ai: { key: string } }>>(getModelToken('Organization')).findOne({}).lean();
+    expect(stored!.ai.key).toMatch(/^v1\./);
+    expect(stored!.ai.key).not.toContain('sk-ant');
+  });
+
+  it('drafts with that key, with no allowance (the organisation pays), and says so in the audit trail', async () => {
+    await h.api().patch('/org').set(h.bearer(owner)).send({ ai: { drafting: true } }).expect(200);
+    // The Free plan's allowance is 5: more than that go through on the organisation's own key.
+    for (let i = 0; i < 7; i++) expect((await draft().expect(200)).body).toMatchObject({ name: 'Maintenance complaint', limit: null });
+    expect(new Set(service.keys)).toEqual(new Set([KEY]));
+    expect(service.sent.every((s) => s === DESCRIPTION)).toBe(true);
+    const entry = (await h.api().get('/audit?limit=50').set(h.bearer(owner)).expect(200)).body.entries.find((e: { action: string }) => e.action === 'form.ai_drafted');
+    expect(entry.after).toMatchObject({ key: 'organisation' });
+  });
+
+  it('a key the service refuses later is said so, for an admin to check', async () => {
+    service.refuse = true;
+    expect((await draft().expect(503)).body.message).toBe("The AI service refused your organisation's key. An admin can check it in Organisation settings.");
+    service.refuse = false;
+  });
+
+  it('taken away, it is no longer offered or used', async () => {
+    expect((await h.api().delete('/ai/key').set(h.bearer(owner)).expect(200)).body).toMatchObject({ available: false, enabled: false, ownKey: null });
+    await draft().expect(503);
   });
 });
