@@ -330,7 +330,7 @@ export class FormSubmissionService {
     // 9. Automations run from here, after the response is on its way.
     const event: FormSubmittedEvent = {
       orgId,
-      businessId: def.businessId,
+      businessId: def.businessId ?? '',
       formCode: def.code,
       formVersion: def.version,
       submissionId: uuid,

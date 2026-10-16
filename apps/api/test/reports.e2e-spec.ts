@@ -117,7 +117,21 @@ describe('Reports: side by side by property, team, assignee, priority or status 
   it('an unknown grouping falls back to the first; an unknown form is not found', async () => {
     expect((await report('formCode=MAINT&by=$where').expect(200)).body.by).toBe('field:property');
     await report('formCode=NOPE').expect(404);
-    // Without a form: team, assignee, priority, status across every form.
-    expect((await report('days=30').expect(200)).body.by).toBe('team');
+    // Without a form: business, team, assignee, priority, status across every form.
+    expect((await report('days=30').expect(200)).body.by).toBe('business');
+  });
+
+  it('by business: each top-level folder is one, whatever folder inside it a form is kept in', async () => {
+    const offices = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'City Offices' }).expect(201)).body[0].id;
+    const inside = (await h.api().post('/folders').set(h.bearer(owner)).send({ name: 'Lifts', parentId: offices }).expect(201)).body.find((f: { name: string }) => f.name === 'Lifts').id;
+    const id = (await h.api().post('/forms').set(h.bearer(owner)).send({ folderId: inside, definition: { ...form, code: 'LIFTS', name: 'Lift fault' } }).expect(201)).body.definition.id;
+    await h.api().post(`/forms/${id}/publish`).set(h.bearer(owner)).expect(200);
+    for (const property of ['A', 'B']) await h.api().post(`/public/forms/LIFTS/submissions?org=${orgId}`).send({ values: { property, kind: 'NOISE' } }).expect(201);
+    const r = (await report('days=30&by=business').expect(200)).body;
+    expect(r.choices[0]).toEqual({ value: 'business', label: 'Business' });
+    expect(row(r.groups, 'Maintenance')).toMatchObject({ opened: 5, resolved: 3 });
+    expect(row(r.groups, 'City Offices')).toMatchObject({ opened: 2, openNow: 2 });
+    // One form is one business: not offered then.
+    expect((await report('formCode=MAINT').expect(200)).body.choices.map((c: { value: string }) => c.value)).not.toContain('business');
   });
 });

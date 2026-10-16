@@ -28,7 +28,8 @@ export { documentSettingsSchema } from './schema/document';
 const formDefinitionShapeObject = z.object({
   id: z.string().min(1),
   orgId: z.string(),
-  businessId: z.string(),
+  /** Kept for older forms: a form's business is the top-level folder it is in. */
+  businessId: z.string().optional(),
   name: z.string().min(1),
   code: z.string().regex(/^[A-Z0-9_]+$/, 'Form code must be UPPER_SNAKE_CASE'),
   description: z.string().optional(),

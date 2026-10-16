@@ -10,6 +10,8 @@ import { FormDefinitionService } from './form-definition.service';
 import { formShape, workflowOf, type FormDefinition } from '@fb/engine';
 import { FormCalendarService } from './form-calendar.service';
 import { PeopleService } from './people.service';
+import { Folder, type FolderDocument } from '../../access/access.schemas';
+import { Form, type FormDocument } from '../../forms/form.schema';
 
 const REPORT_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,99}$/;
 
@@ -79,6 +81,8 @@ export class WorkPortalService {
     @InjectModel(FormWorkView.name) private readonly views: Model<FormWorkViewDocument>,
     @InjectModel(FormWorkSettings.name) private readonly settings: Model<FormWorkSettingsDocument>,
     @InjectModel(FormSubmission.name) private readonly records: Model<FormSubmissionDocument>,
+    @InjectModel(Form.name) private readonly forms: Model<FormDocument>,
+    @InjectModel(Folder.name) private readonly folders: Model<FolderDocument>,
     private readonly recordsService: FormRecordService,
     private readonly definitions: FormDefinitionService,
     private readonly calendars: FormCalendarService,
@@ -284,6 +288,16 @@ export class WorkPortalService {
     });
   }
 
+  /** Each form's business: the name of the top-level folder it is kept in. */
+  private async businessOfForms(orgId: string): Promise<Map<string, string>> {
+    const [forms, folders] = await Promise.all([
+      this.forms.find({ orgId, isDeleted: false }).select('code folderId').lean(),
+      this.folders.find({ orgId }).select('id name path').lean(),
+    ]);
+    const byId = new Map(folders.map((f) => [f.id, f]));
+    return new Map(forms.map((f) => [f.code, byId.get(byId.get(f.folderId)?.path[0] ?? '')?.name ?? 'No business']));
+  }
+
   /**
    * For a period: records opened, resolved, open and overdue now, and the median time to resolve, grouped by
    * one choice question of a form, by team (the assignee's department), by assignee, by priority or by status,
@@ -302,10 +316,11 @@ export class WorkPortalService {
           .top.filter((f) => (f.type === 'DROPDOWN' || f.type === 'RADIO') && REPORT_KEY.test(form.submission.mapping?.[f.name] ?? f.name))
           .map((f) => ({ value: `field:${f.name}`, label: f.label || f.name }))
       : [];
-    const choices = [...questions, { value: 'team', label: 'Team' }, { value: 'assignee', label: 'Assigned to' }, { value: 'priority', label: 'Priority' }, { value: 'status', label: 'Status' }];
+    // A business is a top-level folder: comparing them only makes sense across forms.
+    const choices = [...questions, ...(form ? [] : [{ value: 'business', label: 'Business' }]), { value: 'team', label: 'Team' }, { value: 'assignee', label: 'Assigned to' }, { value: 'priority', label: 'Priority' }, { value: 'status', label: 'Status' }];
     const by = choices.some((c) => c.value === query.by) ? query.by! : choices[0]!.value;
     const field = by.startsWith('field:') ? form!.fields.find((f) => f.name === by.slice(6))! : undefined;
-    const key = field ? `payload.${form!.submission.mapping?.[field.name] ?? field.name}` : by === 'team' || by === 'assignee' ? 'assigneeId' : by;
+    const key = field ? `payload.${form!.submission.mapping?.[field.name] ?? field.name}` : by === 'team' || by === 'assignee' ? 'assigneeId' : by === 'business' ? 'formCode' : by;
 
     const { filter: all } = await this.recordsService.inboxFilter(user, { formCode: query.formCode || undefined, team: query.team || undefined });
     // One pass in the database: each group's counts, and how long each record resolved in the period took (for
@@ -325,9 +340,11 @@ export class WorkPortalService {
         },
       },
     ] as never)) as { _id: unknown; opened: number; resolved: number; openNow: number; overdueNow: number; times: number[] }[];
+    const businesses = by === 'business' ? await this.businessOfForms(user.orgId) : new Map<string, string>();
     const departments = by === 'team' ? await this.people.departmentsOf(user.orgId, rows.map((r) => (typeof r._id === 'string' ? r._id : '')).filter(Boolean)) : new Map<string, string>();
     const groupOf = (id: unknown) => {
       if (by === 'team') return id ? departments.get(String(id)) || 'No team' : 'Not assigned';
+      if (by === 'business') return businesses.get(String(id)) ?? 'No business';
       return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
     };
 

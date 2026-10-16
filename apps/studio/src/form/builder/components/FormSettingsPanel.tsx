@@ -164,7 +164,6 @@ export function FormSettingsPanel({ form, readOnly, codeLocked, onChange }: Form
           hint={codeLocked ? 'Fixed once a form has been published - links and pages point at it.' : 'UPPER_SNAKE_CASE. Used in the form link.'}
           onChange={(code) => onChange({ code: code.toUpperCase() })}
         />
-        <TextSetting label="Business" value={form.businessId} hint="Business id this form belongs to." onChange={(businessId) => onChange({ businessId })} />
         <SelectSetting
           label="Who can open it"
           value={form.access}

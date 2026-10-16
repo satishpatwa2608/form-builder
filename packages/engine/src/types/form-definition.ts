@@ -14,7 +14,8 @@ export type FormAccess = 'PUBLIC' | 'AUTHENTICATED';
 export interface FormDefinition {
   id: string;
   orgId: string;
-  businessId: string;
+  /** Not used: a form's business is the top-level folder it is kept in. Older forms carry it. */
+  businessId?: string;
 
   name: string;
   /** Stable across versions - pages and URLs point at the code, not a version. */

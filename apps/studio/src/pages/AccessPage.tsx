@@ -64,7 +64,7 @@ export default function AccessPage() {
 
   return (
     <>
-      <PageHead title="Folders & access" subtitle="Forms live in folders. Give people a role on a folder and it covers everything inside it." />
+      <PageHead title="Folders & access" subtitle="Forms live in folders. Each top-level folder is a business (a property group, a company, a site): give people a role on it and it covers every form inside. Reports can compare businesses side by side." />
       {message && (
         <div style={{ marginBottom: 16 }}>
           <Alert tone={message.tone}>{message.text}</Alert>
